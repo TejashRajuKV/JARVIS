@@ -37,11 +37,11 @@ JARVIS is a **voice and text AI assistant that runs on your own Windows laptop**
 
 - A **fast rule engine** understands clear commands instantly ("open chrome", "set a timer for 10 minutes") — no AI needed, works offline.
 - Anything casual, misspelled or open-ended goes to an **AI brain**: a free local model through **[Ollama](https://ollama.com)** (nothing leaves your laptop), or a cloud model with **your own API key** (OpenAI, Claude, Gemini, Groq, …).
-- It can **act on your computer**: open any installed app, control volume/brightness/Wi-Fi/windows, read your screen, manage files in a safe sandbox, run code, start your dev servers, and hand tasks to coding AIs like Copilot or Claude Code.
+- It can **act on your computer**: open any installed app, control volume/brightness/Wi-Fi/windows, read your screen, open and read files anywhere on the laptop (it asks before changing anything outside ~/jarvis), run code, start your dev servers, and hand tasks to coding AIs like Copilot or Claude Code.
 - It is built for **students and developers**: study planner, flashcards, viva practice, DSA coach, answers from your own notes and PDFs, and a one-click "explain & fix" for crashing programs.
 - **Safety first:** a server-side permission list decides what's allowed (never the AI), risky actions ask first, the most dangerous ones can require **Windows Hello**, and **"undo"** reverses almost everything.
 
-There is also a **cinematic landing page** that introduces JARVIS: open `http://localhost:3000/welcome` (or `/landing.html`) while JARVIS is running.
+There is also a **cinematic landing page** that introduces JARVIS: open `http://localhost:PORT/welcome` (or `/landing.html`) — PORT is the address JARVIS prints (3002 on the author's laptop) while JARVIS is running.
 
 ---
 
@@ -54,7 +54,7 @@ There is also a **cinematic landing page** that introduces JARVIS: open `http://
 | 💻 **Controls your laptop** | Opens **any Start-menu app**, volume, brightness, dark mode, Bluetooth/Wi-Fi, power plans, window layouts, screenshots, clipboard tools, screen reading & vision. |
 | 📚 **Study** | Tasks, deadlines, timetable, reminders, focus sessions, **multi-day study planner**, progress dashboard, flashcards with spaced repetition, **viva practice** by voice, contests and web research. **Attendance with a 75% bunk-o-meter**, marks → SGPA/CGPA. |
 | 📄 **Your files & notes** | Drop in PDFs, notes, **.docx / .pptx / .xlsx** and ask questions — **hybrid keyword + semantic search**, answers with **page numbers**. Summaries and flashcards from any file. |
-| 🛠 **Coding** | Write → save → run code, **EXPLAIN & FIX** crashes in one click, **DSA coach** (hints before solutions), **website generator**, and "open VS Code in *folder* and tell Copilot to…". |
+| 🛠 **Coding** | Write → save → run code, **EXPLAIN & FIX** crashes in one click, **DSA coach** (hints before solutions), **website generator**, "open VS Code in *folder* and tell Copilot to…", and **dev environments that recover from failures** (missing dependencies → install → restart → verify). |
 | ⚡ **Automation** | Multi-step commands, **routines**, **triggers** ("when I plug in my charger…"), a **global hotkey** for any selected text, reminders that fire even with the tab closed. |
 | 📱 **Phone** | Reminders on your phone (ntfy), and phone commands locked behind a 6-digit **authenticator code**. |
 | 🔐 **Safe & private** | Local-only server, permission tiers, Windows Hello approvals, **undo**, encrypted backups, keys that never leave the laptop. |
@@ -84,7 +84,7 @@ A laptop GPU helps the local model (e.g. an RTX 3050 6 GB runs `qwen3.5:4b` comf
 2. Double-click **`Start JARVIS.bat`**. The first time it:
    - checks for Node.js and offers to install it if missing (then asks you to start it again),
    - installs JARVIS's parts (`npm install`, about a minute),
-   - finds a free port (3000–3010) and adds a **JARVIS shortcut to your desktop**,
+   - opens the JARVIS that is already running if there is one, otherwise finds a free port (3000–3010) and adds a **JARVIS shortcut to your desktop**,
    - starts JARVIS and opens it in your browser.
 3. That's it. From the second time on, **double-click the JARVIS icon on your desktop** — it starts the server quietly in the background (no terminal window) and opens JARVIS when it's ready.
 
@@ -100,6 +100,8 @@ A laptop GPU helps the local model (e.g. an RTX 3050 6 GB runs `qwen3.5:4b` comf
 
 If JARVIS is already running, double-clicking the icon simply opens it. JARVIS remembers its port, so the same address works every time.
 
+**Only one JARVIS runs at a time.** However it is started (desktop icon, `npm start`, an AI tool, a VS Code terminal), a second start finds the running copy through `~/jarvis/.jarvis.lock`, prints its address and exits. So there is one chat, one phone (ntfy) connection and one wake-word listener, whatever launched it. Your address is the one JARVIS remembers (`~/jarvis/.jarvis-port`).
+
 ### The command-line way
 
 ```bash
@@ -107,10 +109,10 @@ npm install
 npm start
 ```
 
-Then open **http://localhost:3000**. Port busy? Use another one (PowerShell):
+Then open the address it prints (**http://localhost:3000** the first time; after that, the remembered one). If JARVIS is already running, `npm start` just tells you where. To choose the port on a first start (PowerShell):
 
 ```bash
-$env:PORT=3001; npm start
+$env:PORT=3002; npm start
 ```
 
 > Open JARVIS through `http://localhost:PORT` — **not** by double-clicking `index.html`. The server only accepts requests from its own page.
@@ -129,9 +131,9 @@ Any Ollama chat model works — pick it in **Settings → Model**. The first rep
 
 | Address | What |
 |---|---|
-| `http://localhost:3000/` | The JARVIS app |
-| `http://localhost:3000/welcome` | The cinematic landing page |
-| `http://localhost:3000/?skipboot` | The app without the boot animation |
+| `http://localhost:PORT/` | The JARVIS app |
+| `http://localhost:PORT/welcome` | The cinematic landing page |
+| `http://localhost:PORT/?skipboot` | The app without the boot animation |
 
 ---
 
@@ -230,7 +232,7 @@ On first run, JARVIS shows a **guided setup** (re-open it any time: **Settings �
 
 ### Your notes, files & PDFs
 
-- **Files** live in a safe sandbox, `~/jarvis` (Notes, Code, Documents, Projects), plus project folders you allow in **Settings → Project folders**: "take a note: revise recursion", "read my notes", "list my files", "create a folder called DSA", "rename a.md to b.md", "copy notes.md to Projects", "delete old.txt" (goes to `~/jarvis/.trash`).
+- **Files.** JARVIS's own workspace is `~/jarvis` (Notes, Code, Documents, Projects). It can **open and read files and folders anywhere on the laptop** — "open the agriloop folder in vs code", "read notes.txt" — searching Desktop, Documents, Downloads, your home folder and your other drives by name. If a name matches several places it lists them (**OPEN 1 / OPEN 2**). **Changing** anything outside `~/jarvis` (write, rename, move, copy into, delete) shows an **ALLOW / CANCEL** card first; from the phone or a routine it is refused. Windows, Program Files, AppData and key folders are never touched. Examples: "take a note: revise recursion", "read my notes", "list my files", "create a folder called DSA", "rename a.md to b.md", "copy notes.md to Projects", "delete old.txt" (goes to `~/jarvis/.trash`).
 - **Drop in PDFs and notes:** drag files onto JARVIS or click **📎**. They're saved to `~/jarvis/Documents`.
 - **Ask your files:** "what did my OS notes say about deadlocks?", "what does lecture3.pdf say about paging?", "search my notes for normalization", "according to my notes, what is a semaphore?". Answers come from your files with a **Sources** list (file + page number or lines). A name with spaces needs quotes: `what does "10. Numpy.pdf" say about arrays`.
 - **Summarise / flashcards / read / open:** "summarise lecture3.pdf", "make flashcards from lecture3.pdf", "read lecture3.pdf" (shows the text), "open lecture3.pdf" (opens your PDF viewer).
@@ -239,11 +241,11 @@ On first run, JARVIS shows a **guided setup** (re-open it any time: **Settings �
 
 ### Coding
 
-- **Write → save → run:** "write fizzbuzz in python and save it as fizz.py and run it", "save that code as bfs.py", "run it", "run sort.cpp with input 5 3 1", "open it in VS Code", "paste that code into my editor" (3-second countdown, then Ctrl+V). Runs `.py`, `.js`, `.c`, `.cpp` with a 10-second limit, only inside your allowed folders.
+- **Write → save → run:** "write fizzbuzz in python and save it as fizz.py and run it", "save that code as bfs.py", "run it", "run sort.cpp with input 5 3 1", "open it in VS Code", "paste that code into my editor" (3-second countdown, then Ctrl+V). Runs `.py`, `.js`, `.c`, `.cpp` with a 10-second limit, in `~/jarvis` and your project folders.
 - **🛠 EXPLAIN & FIX:** when a run fails, JARVIS explains the error in plain English (what, which line, why) and shows the fixed file. **APPLY FIX & RUN** saves and re-runs it; **"undo"** gets your original back.
 - **DSA coach:** "coach me on two sum", "help me with leetcode 15 3sum", "I'm stuck on longest palindromic substring". Hints first ("next hint" — they build on each other, never code), "my approach is …" gets checked without spoilers, "show solution in C++", "save it" (to your `dsa_sprint` folder or `~/jarvis/Code`), "stop coaching".
 - **Website generator:** "create a website for my college fest", "build me a landing page for my startup", "make a portfolio website". Three quick questions, then a complete one-file page in `~/jarvis/Projects/<name>/` opens in your browser (≈1–3 min with a local model). Change it by talking: "make the header bigger", "add a contact section" — "undo" goes back. Pages load no outside scripts and forms never send data anywhere.
-- **Ask a coding AI in a folder:** "open vs code in dsa_sprint and tell copilot to write binary search in main.py", "ask claude in dsa_sprint to list the files", "in dsa_sprint, ask kiro to fix the bug". Free-form wording works. If the folder isn't allowed yet (e.g. on your Desktop), JARVIS finds it and asks **ALLOW & CONTINUE**.
+- **Ask a coding AI in a folder:** "open vs code in dsa_sprint and tell copilot to write binary search in main.py", "ask claude in dsa_sprint to list the files", "in dsa_sprint, ask kiro to fix the bug". Free-form wording works. Just opening a folder in VS Code ("open agriloop in vs code") works anywhere; if a coding AI has to work in a folder that isn't one of your project folders yet (e.g. on your Desktop), JARVIS finds it and asks **ALLOW & CONTINUE**.
 
   | Tool | How your request is delivered |
   |---|---|
@@ -253,7 +255,11 @@ On first run, JARVIS shows a **guided setup** (re-open it any time: **Settings �
   | Claude Code, Codex, Gemini, Qwen, Codebuff | Opens a Windows Terminal tab at the folder with the agent already working on your prompt. |
 
 - **Dev projects:** "prepare my development environment for AgriLoop" (locate, open in VS Code, start backend + frontend, open the browser — previewed first), "start the AgriLoop backend", "stop the AgriLoop frontend". Commands come only from the project's own `package.json` scripts or known entry files — never invented. Ports are read from the server's own output.
-- **Learn / create:** "I want to learn Python" (checks the toolchain, creates a real Hello-World, runs it, opens VS Code), "create a C++ project called SmartCalc that adds two numbers, compile it and run it" (real code, shown first, with bounded self-repair on failure). JARVIS never installs software itself.
+  - **Knows what's already running:** the preview says "backend already running on port 5000 → keep" or "VS Code is already open → reuse it", and a server JARVIS already started is kept — no second copy, no permission prompt.
+  - **Verifies the server:** a started backend/frontend counts as ✓ only if it is still alive *and* answers on its port; one that dies right after starting is a failure, one that hasn't answered yet shows ○ *not checked*.
+  - **Recovers from failures:** plan → run → fail → understand → propose → ask → retry → verify. If a server crashes because its dependencies aren't installed (no `node_modules`, "Cannot find module 'express'", "'vite' is not recognized", Python's "No module named flask"), JARVIS explains the cause, asks once, runs the project's **own** install command (`npm install` or `pip install -r requirements.txt`), restarts the server and checks it answers. If the port is held by a leftover copy JARVIS started earlier, it offers to close that and restart. One attempt each — a second failure is diagnosed and reported, never retried in a loop. A missing *relative* file (`./routes/x`) is treated as a code bug, not a dependency.
+  - **Explains other crashes in one line** instead of a bare ✗: database not reachable ("is MongoDB running?"), a missing `.env` setting, a syntax error, permission denied, no start script — anything else gets a one-sentence likely cause from the AI (shown, never acted on).
+- **Learn / create:** "I want to learn Python" (checks the toolchain, creates a real Hello-World, runs it, opens VS Code), "create a C++ project called SmartCalc that adds two numbers, compile it and run it" (real code, shown first, with bounded self-repair on failure). JARVIS never installs software (compilers, runtimes, extensions) itself — the only thing it installs is a project's own dependencies, and only after you approve.
 - **Snippets & git:** "save that code as snippet dfs", "copy snippet dfs", "git status", "clone https://github.com/user/repo", "write a commit message".
 - **CS tools:** "255 to binary", "0x1F in decimal", "1.5 GB to MB", "12 xor 7", "sqrt 144", "15% of 240", "time complexity of merge sort".
 
@@ -272,7 +278,8 @@ On first run, JARVIS shows a **guided setup** (re-open it any time: **Settings �
 - **Say the goal, not just the commands:** "I'm going to study. Set the volume to 30, enable focus mode, close distracting apps, open my DBMS notes and start a 45-minute session." JARVIS takes "study" as the plan's goal, merges overlapping steps (one 45-minute session, not two), closes distractions *before* the session starts, and shows the whole plan once — with ⚠ on anything that needs permission — so **one EXECUTE** approves it.
 - Steps that depend on an earlier one ("create a folder DSA and open it in VS Code") are skipped if that earlier step fails, instead of running on a broken result. The run ends with a tally: "4 of 4 verified".
 - **When JARVIS doesn't understand:** a request no rule matches goes to the AI planner (its guess is shown before anything runs), and questions or remarks that merely mention a setting ("what is volume in physics?") are never treated as commands. Say **"no, that's wrong"** right after a mistake, or **"what didn't you understand?"** to see recent misses — **TEACH** maps a phrase to a command you type ("lecture time" → "mute and block distractions"), which then runs through the normal checks every time.
-- Long plans can be **cancelled**; failed or skipped steps can be **retried** without repeating what already worked. Every run has an id (e.g. `AGT-20260928-004`); ask "what did you just do?".
+- **When a plan fails part-way**, its card offers the honest ways out: **RETRY** (only what didn't complete — what already worked isn't repeated), **CONTINUE** (only the remaining steps that don't depend on the failed one, directly or indirectly) and **ROLLBACK (n)** (reverses the *n* changes this plan made that can be reversed, newest first — see [Undo](#undo-backup--your-data)). This is transaction-*like*, not a full transaction: things that can't be undone (a sent message, an opened editor) are listed, not pretended away.
+- Long plans can be **cancelled** and then **resumed**. Every run has an id (e.g. `AGT-20260928-004`); ask "what did you just do?". **"Inspect the last run"** (or the **INSPECT** button under a plan, or "inspect AGT-20260928-004") opens an **execution inspector** card: goal, route and planner time, how many tools were valid, permissions asked and answered, every step with its timing and verification note, how many actions can be undone, total time and a final status (COMPLETED / PARTIAL / FAILED / CANCELLED). It is built only from what was recorded when the plan ran.
 
 ### Automation
 
@@ -285,17 +292,17 @@ On first run, JARVIS shows a **guided setup** (re-open it any time: **Settings �
 
 ### Phone — alerts and commands
 
-- **Phone alerts:** Settings → **Phone alerts** pushes reminders and deadline alerts to the free **ntfy** app on your phone.
+- **Phone alerts:** Settings → **Phone alerts** pushes reminders and deadline alerts to the free **ntfy** app on your phone. Messages to ntfy go out one at a time, an identical reply is sent only once within 30 seconds, and after a "too many requests" answer from ntfy.sh JARVIS pauses instead of retrying, so the phone app stays responsive.
 - **Phone commands:** send commands from ntfy — they only run after you **unlock with the 6-digit code** from Google Authenticator (just send the digits, e.g. `482913`). Unlocked for 15 minutes; send `lock` to lock. Each code works once; 5 wrong codes pause unlocking for 10 minutes.
-- Works from the phone: open apps, volume, media, to-dos, reminders, focus, routines, questions, asking a coding AI. **Never from the phone:** shutdown/restart/sleep/delete, and anything that would send your screen, clipboard or files over ntfy.
+- Works from the phone: open apps, volume, media, to-dos, reminders, focus, routines, questions, asking a coding AI. **Never from the phone:** shutdown/restart/sleep/delete, any change to files outside `~/jarvis`, and anything that would send your screen, clipboard or files over ntfy.
 - If a code is refused: **Settings → Phone alerts → Check** tells you whether the code is right, from an old key, or if a clock is off.
 - **Full JARVIS page on your phone:** via **Tailscale** (private network of your own devices) — see **Settings → Phone access** for the steps.
 
 ### Undo, backup & your data
 
-- **Undo:** say **"undo"** (or click **↶ Undo**, shown for 30 seconds) — deleted to-dos/deadlines/reminders/snippets/flashcards/memories/routines/triggers, a cleared chat, deleted or clear-sandbox files (from the trash), rename/move/copy/new/overwritten files, volume/mute/brightness/dark mode, opened/closed apps, website changes, applied code fixes. The last 20 actions within 30 minutes. Not undoable: shutdown/restart/sleep, sent messages, git commits, prompts sent to coding AIs.
+- **Undo:** say **"undo"** (or click **↶ Undo**, shown for 30 seconds) — deleted to-dos/deadlines/reminders/snippets/flashcards/memories/routines/triggers, a cleared chat, deleted or clear-sandbox files (from the trash), rename/move/copy/new/overwritten files, volume/mute/brightness/dark mode, opened/closed apps (including the distracting apps a study plan closed), a focus session you started, website changes, applied code fixes. The last 40 actions within 30 minutes. **"Undo that task"** (or "undo the whole plan", "undo AGT-…") reverses every reversible step of the last multi-step plan at once, newest first, and tells you what it undid, what could not be undone, and which steps had nothing to reverse (an opened editor stays open). A dev server JARVIS started is stopped again; one that was already running is left alone. The **ROLLBACK** button on a failed plan does the same. Not undoable: shutdown/restart/sleep, sent messages, git commits, prompts sent to coding AIs.
 - **Backup & restore:** **Settings → Backup & restore → EXPORT** saves chat, to-dos, flashcards, routines, study plans, triggers, settings and your project-folder list to one `.jarvis-backup` file ("back up my data" works too). API keys and the phone unlock key are included only if you choose, sealed with a password (AES-256). **IMPORT…** → **Merge** or **Replace**. JARVIS also keeps a **daily snapshot** for a week and one before every erase / import / restore.
-- **One shared copy:** your data is saved on the PC (`~/jarvis/.jarvis-state.json`), so every browser and port shows the same chat, tasks and settings.
+- **One shared copy:** your data is saved on the PC (`~/jarvis/.jarvis-state.json`), so every browser and port shows the same chat, tasks and settings. Open in several tabs, a chat message typed in one appears in the others.
 
 ---
 
@@ -318,7 +325,8 @@ On first run, JARVIS shows a **guided setup** (re-open it any time: **Settings �
 | Panic & resume | `panic` · `resume` · `what were we talking about?` · `Ctrl+K` command palette |
 | Screen | `read my screen` · `explain the error on my screen` · `describe my screen` |
 | Web | `play lofi on youtube` · `weather in Hyderabad` · `upcoming contests` |
-| Fix mistakes | `undo` · `delete my last message` · `regenerate` |
+| Fix mistakes | `undo` · `undo that task` (a whole multi-step plan) · `delete my last message` · `regenerate` |
+| See what a plan did | `what did you just do` · `inspect the last run` · `inspect AGT-…` · `why did you do that` |
 | Help | `what can you do?` · `why did you do that?` · `run diagnostics` |
 
 ---
@@ -342,7 +350,7 @@ Open **SETTINGS** (top right).
 | | Focus / break (min) | Pomodoro lengths. |
 | | Semantic search · Embedding model | Meaning-based file search ("wifi problem" finds "no internet"); needs an Ollama embed model such as `nomic-embed-text`. |
 | **Backup & restore** | Export · Import · Include my API keys · snapshots | See [Undo, backup & your data](#undo-backup--your-data). |
-| **Project folders** | Add/remove folders | Where JARVIS may read, write, run and open files besides `~/jarvis`. |
+| **Project folders** | Add/remove folders | Used for preparing environments, starting backends and frontends, git, and searching your notes. JARVIS can open files anywhere without adding them here. |
 | **Data** | Require Windows Hello | Fingerprint/face/PIN for shutdown, restart, sleep, deleting files, clearing the sandbox, erasing data and importing backups. |
 | | Erase all local data | Clears the shared data (a snapshot is taken first). |
 | | Start with Windows · Stop JARVIS | Run JARVIS in the background at every sign-in; end the background server. |
@@ -358,7 +366,7 @@ Open **SETTINGS** (top right).
 - **The update check is click-to-run** (Settings → Data → Updates): GitHub is asked only then, and only while Online tools is on.
 - **The server decides what's allowed, never the AI.** Every tool has an argument schema and a permission tier: *safe* (runs), *confirm* (asks first with the reason), *explicit* (its own confirmation every time, never in routines), or refused. Invented tools, `../` paths, "volume 999", shell commands — rejected before anything runs.
 - **Windows Hello approvals** (optional): the server itself verifies a fresh signed challenge from your fingerprint/face/PIN before shutdown, restart, sleep, deleting files, clearing the sandbox, erasing data or importing a backup.
-- **Sandboxed files:** only `~/jarvis` plus folders you add (drive roots, your home and system folders are refused). Deletes go to `~/jarvis/.trash`. JARVIS asks before overwriting and keeps the previous version for undo.
+- **Three access zones for files.** *Home* (`~/jarvis`): free to use. *Laptop* (everywhere else): JARVIS can open and read, but **any change asks ALLOW / CANCEL first**, and phone commands or unattended routines can never approve one. *Blocked*: Windows, Program Files, ProgramData, your whole AppData, key folders (`.ssh`, `.aws`, …), the Recycle Bin, JARVIS's own config and its program folder — refused even if you click ALLOW. Deletes go to `~/jarvis/.trash` (also across drives) and JARVIS keeps the previous version of anything it overwrites, so "undo" works.
 - **No shell injection:** apps open by exact Windows IDs, prompts to coding agents are passed as data (stdin or an encoded literal), never as shell text.
 - **Secrets stay put:** API keys and the phone key live in `~/jarvis/.config.json`, are shown only masked, can't be read through JARVIS's own file tools, and are included in backups only when you choose (encrypted with your password).
 - **Phone commands** need a fresh one-time authenticator code; dangerous and data-leaking commands are refused from the phone.
@@ -369,6 +377,7 @@ Open **SETTINGS** (top right).
 |---|---|
 | `~/jarvis/.jarvis-state.json` | Chat, memory, tasks, reminders, flashcards, routines, triggers, settings |
 | `~/jarvis/.config.json` | Project folders, API keys, phone key, Windows Hello public key |
+| `~/jarvis/.jarvis.lock`, `.jarvis.pid`, `.jarvis-port` | Which JARVIS is running (pid and port); keeps it to one copy and lets Stop JARVIS find it |
 | `~/jarvis/.backups/` | Automatic snapshots |
 | `~/jarvis/.trash/` | Deleted files (restorable) |
 | `~/jarvis/Notes`, `Code`, `Documents`, `Projects` | Your files |
@@ -401,8 +410,10 @@ Open **SETTINGS** (top right).
 |---|---|
 | `Start JARVIS.bat`, `start.ps1` | One-click launcher: Node check, first-time install, free port, desktop shortcut, opens the browser. `-Silent` (used by the desktop icon) runs the server hidden in the background with no terminal window |
 | `jarvis-silent.vbs` | The no-window entry point the desktop/Startup shortcuts point to |
-| `Stop JARVIS.bat`, `stop.ps1` | Ends the background server (the saved PID, or a port scan as fallback) |
-| `server.js` | Express server: security checks, sandboxed files, apps, system tools, run code, web lookups, state storage, module wiring |
+| `Stop JARVIS.bat`, `stop.ps1` | Ends the background server (the pid in the lock file; the fallback only stops a Node process running JARVIS's `server.js`) |
+| `instance.js` | One JARVIS per user: the lock file, stale-lock replacement, the remembered port |
+| `AGENTS.md` | Notes for AI coding tools: JARVIS lives at one address; never start a second copy |
+| `server.js` | Express server: security checks, file access zones and approvals, apps, system tools, run code, dev servers (start/stop, health probe, dependency install), web lookups, state storage, module wiring |
 | `llm.js` | AI layer: Ollama, OpenAI-compatible and Anthropic providers, streaming, retries, provider keys & routes |
 | `agent-tools.js` | Tool registry: argument schemas, permission tiers, refusals, AI planner |
 | `scheduler.js` | Server-side reminders & deadline alerts, triggers watcher, ntfy phone alerts/commands, live events to tabs |
@@ -419,14 +430,17 @@ Open **SETTINGS** (top right).
 | `palette.js` | Ctrl+K command palette |
 | `manifest.webmanifest`, `sw.js` | PWA install: own window, Start-menu icon, offline app shell |
 | `tts.js` | Neural voices |
+| `voice.js` | Utterance collector: waits until you have finished speaking before sending your sentence |
+| `wakeword.js` | Background Windows listener for the wake word, so "Jarvis" works while you are in another tab |
 | `index.html` | The page |
 | `script.js` | Turn pipeline, UI, tasks, reminders, focus, files, streaming, settings |
 | `nlu.js` | Normalization, intent rules, fuzzy matching, dates/times, coding-AI phrase parser |
-| `agent.js` | Multi-step router, plans, confirmations, verification, guided templates, command learning |
+| `agent.js` | Multi-step router, plans, state-aware previews, confirmations, verification, failure recovery (diagnose → fix → retry → verify), RETRY / CONTINUE / ROLLBACK, guided templates, command learning |
 | `routines.js`, `triggers.js`, `study.js`, `undo.js`, `wizard.js`, `lang.js`, `persona.js` | Routines, trigger logic, study & attendance maths, undo stack, guided setup, languages, personality lines |
 | `style.css`, `themes.css`, `ui.css` | Look & feel (`ui.css` is the current clean-HUD layout) |
 | `landing.html` | Cinematic landing page (`/welcome`) |
 | `vendor/qrcode.js` | QR codes for the phone setup (MIT) |
+| `docs/` | Two standalone pages about the project: `jarvis-study-guide.html` (a reading guide: architecture, where data is stored, security, questions to expect) and `jarvis-lesson.html` (a slide deck) |
 | `tests/` | Test suites (`npm test`) |
 | `_backup_original/` | An older version, kept for reference |
 
@@ -452,16 +466,16 @@ Opt-in checks on the real laptop — sets volume and brightness and opens/closes
 npm run test:live
 ```
 
-Three layers check every feature, not just the phrases:
+30 suites check every feature, not just the phrases:
 
 | Suite | Checks | What it covers |
 |---|---|---|
-| `coverage.test.js` | 355 | Every command JARVIS has (176) is understood from its test phrases; fails if a new command has none |
-| `api.test.js` | 137 | Every server route (131) on a real, isolated server: files, projects, git, backup, reminders firing, phone codes, security; routes that would act on the laptop are listed with the reason instead |
-| `e2e.test.js` | 232 | The real page in headless Edge/Chrome: ~40 end-to-end flows (to-dos, reminders, focus, attendance, marks, routines, triggers, multi-step plans…) plus every command run through the chat, with laptop actions faked. Skipped without Edge/Chrome or on Node < 22 |
+| `coverage.test.js` | 373 | Every command JARVIS has (178) is understood from its test phrases; fails if a new command has none |
+| `api.test.js` | 174 | Every server route (138) on a real, isolated server: files and access zones, projects (including recognising a crash on missing dependencies vs. a code bug), git, backup, reminders firing, phone codes, security; routes that would act on the laptop are listed with the reason instead |
+| `e2e.test.js` | 265 | The real page in headless Edge/Chrome: ~40 end-to-end flows (to-dos, reminders, focus, attendance, marks, routines, triggers, multi-step plans…) plus every command run through the chat, with laptop actions faked. Skipped without Edge/Chrome or on Node < 22 |
 | `live.test.js` | 11 | Opt-in (`npm run test:live`) reversible checks on the real laptop |
-| `nlu.test.js` | 261 | Understanding commands (intents, typos, dates, languages) |
-| `agent.test.js` | 70 + 114 | Multi-step routing and safety (validator, refusals) |
+| `nlu.test.js` | 262 | Understanding commands (intents, typos, dates, languages) |
+| `agent.test.js` | 72 + 132 | Multi-step routing and safety (validator, refusals), the execution inspector card, undo tagging of plan runs |
 | `llm.test.js` | 66 | AI providers, streaming, retries, key handling (with a fake server) |
 | `student.test.js` | 60 | Attendance & bunk maths, marks → SGPA/CGPA, monthly/yearly repeats |
 | `codeask.test.js` | 58 | Coding-AI phrases, safe command building |
@@ -472,16 +486,21 @@ Three layers check every feature, not just the phrases:
 | `triggers.test.js` | 31 | Trigger parsing, edges, cooldowns |
 | `rag.test.js` | 28 | File search with page numbers, hybrid + semantic fusion, .docx/.pptx/.xlsx |
 | `doctext.test.js` | 26 | Office file text extraction (zero dependencies) |
-| `plan.test.js` | 40 | Goal sentences → merged, ordered, permission-previewed, verified plans; state-aware steps; dev-project dependencies; teaching phrases |
-| `paraphrase.test.js` | 258 + 7 | The same requests said many ways (casual, Indian-English, no verb): correct / handed to the AI / **confidently wrong** (must stay 0); statements and questions must not trigger commands |
+| `plan.test.js` | 53 | Goal sentences → merged, ordered, permission-previewed, verified plans; state-aware steps (a running server is kept); dev-project dependencies; failure recovery (missing dependencies → ask → install → restart → verify, declined, second failure diagnosed); RETRY / CONTINUE / ROLLBACK; teaching phrases |
+| `paraphrase.test.js` | 259 + 7 | The same requests said many ways (casual, Indian-English, no verb): correct / handed to the AI / **confidently wrong** (must stay 0); statements and questions must not trigger commands |
 | `study.test.js` | 25 | Study planner and progress maths |
 | `scheduler.test.js` | 21 | Server reminders, monthly/yearly repeats, panic gating |
 | `palette.test.js` | 20 | Command palette fuzzy search |
 | `apps.test.js` | 17 | Installed-app matching |
 | `phoneauth.test.js` | 15 | Authenticator codes (RFC 6238 vectors) |
-| `undo.test.js` | 14 | Undo stack |
+| `undo.test.js` | 24 | Undo stack, including reversing a whole plan run newest-first |
 | `update.test.js` | 14 | Update-check version comparison |
 | `hotkey.test.js` | 12 | Hotkey helper protocol |
+| `instance.test.js` | 16 | One JARVIS per user (second start reuses it, stale locks), chat sync between tabs, ntfy rate-limit safety |
+| `voice.test.js` | 22 | Waiting for the end of a sentence, Telugu/Kannada collection |
+| `wakeword.test.js` | 19 | Background wake-word listener protocol |
+| `websearch.test.js` | 11 | "Open X website" picks the right result (not a look-alike) |
+| `autostart.test.js` | 15 | Start with Windows |
 
 `node tests/agent-eval.js` additionally measures the AI planner live against Ollama.
 
@@ -491,7 +510,9 @@ Three layers check every feature, not just the phrases:
 
 **The page says "Backend offline".** Start JARVIS (`Start JARVIS.bat` or `npm start`) and open `http://localhost:PORT` — not the `index.html` file.
 
-**Port 3000 is busy.** The launcher picks a free port automatically; with npm use `$env:PORT=3001; npm start`.
+**Port 3000 is busy.** The launcher picks a free port automatically and remembers it (`~/jarvis/.jarvis-port`); with npm use `$env:PORT=3002; npm start` the first time.
+
+**Different chats on different ports, or the phone (ntfy) app stops responding.** That means more than one JARVIS was running. Since the single-instance lock this can no longer happen from a normal start: starting JARVIS again (desktop icon, `npm start`, an AI tool, VS Code) just reuses the running one. If you ever see two, use **Stop JARVIS** (it stops the copy recorded in `~/jarvis/.jarvis.lock`) and start once. `JARVIS_ALLOW_MULTI=1` turns the guard off; only tests use it.
 
 **"AI brain offline" / no answers to questions.** Start the Ollama app (or add an API key via Settings → Guided setup → AI). The first local reply takes about a minute while the model loads.
 
@@ -507,7 +528,7 @@ Three layers check every feature, not just the phrases:
 
 **Windows Hello stopped working after I changed my PIN/fingerprint.** Stop JARVIS, delete the `"hello"` entry from `~/jarvis/.config.json`, start again.
 
-**"I can't find the folder".** Add it in **Settings → Project folders**, or answer **ALLOW & CONTINUE** when JARVIS finds it for a coding-AI request.
+**"I can't find the folder".** JARVIS searches Desktop, Documents, Downloads, your home folder and other drives by name, so check the spelling first. If a coding AI must work in that folder, add it in **Settings → Project folders** or answer **ALLOW & CONTINUE**.
 
 **A PDF "is a scan".** It contains pictures of pages, not text. Open it and use "read my screen" instead.
 
@@ -539,6 +560,7 @@ Three layers check every feature, not just the phrases:
 - Semantic search needs an Ollama embedding model pulled once (default `nomic-embed-text`); without it the keyword index alone still works.
 - The update check compares release tags and points you at the release page — it doesn't update JARVIS itself.
 - The PWA install (own window, offline shell) needs Chrome or Edge; everything that acts on your PC still runs through the local server.
+- Automatic repair of dev servers covers missing dependencies and a stale port held by JARVIS's own earlier run; other crashes are diagnosed, not fixed. ROLLBACK only reverses actions JARVIS knows how to undo, within 30 minutes.
 - Coding-AI hand-off depends on each tool's own command line; desktop apps without one (OpenCode) need a manual paste.
 - Screen OCR is English only.
 

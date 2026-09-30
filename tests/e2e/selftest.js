@@ -298,11 +298,23 @@
   r = await say('list my triggers');
   check('Triggers', 'list triggers', has(r, /charger/i), r.text);
   // ---- the agent: goal sentence → preview → run → verify
-  PC.running.add('discord'); PC.running.add('spotify');
+  PC.running.add('discord'); PC.running.add('spotify'); const vol0 = PC.volume;
   r = await say("I'm going to study. Set the volume to 25, close distracting apps and start a 25 minute session", { confirm: 'yes', limit: 30000 });
   const run = Agent.lastRuns(1)[0];
   check('Agent', 'multi-step plan previews, runs and verifies', run && run.goal === 'Study' && run.steps.length === 3 && run.steps.every(s => s.status === 'verified'), run || r.text);
   check('Agent', 'the distracting apps were really closed (fake laptop)', !PC.running.has('discord') && !PC.running.has('spotify'));
+  check('Agent', 'the run record notes how many steps can be undone', run && run.steps.some(s => s.undoable > 0), run && run.steps.map(s => s.undoable));
+  // ---- execution inspector + undo the whole task
+  r = await say('inspect the last run');
+  check('Inspector', '"inspect the last run" shows goal, steps, verification and status', has(r, /EXECUTION AGT-/) && has(r, /Study/) && has(r, /Verification/) && has(r, /STATUS: COMPLETED/), r.text);
+  check('Inspector', 'the card shows the timings and how many actions can be undone', has(r, /Route\s+\d+/) && has(r, /Total\s+[\d.]+ (ms|s)/) && has(r, /reversible action/), r.text);
+  r = await say('inspect ' + run.id.toLowerCase());
+  check('Inspector', 'a run can be inspected by its id', has(r, new RegExp('EXECUTION ' + run.id)), r.text);
+  r = await say('undo that task');
+  check('Undo', '"undo that task" reverses the whole plan: volume back, closed apps open again', PC.volume === vol0 && PC.running.has('discord') && PC.running.has('spotify'), { vol: PC.volume, vol0, running: [...PC.running] });
+  check('Undo', 'it says what it undid and what had nothing to reverse', has(r, /Undid \d+ steps? of/) && has(r, new RegExp(run.id)), r.text);
+  r = await say('undo that task');
+  check('Undo', 'asking again says there is nothing left, instead of undoing something else', has(r, /no whole plan I can undo/i), r.text);
   await say('stop the focus session');
   r = await say('no, that’s wrong'); r = await say("what didn't you understand?");
   check('Agent', '"no, that’s wrong" is logged for teaching', has(r, /stop the focus session|TEACH|Nothing lately/i), r.text);
@@ -317,5 +329,14 @@
       (!x.ok ? 'did not finish in time. ' : '') + (!answered ? 'no reply. ' : '') + (x.errors.length ? 'errors: ' + x.errors.join(' | ') : ''));
   }
   check('Safety', 'no real laptop action escaped the fakes during the whole run', calls.every(c => FAKE[c.endpoint] || !/^\/(sys\/(volume|brightness|theme|radio|displayOff|window|powerPlan)|tool\/(open|close|lock|sleep|shutdown|restart|screenshot|paste|media|showDesktop|writeClipboard|readClipboard|codeAsk|gitClone))/.test(c.endpoint)));
+  // ---- a second tab of the same JARVIS changes the chat: this tab shows it (server push), and ignores its own writes
+  { await idle(8000);
+    const post = (src, text) => fetch('api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src, set: { 'jarvis.chat': [{ role: 'user', text, source: 'text', t: Date.now() }] } }) });
+    const shows = async text => { for (let i = 0; i < 30; i++) { if ([...document.querySelectorAll('#messages .msg')].some(m => m.innerText.includes(text))) return true; await sleepMs(100); } return false; };
+    await post('another-tab', 'typed in the other tab');
+    check('Tabs', 'a chat message written by another tab appears here without a reload', await shows('typed in the other tab') && chatLog.some(m => m.text === 'typed in the other tab'));
+    await post(TAB_ID, 'my own echo');
+    await sleepMs(1500);
+    check('Tabs', 'a change this tab made itself is not applied again (no ping-pong)', !chatLog.some(m => m.text === 'my own echo')); }
   T.done = true;
 })().catch(e => { window.__selftest.results.push({ feature: 'Harness', desc: 'self-test ran to the end', ok: false, detail: String(e && e.stack || e) }); window.__selftest.done = true; });

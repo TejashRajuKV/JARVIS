@@ -4,8 +4,17 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
+// One JARVIS per user: a second start (an AI tool, VS Code, a terminal) reuses the running one instead of adding a copy
+// with its own chat, ntfy stream and wake-word listener. This runs before anything else starts work (instance.js).
+const instance = require('./instance');
+const PORT = Number(process.env.PORT) || instance.rememberedPort();
+const lock = instance.claim(PORT);
+if (lock.running) {
+  console.log(`JARVIS is already running at http://localhost:${lock.port} — use that one (pid ${lock.pid}).`);
+  process.exit(0);
+}
+
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
 const HOST = '127.0.0.1';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = process.env.JARVIS_MODEL || 'qwen3.5:4b';
@@ -127,6 +136,10 @@ app.post('/api/state', (req, res) => {
     else appState[k] = v;
   }
   saveState();
+  // Other open tabs of this JARVIS show a changed chat at once (the writer's own tab ignores it: same src).
+  if ('jarvis.chat' in set && Array.isArray(set['jarvis.chat']) && typeof app.locals.broadcast === 'function') {
+    app.locals.broadcast({ type: 'state', key: 'jarvis.chat', value: set['jarvis.chat'], src: String(req.body.src || '').slice(0, 32) });
+  }
   res.json({ success: true });
 });
 // "Erase all" keeps the migrated marker, so another browser's stale localStorage can't repopulate it afterwards.
@@ -1176,6 +1189,31 @@ function findRoleDir(projectDir, which) {
   return null;
 }
 function findDevProc(projDir, which) { return [...DEV_PROCS.values()].find(p => p.alive && p.projDir === projDir && p.which === which); }
+// A start that died because the project's dependencies were never installed (no node_modules, "Cannot find module
+// 'express'", "'vite' is not recognized…", Python's "No module named flask"). Only ever answers with the project's
+// own install command (npm install / pip install -r requirements.txt) — a missing *relative* module ('./routes')
+// is a code bug, not a dependency, and gets null. → { tool, command, module } | null
+function depsInstall(dir) {
+  if (fs.existsSync(path.join(dir, 'package.json'))) return IS_WIN
+    ? { tool: 'npm', cmd: 'cmd.exe', args: ['/d', '/s', '/c', 'npm', 'install'], command: 'npm install' }
+    : { tool: 'npm', cmd: 'npm', args: ['install'], command: 'npm install' };
+  if (fs.existsSync(path.join(dir, 'requirements.txt'))) return { tool: 'pip', cmd: IS_WIN ? 'python' : 'python3', args: ['-m', 'pip', 'install', '-r', 'requirements.txt'], command: 'pip install -r requirements.txt' };
+  return null;
+}
+function missingDeps(dir, out) {
+  const inst = depsInstall(dir);
+  if (!inst) return null;
+  if (inst.tool === 'npm') {
+    const m = out.match(/Cannot find (?:module|package) ['"]([^'"]+)['"]/i);
+    if (m && /^(?:\.{1,2}[\\/]|[\\/]|[A-Za-z]:)/.test(m[1])) return null;
+    const noModules = !fs.existsSync(path.join(dir, 'node_modules'));
+    const cmdMissing = out.match(/'([\w.-]+)' is not recognized as an internal or external command|\b([\w.-]+): (?:command )?not found/i);
+    if (m || noModules || cmdMissing) return { tool: inst.tool, command: inst.command, module: m ? m[1] : cmdMissing ? (cmdMissing[1] || cmdMissing[2]) : null };
+    return null;
+  }
+  const p = out.match(/No module named ['"]?([\w.]+)/);
+  return p ? { tool: inst.tool, command: inst.command, module: p[1] } : null;
+}
 
 app.post('/api/tool/locateProject', (req, res) => {
   const p = findAllowed(String(req.body.name || ''), { kind: 'folder' });
@@ -1230,7 +1268,7 @@ app.post('/api/tool/startProcess', (req, res) => {
       const m1 = rec.out.match(/\bport['":\s]{1,4}(\d{2,5})\b/i);
       const m2 = !m1 && rec.out.match(/(\d{4,5})\D{0,20}(?:already in use|EADDRINUSE)|EADDRINUSE\D{0,20}(\d{4,5})/i);
       const port = m1 ? Number(m1[1]) : m2 ? Number(m2[1] || m2[2]) : null;
-      return res.json({ success: false, id, exitCode: rec.exitCode, portInUse: inUse, port, tail: rec.out.slice(-800), command: start.label, dir: rel(dir) });
+      return res.json({ success: false, id, exitCode: rec.exitCode, portInUse: inUse, port, missingDeps: inUse ? null : missingDeps(dir, rec.out), tail: rec.out.slice(-800), command: start.label, dir: rel(dir) });
     }
     if (rec.port || Date.now() - t0 > 4000) return res.json({ success: true, id, pid: rec.pid, port: rec.port, command: start.label, dir: rel(dir), existed: false });
     setTimeout(poll, 250);
@@ -1247,12 +1285,36 @@ app.post('/api/tool/stopProcess', (req, res) => {
   else { try { process.kill(-rec.pid, 'SIGTERM'); } catch { try { process.kill(rec.pid, 'SIGTERM'); } catch {} } res.json({ success: true, id: rec.id }); }
 });
 
-app.post('/api/tool/processStatus', (req, res) => {
+// Install a project's dependencies with its own install command (see depsInstall) — the agent only calls this
+// after the user approved it, following a start that failed with missingDeps. Never runs anything else.
+app.post('/api/tool/installDeps', async (req, res) => {
+  const which = String(req.body.which || '');
+  if (!['backend', 'frontend', 'app'].includes(which)) return res.status(400).json({ error: 'which must be backend, frontend or app' });
+  const projDir = findAllowed(String(req.body.name || ''), { kind: 'folder' });
+  if (!projDir) return res.status(404).json({ error: `I can't find a project called "${req.body.name}"` });
+  const dir = findRoleDir(projDir, which);
+  const inst = dir && depsInstall(dir);
+  if (!inst) return res.status(404).json({ error: `No package.json or requirements.txt for the ${which} of "${rel(projDir)}"` });
+  const r = await runProc(inst.cmd, inst.args, { cwd: dir, timeout: 5 * 60e3 });
+  const tail = (r.stderr + '\n' + r.stdout).trim().slice(-800);
+  res.json({ success: r.exitCode === 0 && !r.timedOut, command: inst.command, dir: rel(dir), exitCode: r.exitCode, timedOut: r.timedOut, ms: r.ms, tail });
+});
+
+// Does anything answer HTTP on this port? Any response at all (even a 404) means the server is up.
+function probePort(port, ms = 1500) {
+  return new Promise(resolve => {
+    const req = require('http').get({ host: 'localhost', port, path: '/', timeout: ms }, r => { r.resume(); resolve(true); });
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.on('error', () => resolve(false));
+  });
+}
+app.post('/api/tool/processStatus', async (req, res) => {
   const which = String(req.body.which || '');
   const projDir = findAllowed(String(req.body.name || ''), { kind: 'folder' });
   const rec = projDir && findDevProc(projDir, which);
   if (!rec) return res.json({ success: true, found: false });
-  res.json({ success: true, found: true, alive: rec.alive, pid: rec.pid, port: rec.port, exitCode: rec.exitCode, tail: rec.out.slice(-800) });
+  const responding = rec.alive && rec.port ? await probePort(rec.port) : null;
+  res.json({ success: true, found: true, alive: rec.alive, pid: rec.pid, port: rec.port, responding, exitCode: rec.exitCode, tail: rec.out.slice(-800) });
 });
 
 // Who is listening on a port, and — the key safety gate for auto-recovery — is it a process JARVIS itself
@@ -1742,7 +1804,7 @@ app.post('/api/tool/checkPort', (req, res) => {
 // The cinematic landing page (landing.html) also lives at /welcome.
 app.get(['/welcome', '/home'], (req, res) => res.sendFile(path.join(__dirname, 'landing.html')));
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'online', timestamp: new Date().toISOString(), sandbox: SANDBOX, platform: process.platform });
+  res.json({ status: 'online', timestamp: new Date().toISOString(), sandbox: SANDBOX, platform: process.platform, pid: process.pid, port: PORT });
 });
 
 // Stop JARVIS itself (Settings → Data → Stop). The no-window launcher keeps no console open, so this
@@ -1841,8 +1903,16 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.type === 'entity.parse.failed' ? 'Invalid JSON body' : 'Server error' });
 });
 
-app.listen(PORT, HOST, () => {
+const httpServer = app.listen(PORT, HOST, () => {
+  lock.update(PORT);   // record the real port, pid and port file for the launcher and Stop JARVIS
   console.log(`JARVIS backend running on http://localhost:${PORT}`);
   console.log(`Sandbox: ${SANDBOX}`);
   console.log(`LLM: ${OLLAMA} (${DEFAULT_MODEL})`);
+});
+httpServer.on('error', e => {
+  lock.release();
+  console.error(e.code === 'EADDRINUSE'
+    ? `Port ${PORT} is used by another program. Start JARVIS from its desktop icon (it picks a free port), or set PORT to a free one.`
+    : 'Could not start: ' + e.message);
+  process.exit(1);
 });

@@ -60,6 +60,12 @@ if (-not (Test-Path (Join-Path $PSScriptRoot 'node_modules\express'))) {
 }
 
 # 3. Is JARVIS already running? Then just open it. Otherwise take a free port, preferring the remembered one.
+# The server records itself in ~/jarvis/.jarvis.lock (its pid and port), so a JARVIS started by any tool is found first,
+# and there is never a second copy on another port.
+try {
+  $lk = Get-Content (Join-Path $AppData '.jarvis.lock') -Raw -ErrorAction Stop | ConvertFrom-Json
+  if ($lk.port -and (IsJarvis ([int]$lk.port))) { Say "  JARVIS is already running - opening it." 'Green'; Start-Process "http://localhost:$($lk.port)"; exit 0 }
+} catch {}
 $sticky = $null
 try { if (Test-Path $PortFile) { $sticky = [int](Get-Content $PortFile -TotalCount 1) } } catch {}
 $candidates = @(3000..3010)

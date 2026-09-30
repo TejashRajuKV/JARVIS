@@ -531,6 +531,10 @@ const NLU = (() => {
     ['IDENTITY', /^(who|what) are you\b|^(tell me )?about yourself|^what('?s| is) your name|^introduce yourself/, .96],
     ['JOKE', /\b(tell|say|crack|got) (me )?(a |another |some )?(joke|pun)|\bmake me (laugh|smile)|\bsomething funny\b|^joke$/, .95],
     ['AGENT_HISTORY', /^what (did|have) you (just )?(do|done)\b|^(show|list) (me )?(my |the )?(last|recent) (agent )?(runs?|plans?)$/, .95, 'agent'],
+    // Execution inspector: one stored plan run as a readable card. "inspect agt-20260930-021" picks a specific run.
+    ['AGENT_INSPECT', /^(?:inspect|examine)\s+(?:the\s+)?(?:(?:last|latest|previous)\s+)?(?:agent\s+)?(?:run|plan|execution|task)$|^inspect\s+(?:run\s+|execution\s+)?agt-\d{8}-\d{3}$|^(?:show|give)\s+(?:me\s+)?(?:the\s+)?(?:run|execution|task)\s+details$|^(?:details|breakdown) of (?:the )?(?:last|latest) (?:run|plan|task)$/, .96, 'agentInspect'],
+    // Undo a whole multi-step plan at once, newest step first ("undo" alone still undoes one action).
+    ['UNDO_TASK', /^(?:please\s+)?(?:undo|revert|reverse|roll ?back)\s+(?:that|this|the last|the whole|the entire|all of)?\s*(?:task|plan|run|workflow)$|^(?:undo|revert|roll ?back)\s+agt-\d{8}-\d{3}$|^(?:undo|revert|reverse|roll ?back)\s+everything\s+(?:you\s+)?(?:just\s+)?did$/, .96, 'undoTask'],
     ['THANKS', /^(thanks|thank you|thx|cheers|great job|good job|nice|awesome|perfect|cool)( so much| a lot| jarvis| ra| kano| andi| ri| boss)?$/, .97],
     ['GOODBYE', /^(bye|goodbye|good night|see (you|ya)|later|gotta go|that'?s all)( for now)?$/, .95],
     ['HELP', /^(help|what can you do|commands|what are your (features|abilities|commands)|how do i use you|show (me )?commands)\b/, .96],

@@ -109,13 +109,39 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
   }
 
   // Everything JARVIS publishes carries the "jarvis" tag, so the listener below never answers itself.
-  async function publish(topic, title, message, tags = [], priority = 3) {
-    try {
-      const r = await fetch('https://ntfy.sh/', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, title, message, tags: ['jarvis', ...tags], priority }) });
-      if (!r.ok) log('phone push failed: HTTP', r.status);
-      return r.ok;
-    } catch (e) { log('phone push failed:', e.message); return false; }
+  // ntfy.sh limits anonymous senders. So messages go out one at a time, at least a second apart; an identical reply
+  // repeated within 30 s is sent once; and after a "429 too many requests" nothing is sent for a while (Retry-After,
+  // at least 60 s) instead of hammering the service, which is what leaves the phone app unresponsive.
+  const NTFY = (process.env.NTFY_URL || 'https://ntfy.sh').replace(/\/+$/, '');
+  let ntfyPausedUntil = 0, lastSend = 0, sendChain = Promise.resolve();
+  const recentReplies = new Map();
+  function ntfyPause(r) {
+    const ra = Number(r.headers.get('retry-after'));
+    const ms = Math.max(Number(process.env.NTFY_MIN_PAUSE_MS) || 60000, ra > 0 ? ra * 1000 : 0);
+    ntfyPausedUntil = Date.now() + ms;
+    log('ntfy rate limit hit — pausing phone messages for ' + Math.round(ms / 1000) + ' s');
+  }
+  function publish(topic, title, message, tags = [], priority = 3) {
+    const key = topic + '|' + message, now = Date.now();
+    if (title === 'JARVIS') {   // a reply (reminders and alerts are never dropped)
+      for (const [k, t] of recentReplies) if (now - t > 30000) recentReplies.delete(k);
+      if (recentReplies.has(key)) return Promise.resolve(true);
+      recentReplies.set(key, now);
+    }
+    const job = sendChain.then(async () => {
+      if (Date.now() < ntfyPausedUntil) { log('phone push skipped (ntfy rate limit pause)'); return false; }
+      const gap = 1000 - (Date.now() - lastSend); if (gap > 0) await wait(gap);
+      lastSend = Date.now();
+      try {
+        const r = await fetch(NTFY + '/', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic, title, message, tags: ['jarvis', ...tags], priority }) });
+        if (r.status === 429) ntfyPause(r);
+        else if (!r.ok) log('phone push failed: HTTP', r.status);
+        return r.ok;
+      } catch (e) { log('phone push failed:', e.message); return false; }
+    });
+    sendChain = job.catch(() => false);
+    return job.then(ok => { if (!ok) recentReplies.delete(key); return ok; });
   }
   async function phonePush(settings, title, body) {
     const topic = String(settings.phoneTopic || '');
@@ -186,7 +212,8 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
       if (!topic) { await wait(10000); continue; }
       const ctrl = new AbortController(); stream = { topic, ctrl };
       try {
-        const r = await fetch(`https://ntfy.sh/${topic}/json` + (lastIds[topic] ? `?since=${lastIds[topic]}` : ''), { signal: ctrl.signal });
+        const r = await fetch(`${NTFY}/${topic}/json` + (lastIds[topic] ? `?since=${lastIds[topic]}` : ''), { signal: ctrl.signal });
+        if (r.status === 429) ntfyPause(r);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         log('listening for phone messages'); delay = 2000;
         const dec = new TextDecoder(); let buf = '';
@@ -205,7 +232,7 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
         }
       } catch (e) { if (!ctrl.signal.aborted) log('phone listener:', e.message); }
       stream = null;
-      await wait(delay); delay = Math.min(60000, delay * 2);
+      await wait(Math.max(delay, ntfyPausedUntil - Date.now())); delay = Math.min(60000, delay * 2);
     }
   }
   // Reconnect when phone alerts are switched off/on or the topic changes.
@@ -235,7 +262,7 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
     const code = String((req.body && req.body.code) || '').replace(/\D/g, '');
     if (code.length !== 6) return res.json({ result: 'bad-format' });
     let skew = null; // seconds the laptop clock is off, from an internet time source
-    try { const r = await fetch('https://ntfy.sh/', { method: 'HEAD', signal: AbortSignal.timeout(5000) }); const d = Date.parse(r.headers.get('date')); if (d) skew = Math.round((Date.now() - d) / 1000); } catch {}
+    try { const r = await fetch(NTFY + '/', { method: 'HEAD', signal: AbortSignal.timeout(5000) }); const d = Date.parse(r.headers.get('date')); if (d) skew = Math.round((Date.now() - d) / 1000); } catch {}
     const now = Date.now();
     let offset = null;
     for (let s = -20; s <= 20 && offset === null; s++) if (phoneauth.totpAt(a.secret, now + s * 30000) === code) offset = s * 30;
@@ -256,6 +283,7 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
       try { c.write(`event: ${ev.type}\ndata: ${JSON.stringify(Object.assign({}, ev, { lead: c === lead }))}\n\n`); } catch {}
     }
   }
+  app.locals.broadcast = broadcast;   // server.js uses it to tell other tabs about a changed chat
 
   async function deliver(ev, title, body) {
     const settings = getState()['jarvis.settings'] || {};

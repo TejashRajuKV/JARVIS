@@ -1,6 +1,6 @@
-<title>JARVIS Lesson Deck</title>
+<title>JARVIS Project Presentation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
 /* Layout: one slide at a time on a clean white page — a thin top bar, the slide in the middle, controls at the bottom.
    Palette: "Red Mist" as accents on white — ember for highlights and fills, brick for small accent text, oxblood for type. */
@@ -184,6 +184,36 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-fam
 @media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }
 .kbd { font: 12px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 6px; color: var(--oxblood); background: var(--white); }
 </style>
+<style>
+/* additions for the evaluator deck */
+.pill.done { background: var(--goodbg); color: var(--good); }
+.pill.part { background: var(--tint2); color: var(--brick); border: 1px solid var(--ember); }
+.pill.no { background: var(--white); color: var(--haze); border: 1px solid var(--line); }
+.stat { display: grid; gap: 2px; }
+.stat b { font: 700 34px/1 var(--display); color: var(--ember); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 13px; color: var(--mist); }
+.qa { border: 1px solid var(--line); border-radius: 10px; background: var(--white); }
+.qa + .qa { margin-top: 8px; }
+.qa button { width: 100%; text-align: left; background: none; border: 0; padding: 12px 16px; cursor: pointer; font: 600 15.5px var(--body); color: var(--oxblood); display: flex; justify-content: space-between; gap: 12px; }
+.qa button::after { content: "+"; color: var(--ember); font: 600 18px var(--mono); }
+.qa button[aria-expanded="true"]::after { content: "−"; }
+.qa button:hover { background: var(--tint); border-radius: 10px; }
+.qa div { display: none; padding: 0 16px 14px; color: var(--mist); }
+.qa button[aria-expanded="true"] + div { display: block; }
+.qa div p { margin-bottom: 8px; }
+.store { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 760px) { .store { grid-template-columns: 1fr; } }
+.store .list { display: grid; gap: 6px; }
+.store .list button { text-align: left; background: var(--white); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; color: var(--mist); font-size: 14.5px; }
+.store .list button:hover { border-color: var(--ember); }
+.store .list button.on { background: var(--ember); border-color: var(--ember); color: var(--white); }
+.kv { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 6px 14px; font-size: 14.5px; }
+.kv dt { font: 600 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--brick); padding-top: 3px; }
+.kv dd { margin: 0; color: var(--mist); overflow-wrap: anywhere; }
+@media (max-width: 520px) { .kv { grid-template-columns: 1fr; gap: 0; } .kv dd { margin-bottom: 8px; } }
+.step-n { font: 700 13px var(--mono); color: var(--white); background: var(--ember); border-radius: 50%; width: 26px; height: 26px; display: inline-grid; place-items: center; margin-right: 8px; }
+.demo li { margin: 8px 0; }
+</style>
 
 <div class="bar">
   <div class="brand">J.A.R.V.I.S.</div>
@@ -195,413 +225,484 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-fam
 
 <main class="stage" id="stage">
 
-<!-- ===================================================== INTRO -->
+<!-- =========================== 1 TITLE -->
 <section class="slide" data-ch="Introduction" data-t="Title">
   <div class="hero">
-    <p class="eyebrow">A lesson on the JARVIS project</p>
-    <h1>J.A.R.V.I.S.<br><span>explained</span></h1>
-    <p class="sub">Your own AI assistant that lives on your laptop. You talk or type, and it opens apps, plans your study, reads your notes, fixes your code and automates your day. This deck teaches how all of it works, from the first word you speak to the voice that answers back.</p>
-    <div class="swatches" aria-label="Colour palette used in this deck">
+    <p class="eyebrow">Project presentation</p>
+    <h1>J.A.R.V.I.S.<br><span>a private AI assistant for your laptop</span></h1>
+    <p class="sub">A voice and text assistant that runs on the user's own Windows computer. It understands commands in English, Telugu and Kannada, acts on the laptop, and keeps every action checked, permissioned and reversible.</p>
+    <div class="swatches" aria-label="Deck colours">
       <span class="sw"><i style="background:var(--ember)"></i>#DF643F</span>
       <span class="sw"><i style="background:var(--brick)"></i>#A73728</span>
       <span class="sw"><i style="background:var(--oxblood)"></i>#3D1F1D</span>
       <span class="sw"><i style="background:var(--white);border:1px solid var(--line)"></i>#FFFFFF</span>
     </div>
-    <p style="font:13px var(--mono);color:var(--haze)">Move with <span class="kbd">→</span> <span class="kbd">←</span> or <span class="kbd">Space</span>, swipe on a phone, or press <span class="kbd">C</span> for contents.</p>
+    <p style="font:13px var(--mono);color:var(--haze)">Navigate with <span class="kbd">→</span> <span class="kbd">←</span> or <span class="kbd">Space</span>. Press <span class="kbd">C</span> for the contents list.</p>
   </div>
 </section>
 
-<section class="slide" data-ch="Introduction" data-t="Lesson plan">
-  <p class="eyebrow">Lesson plan</p>
-  <h2>What you will learn today</h2>
-  <p class="lead">Seven parts, from the idea to the tests. Each part ends with something to try or think about. Click any part to jump to it.</p>
+<section class="slide" data-ch="Introduction" data-t="Outline">
+  <p class="eyebrow">Outline</p>
+  <h2>What this presentation covers</h2>
+  <p class="lead">Eight sections, in the order an evaluator usually asks. Click any section to jump to it.</p>
   <div class="agenda" id="agenda"></div>
-  <div class="note"><b>How to use this deck</b><p>Every slide has a <strong>Teacher's note</strong> that says the idea in plain words. Some slides are interactive: you can type commands into a pretend JARVIS, step through a command's journey, test file paths against the safety rules, hear a voice, and take a quiz at the end.</p></div>
 </section>
 
-<!-- ===================================================== PART 1 -->
-<section class="slide" data-ch="1 · What is JARVIS" data-t="Part 1 — What is JARVIS" data-part="What is JARVIS|The idea, the problem, the core principles">
-  <div class="divider"><p class="eyebrow">Part one</p><div class="big">WHAT</div><h2>What is JARVIS, and why build it?</h2></div>
+<!-- =========================== 2 PROBLEM -->
+<section class="slide" data-ch="1 · Problem" data-t="Problem statement" data-part="Problem and objectives|Why the project exists and what it aims to do">
+  <p class="eyebrow">1 · Problem statement</p>
+  <h2>Three problems with today's assistants</h2>
+  <div class="grid g3">
+    <div class="box"><h3>Privacy</h3><p>Popular assistants send every word to a company server. They cannot be trusted with personal files, and they stop working without internet.</p></div>
+    <div class="box"><h3>Scattered tools</h3><p>A student uses a timetable app, a notes app, a flashcard app, an attendance sheet, an editor and a PDF reader. Switching between them costs time and focus.</p></div>
+    <div class="box"><h3>Unreliable AI</h3><p>Chatbots can claim they did something they never did, or take actions nobody approved. There is usually no way to undo.</p></div>
+  </div>
+  <p style="margin-top:16px">The project asks one question: <strong>can one assistant run locally, act on the laptop, and still be safe enough to trust?</strong></p>
 </section>
 
-<section class="slide" data-ch="1 · What is JARVIS" data-t="Definition">
-  <p class="eyebrow">Definition</p>
-  <h2>A voice and text assistant that runs on your own Windows laptop</h2>
+<section class="slide" data-ch="1 · Problem" data-t="Objectives and scope">
+  <p class="eyebrow">1 · Objectives and scope</p>
+  <h2>What the project set out to do</h2>
   <div class="cols">
     <div>
-      <p class="lead">JARVIS is named after Tony Stark's AI in Iron Man. It is a small <strong>Node.js server</strong> plus a <strong>web page</strong> you open in Chrome or Edge. You speak or type; it understands, acts on your computer, and answers out loud.</p>
+      <h3>Objectives</h3>
       <ul class="list">
-        <li><strong>Understands</strong> clear commands instantly with a rule engine, with no AI and no internet needed.</li>
-        <li><strong>Thinks</strong> with an AI brain for casual, misspelled or open-ended requests: a free local model through Ollama, or a cloud model with your own API key.</li>
-        <li><strong>Acts</strong> on the laptop: apps, volume, brightness, Wi-Fi, windows, files, code, dev servers, coding AIs.</li>
-        <li><strong>Speaks</strong> in English, Telugu and Kannada, with two personalities: JARVIS and FRIDAY.</li>
-        <li><strong>Stays safe</strong>: the server, not the AI, decides what is allowed, and "undo" reverses almost everything.</li>
+        <li>Run on the user's own laptop, with an option to keep the AI fully local.</li>
+        <li>Understand spoken and typed commands in English, Telugu and Kannada.</li>
+        <li>Act on the computer: apps, system settings, files, code, dev servers.</li>
+        <li>Serve students and developers: study planning, attendance, notes, coding help.</li>
+        <li>Make every action checked, permissioned and undoable.</li>
+        <li>Prove it works with automated tests, not only demos.</li>
       </ul>
     </div>
     <div class="box">
-      <h3>One-line summary</h3>
-      <p><strong>JARVIS = ears + brain + hands + mouth + a safety guard, all running locally.</strong></p>
-      <p>Ears: speech recognition and a wake word.<br>Brain: rules first, then AI.<br>Hands: tools on the Node server.<br>Mouth: neural text-to-speech.<br>Guard: permission tiers, approvals, undo.</p>
+      <h3>Scope</h3>
+      <p><strong>In scope:</strong> Windows 10/11, Chrome or Edge, one user, local server.</p>
+      <p><strong>Out of scope:</strong> macOS and Linux controls, multi-user accounts, a cloud service run by the developer, fully offline speech recognition.</p>
     </div>
   </div>
-  <div class="note"><b>Teacher's note</b><p>Think of JARVIS as a very fast receptionist for your laptop. Simple requests ("open Chrome") it handles from memory in milliseconds. Hard questions it passes to an expert, the AI. Risky jobs it checks with you first.</p></div>
 </section>
 
-<section class="slide" data-ch="1 · What is JARVIS" data-t="The problem it solves">
-  <p class="eyebrow">Motivation</p>
-  <h2>Why not just use a cloud assistant?</h2>
-  <div class="grid g2">
-    <div class="box"><h3>Problem: assistants live in the cloud</h3><p>Most assistants send every word to a company's server. They cannot touch your files, your VS Code or your study plan, and they stop when the internet stops.</p></div>
-    <div class="box"><h3>JARVIS: runs on your machine</h3><p>The server listens only on <code>127.0.0.1</code>. With Ollama, nothing leaves the laptop. Direct commands work fully offline.</p></div>
-    <div class="box"><h3>Problem: students juggle many tools</h3><p>A timetable app, a flashcard app, an attendance sheet, a notes app, an IDE, a PDF reader. Switching costs focus.</p></div>
-    <div class="box"><h3>JARVIS: one conversation</h3><p>"How many classes can I bunk?", "make flashcards from lecture3.pdf", "open dsa sprint in VS Code and ask Copilot to add tests", all in one place.</p></div>
-    <div class="box"><h3>Problem: AI makes things up</h3><p>A chatbot can claim it did something it never did.</p></div>
-    <div class="box"><h3>JARVIS: verifies</h3><p>Steps are checked after they run. A step that cannot be checked is marked <code>○ not checked</code>, never a fake <code>✓</code>.</p></div>
+<section class="slide" data-ch="1 · Problem" data-t="Solution in one slide">
+  <p class="eyebrow">1 · Solution overview</p>
+  <h2>JARVIS = ears + brain + hands + mouth + guard</h2>
+  <div class="flow">
+    <div class="n"><b>Ears</b><span>Speech recognition and a wake word.</span></div><div class="arr">→</div>
+    <div class="n"><b>Brain</b><span>Rules first, then an AI model.</span></div><div class="arr">→</div>
+    <div class="n"><b>Hands</b><span>Named tools on a Node.js server.</span></div><div class="arr">→</div>
+    <div class="n"><b>Mouth</b><span>Text to speech in three languages.</span></div>
   </div>
-  <div class="note"><b>Teacher's note</b><p>Good projects start from a real pain. Here the pains are privacy, scattered tools and untrustworthy AI. Every design choice later in this deck answers one of these three.</p></div>
-</section>
-
-<section class="slide" data-ch="1 · What is JARVIS" data-t="Core principles">
-  <p class="eyebrow">Design principles</p>
-  <h2>Four rules the whole project follows</h2>
+  <div class="box"><h3>Guard (applies to everything)</h3><p>The server, not the AI, decides what is allowed. Every action has a permission tier, risky ones ask first, dangerous ones can need Windows Hello, and almost everything can be undone.</p></div>
+  <h3 style="margin-top:18px">Four design rules</h3>
   <div class="grid g2">
-    <div class="box"><h3>1. Rules first, AI second</h3><p>A rule engine understands about 176 commands directly. It is instant, free and predictable. Only unclear or open-ended input goes to the AI. This keeps JARVIS fast even on a laptop GPU.</p></div>
-    <div class="box"><h3>2. The server decides, never the AI</h3><p>Every action is a named tool with a checked argument schema and a permission tier. If the AI suggests something outside the list, the server refuses it.</p></div>
-    <div class="box"><h3>3. Ask before anything risky</h3><p>Deleting, overwriting, changing files outside <code>~/jarvis</code>, shutting down: all show an ALLOW / CANCEL card. The most dangerous actions can require Windows Hello (fingerprint, face or PIN).</p></div>
-    <div class="box"><h3>4. Everything can be undone</h3><p>Deleted files go to JARVIS's own trash, overwritten files keep their earlier version, and volume or to-do changes sit on an undo stack. Say "undo" and it goes back.</p></div>
+    <div class="box"><p><strong>Rules first, AI second.</strong> About 178 commands are understood instantly by rules. Only unclear input goes to the AI.</p></div>
+    <div class="box"><p><strong>The server decides.</strong> The AI can only propose a tool; the server validates the name, arguments and permission.</p></div>
+    <div class="box"><p><strong>Ask before risk.</strong> Changes outside the JARVIS folder show an ALLOW / CANCEL card.</p></div>
+    <div class="box"><p><strong>Everything reversible.</strong> Trash, earlier versions and an undo stack.</p></div>
   </div>
-  <p class="ask">Why is "rules first" better for a command like "set volume to 30" than asking an AI every time?</p>
 </section>
 
-<!-- ===================================================== PART 2 -->
-<section class="slide" data-ch="2 · Functions" data-t="Part 2 — Functions" data-part="Functions|Everything JARVIS can do, with examples">
-  <div class="divider"><p class="eyebrow">Part two</p><div class="big">DOES</div><h2>What can JARVIS do?</h2></div>
+<!-- =========================== 3 CHECKLIST -->
+<section class="slide" data-ch="2 · What exists" data-t="Feature checklist" data-part="What exists|A checklist of every feature, its file and its test">
+  <p class="eyebrow">2 · Feature checklist</p>
+  <h2>What is built, where it lives, how it is tested</h2>
+  <div class="chips" id="ckFilter" style="margin-bottom:12px"></div>
+  <div class="tw"><table>
+    <thead><tr><th>Feature</th><th>What it does</th><th>Implemented in</th><th>Tested by</th><th>Status</th></tr></thead>
+    <tbody id="ck"></tbody>
+  </table></div>
+  <p style="font-size:13.5px;color:var(--haze)">Status is taken from the repository and the last full test run (30 suites passed). "Manual" means checked by hand, because it needs a real microphone or speaker.</p>
 </section>
 
-<section class="slide" data-ch="2 · Functions" data-t="Feature map">
-  <p class="eyebrow">Feature map · click a card for real commands</p>
-  <h2>Nine areas, about 176 commands</h2>
+<section class="slide" data-ch="2 · What exists" data-t="Feature map">
+  <p class="eyebrow">2 · Feature map · click a card for sample commands</p>
+  <h2>Nine areas, about 178 commands</h2>
   <div class="grid g3" id="feats"></div>
-  <div class="note"><b>Teacher's note</b><p>You never need to memorise exact commands. The rule engine accepts many phrasings, typos and even Telugu or Kannada typed in English letters. What does not match a rule goes to the AI, which can still pick the right tool.</p></div>
 </section>
 
-<section class="slide" data-ch="2 · Functions" data-t="Voice and chat">
-  <p class="eyebrow">Function · Voice & chat</p>
-  <h2>Talk to it like a person</h2>
-  <div class="cols">
-    <div>
-      <ul class="list">
-        <li><strong>Tap to talk</strong> or hold the mic button; or say the <strong>wake word</strong> ("Jarvis") hands-free, even while you are in another tab.</li>
-        <li>It <strong>listens until you finish</strong>. Short pauses do not cut you off; it waits for a real end of sentence.</li>
-        <li><strong>Three languages</strong>: English, తెలుగు and ಕನ್ನಡ, and "Tenglish" such as <code>volume penchu</code> (volume up).</li>
-        <li><strong>Two personalities</strong>: JARVIS (formal British male voice) and FRIDAY (Indian English female voice, Neerja).</li>
-        <li><strong>Context memory</strong>: "close it", "and Firefox too", "what were we talking about?" all work because a rolling summary follows the conversation.</li>
-        <li><strong>Ctrl+K</strong> command palette puts every command one keystroke away; <strong>Ctrl+Shift+J</strong> works on selected text in any app.</li>
-        <li>Say <strong>"panic"</strong> to pause all automation instantly and <strong>"resume"</strong> to continue.</li>
-      </ul>
-    </div>
-    <div class="box"><h3>Try saying</h3><p class="mono" style="display:block;background:none;padding:0;line-height:1.9">Jarvis, what time is it<br>open chrome and youtube<br>volume penchu<br>close it<br>switch to friday<br>what were we talking about</p></div>
-  </div>
-</section>
-
-<section class="slide" data-ch="2 · Functions" data-t="Laptop control">
-  <p class="eyebrow">Function · Laptop control</p>
-  <h2>Hands on the computer</h2>
-  <div class="grid g3">
-    <div class="box"><h3>Apps</h3><p>Opens any Start-menu app by fuzzy name ("vs code", "spotify"), closes allowed ones, checks what is running.</p></div>
-    <div class="box"><h3>System</h3><p>Volume, brightness, dark or light theme, Wi-Fi and Bluetooth, power plans, sleep, lock, shutdown (with confirmation).</p></div>
-    <div class="box"><h3>Windows</h3><p>Snap layouts ("put chrome left and vs code right"), show desktop, bring a window to front.</p></div>
-    <div class="box"><h3>Screen</h3><p>Screenshots, reading text on screen (OCR), and "look at my screen" vision with an image-capable model.</p></div>
-    <div class="box"><h3>Clipboard</h3><p>Read, write and search clipboard history; paste snippets; the global hotkey works on any selected text.</p></div>
-    <div class="box"><h3>Files</h3><p>Open and read files anywhere; write, rename, move and delete with permission outside <code>~/jarvis</code>; system folders off-limits.</p></div>
-  </div>
-  <div class="note"><b>Teacher's note</b><p>The browser page itself cannot change your volume or open apps. It asks the Node server, and the server runs small PowerShell or Windows commands. That split between page and server is the heart of the architecture you will see in Part 3.</p></div>
-</section>
-
-<section class="slide" data-ch="2 · Functions" data-t="Study tools">
-  <p class="eyebrow">Function · Study</p>
-  <h2>Built for students</h2>
+<section class="slide" data-ch="2 · What exists" data-t="Normal features and skills">
+  <p class="eyebrow">2 · Two kinds of feature</p>
+  <h2>Normal features and skills</h2>
+  <div class="tw"><table>
+    <thead><tr><th></th><th>Normal feature</th><th>Skill</th></tr></thead>
+    <tbody>
+      <tr><td>Examples</td><td>"set volume to 30", "open chrome", "attendance report"</td><td>Website generator, DSA coach, viva practice, Explain and Fix</td></tr>
+      <tr><td>Needs the AI</td><td>No</td><td>Yes</td></tr>
+      <tr><td>Turns</td><td>One command, one answer</td><td>Many turns, own session</td></tr>
+      <tr><td>Decided by</td><td>Rule engine (<code>nlu.js</code>), then one tool</td><td>Trigger phrase, then fixed server prompts (<code>skills.js</code>)</td></tr>
+      <tr><td>Speed</td><td>Milliseconds, offline</td><td>Seconds to minutes; needs a running AI</td></tr>
+      <tr><td>Tested by</td><td>coverage, nlu, paraphrase</td><td>skills, skills-page</td></tr>
+    </tbody>
+  </table></div>
   <div class="grid g2">
-    <div class="box"><h3>Plan</h3><ul class="list"><li>To-dos, deadlines, timetable, reminders (one-off, daily, monthly, yearly)</li><li>Focus sessions (Pomodoro) that block distracting sites</li><li>Multi-day study planner and a progress dashboard</li></ul></div>
-    <div class="box"><h3>Learn</h3><ul class="list"><li>Flashcards with <strong>spaced repetition</strong>: cards you miss come back sooner</li><li><strong>Viva practice</strong> by voice, graded by the AI</li><li>Contests and web research with sources</li></ul></div>
-    <div class="box"><h3>Attendance: the 75% bunk-o-meter</h3><p>Colleges require 75% attendance. If you attended <em>a</em> of <em>t</em> classes, you can still skip <code>floor(a / 0.75 − t)</code> classes. If you are below, you must attend <code>ceil((0.75t − a) / 0.25)</code> in a row.</p><p>Example: 30 of 36 attended → you may skip 4 more.</p></div>
-    <div class="box"><h3>Marks → SGPA / CGPA</h3><p>Give marks and credits; JARVIS converts marks to grade points and computes <code>SGPA = Σ(credit × grade point) / Σ credits</code>. CGPA averages across semesters, weighted by credits.</p></div>
-  </div>
-  <p class="ask">You attended 20 of 30 classes. Are you above or below 75%, and how many must you attend in a row to reach it?</p>
-</section>
-
-<section class="slide" data-ch="2 · Functions" data-t="Files and notes">
-  <p class="eyebrow">Function · Your files & notes</p>
-  <h2>Ask questions about your own documents</h2>
-  <div class="cols">
-    <div>
-      <p>Drop in PDFs, notes, Word, PowerPoint or Excel files and ask. JARVIS finds the right passages and answers <strong>with page numbers</strong>, so you can check the source.</p>
-      <ul class="list">
-        <li>"What do my notes say about normalization?"</li>
-        <li>"Summarise lecture3.pdf" or "make flashcards from lecture3.pdf"</li>
-        <li>"Read notes.txt", "open the agriloop folder", "does dsa sprint exist?"</li>
-      </ul>
-      <p>This technique is called <strong>RAG: Retrieval-Augmented Generation</strong>. First <em>retrieve</em> relevant text, then let the AI <em>generate</em> an answer using only that text.</p>
-    </div>
-    <div class="box"><h3>Why retrieve first?</h3><p>A small local model cannot read a 300-page PDF at once. Retrieval picks the 5–10 most relevant chunks, so the model reads a page, not a book. It also reduces made-up answers, because the model is told to answer from the chunks.</p></div>
+    <div class="box"><h3>Where skills sit</h3><p><code>Skills.intercept()</code> runs before normal command handling. While a session is active it answers; otherwise it passes the sentence to the rules.</p></div>
+    <div class="box"><h3>Safety and undo</h3><p>Prompts stay on the server. Generated pages have remote scripts, form actions and outside fetch calls stripped. A built website or an applied fix can be undone.</p></div>
   </div>
 </section>
 
-<section class="slide" data-ch="2 · Functions" data-t="Coding">
-  <p class="eyebrow">Function · Coding</p>
-  <h2>A coding partner that can use your tools</h2>
-  <div class="grid g2">
-    <div class="box"><h3>Write, save, run</h3><p>"Write a binary search in Python", then "run it". JARVIS runs <code>.py</code>, <code>.js</code>, <code>.c</code> and <code>.cpp</code> with a 10-second limit and shows output and errors.</p></div>
-    <div class="box"><h3>EXPLAIN & FIX</h3><p>When a program crashes, one click sends the code and the error to the AI, which explains the bug in plain words and proposes a fixed version.</p></div>
-    <div class="box"><h3>DSA coach</h3><p>Gives hints first and the full solution only when you ask, so you actually learn. Also a website generator and dev-server starter.</p></div>
-    <div class="box"><h3>Drive other coding AIs</h3><p>"open dsa sprint in vs code and ask Copilot to add tests", "ask Claude in agriloop to write unit tests". Supports VS Code Copilot, Claude Code, Gemini, Codex, Kiro, Trae, Antigravity, OpenCode, Qwen, Codebuff and Devin.</p></div>
-  </div>
-  <div class="note"><b>Teacher's note</b><p>For coding AIs, JARVIS does not write code itself. It opens the right tool in the right folder and pastes your request into its chat. It is a <em>conductor</em>, not another musician.</p></div>
-</section>
-
-<section class="slide" data-ch="2 · Functions" data-t="Automation and phone">
-  <p class="eyebrow">Function · Automation & phone</p>
-  <h2>Many steps, on a schedule, from anywhere</h2>
-  <div class="grid g2">
-    <div class="box"><h3>Multi-step commands</h3><p>"Open VS Code in dsa sprint, start the backend and set a 25 minute timer" becomes a checked plan of three steps.</p></div>
-    <div class="box"><h3>Routines</h3><p>Named bundles: "start my study mode" might mute notifications, open notes and start a focus session.</p></div>
-    <div class="box"><h3>Triggers</h3><p>"When I plug in my charger, set brightness to 80". A watcher on the server checks conditions with cooldowns so it does not fire repeatedly.</p></div>
-    <div class="box"><h3>Phone</h3><p>Reminders arrive on your phone through <strong>ntfy</strong>. Commands sent from the phone need a 6-digit <strong>authenticator code</strong> (TOTP, the same kind Google Authenticator shows). Phone commands can never approve file changes.</p></div>
-  </div>
-  <p class="ask">Why should a command from a phone be allowed to read the time, but not to delete a file?</p>
-</section>
-
-<!-- ===================================================== PART 3 -->
-<section class="slide" data-ch="3 · How it works" data-t="Part 3 — How it works" data-part="How it works|Architecture, the life of a command, NLU, agent, AI, RAG">
-  <div class="divider"><p class="eyebrow">Part three</p><div class="big">HOW</div><h2>How does JARVIS work inside?</h2></div>
-</section>
-
-<section class="slide" data-ch="3 · How it works" data-t="Architecture">
-  <p class="eyebrow">Architecture · click a layer</p>
-  <h2>Four layers that talk to each other</h2>
+<!-- =========================== 4 ARCHITECTURE -->
+<section class="slide" data-ch="3 · Architecture" data-t="System architecture" data-part="Architecture|Layers, components, request flow, modules">
+  <p class="eyebrow">3 · Architecture · click a layer</p>
+  <h2>A client–server system with four layers</h2>
   <div class="arch" id="arch"></div>
-  <div class="box detail" id="archDetail"><p>Click a layer above to see what lives there and how it talks to its neighbours.</p></div>
-  <div class="note"><b>Teacher's note</b><p>This is a classic <strong>client–server</strong> design. The page (client) is good at listening, showing and speaking. The server is good at acting, because Node.js can run programs and touch files, which a web page is not allowed to do.</p></div>
+  <div class="box detail" id="archDetail"><p>Click a layer to see what runs there and how it talks to its neighbours.</p></div>
 </section>
 
-<section class="slide" data-ch="3 · How it works" data-t="Life of a command">
-  <p class="eyebrow">Life of a command · step through it</p>
+<section class="slide" data-ch="3 · Architecture" data-t="Component diagram">
+  <p class="eyebrow">3 · Components</p>
+  <h2>Component diagram</h2>
+  <div class="grid g3">
+    <div class="box"><h3>Browser page (client)</h3>
+      <ul class="list"><li><code>index.html</code>, <code>style.css</code>: the interface</li><li><code>script.js</code>: turn pipeline, chat, tasks, settings</li><li><code>nlu.js</code>: normalize and classify</li><li><code>agent.js</code>: multi-step plans</li><li><code>voice.js</code>: utterance collector</li><li><code>study.js</code>, <code>routines.js</code>, <code>triggers.js</code>, <code>undo.js</code></li></ul></div>
+    <div class="box"><h3>Node.js server (Express)</h3>
+      <ul class="list"><li><code>server.js</code>: routes, security, files, apps, code runner, dev servers</li><li><code>instance.js</code>: keeps one running copy</li><li><code>llm.js</code>: AI providers and streaming</li><li><code>agent-tools.js</code>: tool registry and tiers</li><li><code>scheduler.js</code>: reminders, triggers, phone, live events</li><li><code>rag.js</code>: notes search</li><li><code>tts.js</code>, <code>wakeword.js</code>, <code>hello.js</code>, <code>backup.js</code></li></ul></div>
+    <div class="box"><h3>Outside the server</h3>
+      <ul class="list"><li><strong>Windows:</strong> PowerShell, System.Speech, Windows Hello</li><li><strong>AI:</strong> Ollama locally, or a cloud API with the user's key</li><li><strong>Voice service:</strong> Microsoft neural voices (optional)</li><li><strong>ntfy:</strong> phone notifications (optional)</li><li><strong>Disk:</strong> <code>~/jarvis</code> folder</li></ul></div>
+  </div>
+  <div class="flow" style="margin-top:16px">
+    <div class="n"><b>Page</b><span>fetch <code>/api/…</code></span></div><div class="arr">⇄</div>
+    <div class="n hot"><b>Express server</b><span>checks origin, tool, arguments, tier, zone</span></div><div class="arr">⇄</div>
+    <div class="n"><b>Windows / AI / disk</b><span>does the work</span></div><div class="arr">→</div>
+    <div class="n"><b>Page</b><span>Server-Sent Events push reminders and wake word</span></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="3 · Architecture" data-t="Request flow">
+  <p class="eyebrow">3 · Request flow · step through it</p>
   <h2>From "Jarvis, set volume to thirty" to done</h2>
   <div class="steps" id="lifeSteps"></div>
   <div class="trace" id="lifeTrace"></div>
-  <div class="note"><b>Teacher's note</b><p>Five steps: <strong>Normalize → Classify → Route → Act & verify → Speak</strong>. Remember this sentence and you understand 80% of JARVIS. Everything else is detail inside one of these boxes.</p></div>
+  <p style="margin-top:12px">Pipeline: <strong>Normalize → Classify → Route → Act and verify → Speak</strong>.</p>
 </section>
 
-<section class="slide" data-ch="3 · How it works" data-t="Try the router">
-  <p class="eyebrow">Interactive · a small copy of the router</p>
-  <h2>Type a command and watch it get routed</h2>
+<section class="slide" data-ch="3 · Architecture" data-t="Router demo">
+  <p class="eyebrow">3 · Live demo · routing</p>
+  <h2>Type a command and see which path it takes</h2>
   <div class="sim">
     <label for="rin" class="eyebrow" style="margin:0">Your command</label>
     <input id="rin" type="text" value="Jarvis, open chrome and set volume to thirty" autocomplete="off" spellcheck="false">
     <div class="chips" id="rchips"></div>
     <div class="trace" id="rout"></div>
   </div>
-  <p style="margin-top:12px;font-size:14px;color:var(--haze)">This is a simplified teaching model written for this deck. The real <code>nlu.js</code> has about 95 intent families, fuzzy matching of app and site names, dates and times, and context for follow-ups.</p>
+  <p style="margin-top:12px;font-size:14px;color:var(--haze)">A simplified model built for this presentation. The real <code>nlu.js</code> has about 95 intent families, fuzzy matching and context.</p>
 </section>
 
-<section class="slide" data-ch="3 · How it works" data-t="Understanding language">
-  <p class="eyebrow">nlu.js · Natural Language Understanding</p>
-  <h2>How rules understand messy human speech</h2>
+<section class="slide" data-ch="3 · Architecture" data-t="Language understanding">
+  <p class="eyebrow">3 · nlu.js</p>
+  <h2>Understanding messy human input</h2>
   <div class="grid g2">
-    <div class="box"><h3>1. Normalize</h3><ul class="list"><li>Remove the wake word and fillers ("hey Jarvis, please, um")</li><li>Fix common typos and speech errors ("main. py" → "main.py")</li><li>Number words to digits ("thirty" → 30)</li><li>Telugu / Kannada words to meaning ("penchu" → up, "tagginchu" → down)</li></ul></div>
-    <div class="box"><h3>2. Classify</h3><ul class="list"><li>Ordered regular-expression rules map text to an <strong>intent</strong> such as <code>SET_VOLUME</code> with <strong>arguments</strong> such as <code>{level: 30}</code></li><li><strong>Fuzzy matching</strong> by edit distance finds "vs cod" → VS Code, "atria university" vs "atria institute"</li><li>Guards stop statements from firing commands: "I opened chrome yesterday" is not a command</li></ul></div>
-    <div class="box"><h3>3. Context</h3><p>A small memory holds the last app, file, folder and project. "Close it" resolves "it"; "and Firefox too" repeats the last action with a new target; "ask Claude to add tests" reuses the last project.</p></div>
-    <div class="box"><h3>4. Confidence</h3><p>Each match carries a confidence. Low confidence or no match goes to the AI planner instead of guessing. The paraphrase test checks that "confidently wrong" stays at <strong>0</strong>.</p></div>
+    <div class="box"><h3>1. Normalize</h3><ul class="list"><li>Strip the wake word and fillers</li><li>Fix common typos and speech errors</li><li>Number words to digits</li><li>Telugu and Kannada words to English commands</li></ul></div>
+    <div class="box"><h3>2. Classify</h3><ul class="list"><li>Ordered pattern rules map text to an <strong>intent</strong> plus <strong>arguments</strong></li><li>Fuzzy matching by edit distance for app and site names</li><li>Guards so statements like "I opened chrome yesterday" do not trigger actions</li></ul></div>
+    <div class="box"><h3>3. Context</h3><p>Remembers the last app, file and project, so "close it" and "ask Claude to add tests" work.</p></div>
+    <div class="box"><h3>4. Confidence</h3><p>Low confidence goes to the AI planner instead of guessing. The paraphrase test requires zero confidently wrong answers.</p></div>
   </div>
-  <div class="note"><b>Teacher's note</b><p>An <em>intent</em> is the "what" (set volume); <em>arguments</em> are the "details" (to 30). Almost every assistant, from Alexa to JARVIS, turns speech into intent plus arguments.</p></div>
 </section>
 
-<section class="slide" data-ch="3 · How it works" data-t="The agent">
-  <p class="eyebrow">agent.js · multi-step goals</p>
-  <h2>How a sentence with many jobs becomes a safe plan</h2>
+<section class="slide" data-ch="3 · Architecture" data-t="Agent">
+  <p class="eyebrow">3 · agent.js</p>
+  <h2>How a multi-step request becomes a safe plan</h2>
   <div class="flow">
-    <div class="n"><b>Intent</b><span>Split the sentence into steps: "open VS Code in dsa sprint", "start the backend", "set a timer".</span></div><div class="arr">→</div>
-    <div class="n"><b>Planning</b><span>Merge duplicates, order the steps, fill missing details from context.</span></div><div class="arr">→</div>
-    <div class="n"><b>Dependencies</b><span>A backend needs its packages installed; a folder must exist before opening it.</span></div><div class="arr">→</div>
-    <div class="n hot"><b>Permissions</b><span>Every step gets a tier. Risky ones are previewed; you confirm once.</span></div><div class="arr">→</div>
-    <div class="n"><b>Execution</b><span>Steps run one by one; a failure stops the rest.</span></div><div class="arr">→</div>
-    <div class="n"><b>Verification</b><span>Is Chrome really running? Did the file appear? Marked ✓, ✗ or ○ not checked.</span></div>
+    <div class="n"><b>Intent</b><span>Split the sentence into steps.</span></div><div class="arr">→</div>
+    <div class="n"><b>Planning</b><span>Merge, order, fill gaps from context.</span></div><div class="arr">→</div>
+    <div class="n"><b>Dependencies</b><span>A step that needs an earlier one (start frontend after backend) waits for it.</span></div><div class="arr">→</div>
+    <div class="n"><b>State</b><span>Check what is already running or open; keep it instead of redoing it.</span></div><div class="arr">→</div>
+    <div class="n hot"><b>Permissions</b><span>Preview risky steps; confirm once.</span></div><div class="arr">→</div>
+    <div class="n"><b>Execution</b><span>Run in order; on failure, diagnose and propose a fix.</span></div><div class="arr">→</div>
+    <div class="n"><b>Verification</b><span>Check the result: ✓, ✗ or ○ not checked.</span></div>
   </div>
-  <div class="grid g2">
-    <div class="box"><h3>Run records</h3><p>Each plan gets an ID like <code>AGT-…</code> and a record of what ran, what was checked and what failed. "Why did you do that?" reads this record back to you.</p></div>
-    <div class="box"><h3>Learning</h3><p>Phrases JARVIS did not understand are kept in a miss list. You can <strong>TEACH</strong> it: "when I say <em>lab mode</em>, open VS Code and start a focus session".</p></div>
+  <div class="grid g3">
+    <div class="box"><h3>Run records</h3><p>Every plan gets an ID (<code>AGT-…</code>) and a record. "Inspect the last run" opens a card with every step, its timing, its check and what can be undone, built only from what was recorded.</p></div>
+    <div class="box"><h3>Honest results</h3><p>A step that cannot be verified is shown as <code>○ not checked</code>, never as a false ✓. A started server gets ✓ only if it is alive <em>and</em> answers on its port.</p></div>
+    <div class="box"><h3>Where it is built</h3><p>Planning, state checks, recovery and the RETRY / CONTINUE / ROLLBACK choices are in <code>agent.js</code>; the server (<code>agent-tools.js</code>) validates every step first.</p></div>
   </div>
 </section>
 
-<section class="slide" data-ch="3 · How it works" data-t="The AI brain">
-  <p class="eyebrow">llm.js · the AI brain</p>
-  <h2>One interface, many possible brains</h2>
+<section class="slide" data-ch="3 · Architecture" data-t="Failure recovery">
+  <p class="eyebrow">3 · agent.js · failure recovery</p>
+  <h2>When a step fails, JARVIS works out why</h2>
+  <div class="flow">
+    <div class="n"><b>Plan</b><span>Steps, order, dependencies.</span></div><div class="arr">→</div>
+    <div class="n"><b>Execute</b><span>Run the step.</span></div><div class="arr">→</div>
+    <div class="n"><b>Fail</b><span>The server crashed.</span></div><div class="arr">→</div>
+    <div class="n"><b>Understand</b><span>Read its real output.</span></div><div class="arr">→</div>
+    <div class="n"><b>Propose</b><span>A fix, with the reason.</span></div><div class="arr">→</div>
+    <div class="n hot"><b>Ask</b><span>ALLOW / CANCEL.</span></div><div class="arr">→</div>
+    <div class="n"><b>Retry</b><span>Restart once.</span></div><div class="arr">→</div>
+    <div class="n"><b>Verify</b><span>Does it answer on its port?</span></div>
+  </div>
+  <div class="grid g3">
+    <div class="box"><h3>Fixes (after ALLOW)</h3><ul class="list">
+      <li><strong>Missing dependencies</strong> ("Cannot find module 'express'", no <code>node_modules</code>) → the project's own <code>npm install</code> / <code>pip install</code>, restart.</li>
+      <li><strong>Port in use</strong> by JARVIS's own leftover copy → close it, restart.</li>
+      <li><strong>Generated code</strong> that fails → AI fix, shown first, max 2 tries.</li></ul></div>
+    <div class="box"><h3>Explains, doesn't fix</h3><p>Any other crash gets a one-line cause instead of a bare ✗: database not reachable, missing <code>.env</code> setting, syntax error, permission denied. Otherwise the AI gives a likely cause, shown but never acted on.</p>
+      <p><strong>Limits:</strong> one attempt, then report (no loops). Commands only from the project's own files. Never installs software.</p></div>
+    <div class="box"><h3>Example</h3><div class="trace" style="font-size:12px">3. start backend ✗
+   Cannot find module 'express'
+   → ALLOW npm install + restart
+   ✓ backend on port 5000 answering
+4. start frontend ✓ answering</div></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="3 · Architecture" data-t="State and rollback">
+  <p class="eyebrow">3 · agent.js · state awareness and transaction-like runs</p>
+  <h2>Knows what is running; offers honest ways out</h2>
+  <div class="grid g2">
+    <div class="box"><h3>State awareness</h3><p>Before running, the plan preview checks the current state and says what it means for each step:</p>
+      <div class="trace" style="font-size:12.5px">Open AgriLoop in VS Code — VS Code is already open → reuse it
+Start the backend — already running on port 5000 → keep
+Close Spotify — already closed → skip
+Start a focus session — a 25-minute session is running → keep it</div>
+      <p>A backend JARVIS already started is kept: no second copy, no permission prompt.</p></div>
+    <div class="box"><h3>When a plan fails part-way</h3>
+      <div class="tw"><table><tbody>
+        <tr><td><strong>RETRY</strong></td><td>Only what didn't complete. Steps that worked are not repeated.</td></tr>
+        <tr><td><strong>CONTINUE</strong></td><td>Only the remaining steps that don't depend on the failed one, directly or indirectly.</td></tr>
+        <tr><td><strong>ROLLBACK (n)</strong></td><td>Reverses the <em>n</em> changes this plan made that can be reversed, newest first: new folders to the trash, closed apps reopened, servers JARVIS started stopped again.</td></tr>
+      </tbody></table></div>
+      <p><strong>Transaction-like, not a full transaction.</strong> Some actions can't be undone (a sent message, an opened editor). JARVIS lists them instead of pretending.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="3 · Architecture" data-t="AI brain">
+  <p class="eyebrow">3 · llm.js</p>
+  <h2>One interface, many possible AI brains</h2>
   <div class="cols">
     <div>
-      <p><strong>Local:</strong> Ollama runs an open model such as <code>qwen3.5:4b</code> on your GPU. Free, private and offline. An RTX 3050 with 6 GB runs it comfortably; bigger models get slow.</p>
-      <p><strong>Cloud:</strong> paste your own key for OpenAI, Anthropic (Claude), Google Gemini, Groq, OpenRouter, DeepSeek, Mistral, Together AI or any OpenAI-compatible server. JARVIS recognises the provider from the key itself: <code>sk-ant-</code> means Anthropic, <code>AIza</code> means Gemini, <code>gsk_</code> means Groq.</p>
-      <p><strong>Streaming:</strong> replies arrive word by word, so you start reading and hearing before the answer is complete. Retries handle timeouts.</p>
-      <p><strong>Tool picking:</strong> for unclear commands the AI may choose a tool, but its choice is checked against the tool registry in <code>agent-tools.js</code> before anything runs.</p>
-    </div>
-    <div class="box"><h3>Why keep the AI on a leash?</h3><p>Language models are good at understanding and bad at being reliable. So the AI only <em>proposes</em>. The server <em>disposes</em>: it checks the tool name, the argument schema and the permission tier. A bad suggestion is refused, not run.</p><p>First reply on Ollama takes about a minute while the model loads into GPU memory, so JARVIS warms it up in the background at startup.</p></div>
-  </div>
-</section>
-
-<section class="slide" data-ch="3 · How it works" data-t="Search over your notes">
-  <p class="eyebrow">rag.js · retrieval</p>
-  <h2>Hybrid search: keywords plus meaning</h2>
-  <div class="flow">
-    <div class="n"><b>Extract</b><span>PDF text per page (unpdf); .docx, .pptx and .xlsx read directly from their zipped XML.</span></div><div class="arr">→</div>
-    <div class="n"><b>Chunk</b><span>Split into passages, each tagged with file and page number.</span></div><div class="arr">→</div>
-    <div class="n"><b>Keyword score</b><span>Words in your question matched against each chunk.</span></div><div class="arr">→</div>
-    <div class="n"><b>Semantic score</b><span>Optional: an embedding model (nomic-embed-text) compares meaning, so "car" can match "vehicle".</span></div><div class="arr">→</div>
-    <div class="n hot"><b>Fuse</b><span>Both rankings are merged; the top chunks go to the AI with their page numbers.</span></div>
-  </div>
-  <div class="grid g2">
-    <div class="box"><h3>Keyword search</h3><p>Fast, exact, needs no model. Misses synonyms.</p></div>
-    <div class="box"><h3>Semantic search</h3><p>Understands meaning. Needs an embedding model and more time. A file watcher re-indexes files when they change.</p></div>
-  </div>
-  <div class="note"><b>Teacher's note</b><p>A scanned PDF contains pictures of pages, not text. JARVIS detects this and tells you, instead of pretending the PDF is empty.</p></div>
-</section>
-
-<!-- ===================================================== PART 4 -->
-<section class="slide" data-ch="4 · Voice" data-t="Part 4 — Voice" data-part="Voice|Speech to text, the wake word, text to speech">
-  <div class="divider"><p class="eyebrow">Part four</p><div class="big">VOICE</div><h2>How JARVIS hears and speaks</h2></div>
-</section>
-
-<section class="slide" data-ch="4 · Voice" data-t="Speech to text">
-  <p class="eyebrow">voice.js · speech to text (STT)</p>
-  <h2>Turning your voice into words</h2>
-  <div class="cols">
-    <div>
-      <p>JARVIS uses the browser's <strong>Web Speech API</strong> (<code>SpeechRecognition</code>) built into Chrome and Edge. The browser streams microphone audio to its speech service and returns text.</p>
       <ul class="list">
-        <li><strong>Interim results</strong> arrive while you speak, so the words appear live on screen.</li>
-        <li><strong>Final results</strong> arrive after each phrase.</li>
-        <li><strong>Continuous mode</strong> keeps listening across pauses.</li>
-        <li><strong>Language</strong> is set per request: <code>en-IN</code>, <code>te-IN</code> or <code>kn-IN</code>.</li>
+        <li><strong>Local:</strong> Ollama runs an open model (for example <code>qwen3.5:4b</code>) on the laptop GPU. Free, private, offline.</li>
+        <li><strong>Cloud:</strong> the user's own key for OpenAI, Anthropic, Gemini, Groq, OpenRouter, DeepSeek, Mistral, Together AI or any OpenAI-compatible server. The provider is recognised from the key prefix.</li>
+        <li><strong>Streaming:</strong> replies appear word by word; retries handle timeouts.</li>
+        <li><strong>Tool choice:</strong> for unclear commands the AI may pick a tool, but the server validates it before anything runs.</li>
+        <li><strong>Vision:</strong> screenshots go to an image-capable model for "look at my screen". They stay in memory under a single-use token that expires in two minutes.</li>
       </ul>
-      <h3 style="margin-top:14px">The utterance collector</h3>
-      <p>Early versions answered after the first pause, cutting you off mid-sentence. Now a collector joins the final pieces and waits for a quiet gap before sending the whole sentence. So "open the SIH website … the smart india hackathon one" arrives as one request.</p>
     </div>
-    <div class="box"><h3>Microphone sensitivity</h3><p>Speaking from far away used to show the listening animation with no words. The fix: JARVIS builds a <strong>boosted audio track</strong> with the Web Audio API (a gain node raises the volume) and hands that track to the recogniser (<code>SpeechRecognition.start(track)</code>, Chrome 135+).</p><p>Settings offer Normal, High and Max (across the room).</p></div>
+    <div class="box"><h3>Why the AI is kept on a leash</h3><p>Language models are good at understanding and unreliable at obeying rules. So the AI only <em>proposes</em>. The server checks the tool name, argument schema and permission tier. A bad proposal is refused.</p></div>
   </div>
 </section>
 
-<section class="slide" data-ch="4 · Voice" data-t="The wake word">
-  <p class="eyebrow">wakeword.js · hands-free</p>
-  <h2>"Jarvis": listening even in other tabs</h2>
-  <div class="grid g2">
-    <div class="box"><h3>Problem</h3><p>Browsers pause speech recognition in background tabs. If you were on YouTube, saying "Jarvis" did nothing.</p></div>
-    <div class="box"><h3>Solution: a Windows listener</h3><p>The server starts a small background listener using Windows' built-in <strong>System.Speech</strong> engine. It runs offline with a tiny grammar: the word "Jarvis" plus a wildcard "anything else" grammar, so random speech is rejected instead of forced into a false match.</p></div>
-    <div class="box"><h3>How the page finds out</h3><p>When Windows hears "Jarvis", the server pushes a <code>wake</code> event over <strong>Server-Sent Events</strong> (a one-way live stream from server to page). The page comes to the front and starts full recognition.</p></div>
-    <div class="box"><h3>Avoiding fights</h3><p>Only one recogniser can hold the mic. A <strong>generation counter</strong> gives each start a number; old recognisers that finish late are ignored and retired, so they cannot abort the new one.</p></div>
-  </div>
-  <div class="note"><b>Teacher's note</b><p>Two engines, two jobs: a small offline engine that only waits for one word, and a large online engine that understands full sentences. Using a cheap detector to wake an expensive one is how phone assistants save battery too.</p></div>
-</section>
-
-<section class="slide" data-ch="4 · Voice" data-t="Text to speech">
-  <p class="eyebrow">tts.js · text to speech (TTS)</p>
-  <h2>How JARVIS talks back</h2>
-  <div class="flow">
-    <div class="n"><b>Reply text</b><span>The answer in Markdown.</span></div><div class="arr">→</div>
-    <div class="n"><b>Clean</b><span>Remove code blocks, <code>**</code>, links and emoji so they are not read aloud.</span></div><div class="arr">→</div>
-    <div class="n"><b>Pick a voice</b><span>By language and personality (table below).</span></div><div class="arr">→</div>
-    <div class="n hot"><b>Synthesize</b><span>Browser voice, or neural voice via the server.</span></div><div class="arr">→</div>
-    <div class="n"><b>Play</b><span>MP3 audio plays; the orb animates while speaking.</span></div>
-  </div>
-  <div class="grid g2">
-    <div class="box"><h3>Path A: browser voice</h3><p>The Web Speech API's <code>speechSynthesis</code> speaks with voices installed in Windows or the browser. Instant and offline, but can sound robotic, and Telugu or Kannada voices are often missing.</p></div>
-    <div class="box"><h3>Path B: neural voice</h3><p>The server opens a <strong>WebSocket</strong> to Microsoft's online neural voice service (the one Edge's "Read aloud" uses). It sends the text as <strong>SSML</strong> (Speech Synthesis Markup Language, which sets voice, rate and pitch) and receives <strong>MP3</strong> audio chunks back. Only the reply text is sent.</p></div>
-  </div>
-</section>
-
-<section class="slide" data-ch="4 · Voice" data-t="Voices and a demo">
-  <p class="eyebrow">Voices · try it</p>
-  <h2>Which voice speaks which language</h2>
-  <div class="cols">
-    <div>
-      <div class="tw"><table>
-        <thead><tr><th>Language</th><th>JARVIS (male)</th><th>FRIDAY (female)</th></tr></thead>
-        <tbody>
-          <tr><td>English</td><td>Ryan (en-GB)</td><td>Neerja (en-IN)</td></tr>
-          <tr><td>Telugu</td><td>Mohan (te-IN)</td><td>Shruti (te-IN)</td></tr>
-          <tr><td>Kannada</td><td>Gagan (kn-IN)</td><td>Sapna (kn-IN)</td></tr>
-        </tbody>
-      </table></div>
-      <p>FRIDAY uses Neerja because in testing, an Irish English voice took 5–15 seconds per reply and often failed. Neerja answers quickly.</p>
-      <p>The service asks for a security token called <code>Sec-MS-GEC</code>: a SHA-256 hash of the current Windows file time, rounded to 5 minutes, joined with a fixed client token. If the laptop clock is off, JARVIS measures the difference and corrects it.</p>
-    </div>
-    <div class="box sim">
-      <h3>Hear the browser voice (Path A)</h3>
-      <label for="ttsText" class="eyebrow" style="margin:0">Text to speak</label>
-      <input id="ttsText" type="text" value="Good evening. All systems are online. Your DBMS exam is in three days.">
-      <label for="ttsVoice" class="eyebrow" style="margin:0">Voice on this device</label>
-      <select id="ttsVoice"></select>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn solid" id="ttsGo">Speak</button><button class="btn" id="ttsStop">Stop</button></div>
-      <p id="ttsMsg" style="font-size:13px;color:var(--haze);margin:0">Uses your own browser's voices. Neural voices need the JARVIS server, so they are not in this demo.</p>
-    </div>
-  </div>
-</section>
-
-<!-- ===================================================== PART 5 -->
-<section class="slide" data-ch="5 · Tech stack" data-t="Part 5 — Tech stack" data-part="Tech stack|Languages, libraries, browser and Windows features, files">
-  <div class="divider"><p class="eyebrow">Part five</p><div class="big">STACK</div><h2>What is JARVIS built with?</h2></div>
-</section>
-
-<section class="slide" data-ch="5 · Tech stack" data-t="Tech stack">
-  <p class="eyebrow">Tech stack</p>
-  <h2>Small stack, many platform features</h2>
-  <div class="tw"><table>
-    <thead><tr><th>Layer</th><th>Technology</th><th>Used for</th></tr></thead>
-    <tbody>
-      <tr><td>Server runtime</td><td>Node.js 18+ (built on 24)</td><td>Runs tools, files, code, schedules; built-in <code>fetch</code>, <code>WebSocket</code> and <code>crypto</code></td></tr>
-      <tr><td>Web framework</td><td>Express 4</td><td>HTTP routes under <code>/api/…</code> with JSON bodies</td></tr>
-      <tr><td>PDF text</td><td>unpdf</td><td>Page-by-page text from PDFs</td></tr>
-      <tr><td>Front end</td><td>HTML, CSS, vanilla JavaScript</td><td>No React or build step; plain scripts load in order</td></tr>
-      <tr><td>Speech in</td><td>Web Speech API + Web Audio API</td><td>Recognition, mic gain boost</td></tr>
-      <tr><td>Speech out</td><td>speechSynthesis, neural voices over WebSocket</td><td>Spoken replies in 3 languages</td></tr>
-      <tr><td>Live updates</td><td>Server-Sent Events</td><td>Reminders, wake word, phone commands pushed to the page</td></tr>
-      <tr><td>Offline app</td><td>PWA: manifest + service worker</td><td>Install as an app with its own window</td></tr>
-      <tr><td>Security</td><td>WebAuthn (Windows Hello), TOTP (RFC 6238)</td><td>Fingerprint/PIN approvals, phone codes</td></tr>
-      <tr><td>Windows glue</td><td>PowerShell, VBScript, System.Speech</td><td>Volume, apps, OCR, silent start, wake word</td></tr>
-      <tr><td>AI</td><td>Ollama or cloud APIs</td><td>Chat, planning, vision, embeddings</td></tr>
-      <tr><td>Phone</td><td>ntfy</td><td>Push notifications and phone commands</td></tr>
-      <tr><td>Testing</td><td>Node scripts + headless Edge over CDP</td><td>29 suites, no test framework needed</td></tr>
-    </tbody>
-  </table></div>
-  <div class="note"><b>Teacher's note</b><p>The whole project has only <strong>two npm dependencies</strong>: Express and unpdf. Everything else uses what Node, the browser and Windows already provide. Fewer dependencies means fewer things to break and less to trust.</p></div>
-</section>
-
-<section class="slide" data-ch="5 · Tech stack" data-t="Project files">
-  <p class="eyebrow">Project structure · filter by layer</p>
+<section class="slide" data-ch="3 · Architecture" data-t="Project files">
+  <p class="eyebrow">3 · Module responsibilities</p>
   <h2>Where each part lives</h2>
   <div class="chips" id="fileFilter" style="margin-bottom:12px"></div>
   <div class="tw"><table><thead><tr><th>File</th><th>Layer</th><th>Role</th></tr></thead><tbody id="files"></tbody></table></div>
 </section>
 
-<!-- ===================================================== PART 6 -->
-<section class="slide" data-ch="6 · Safety" data-t="Part 6 — Safety" data-part="Safety|Permissions, approvals, access zones, undo">
-  <div class="divider"><p class="eyebrow">Part six</p><div class="big">SAFE</div><h2>How JARVIS stays safe</h2></div>
-</section>
-
-<section class="slide" data-ch="6 · Safety" data-t="Layers of safety">
-  <p class="eyebrow">Security model</p>
-  <h2>Seven layers between a request and your laptop</h2>
+<!-- =========================== 5 DATA -->
+<section class="slide" data-ch="4 · Data and storage" data-t="Where the chat is stored" data-part="Data and storage|Where chat and data live, what leaves the laptop">
+  <p class="eyebrow">4 · Data and storage</p>
+  <h2>Where is the chat stored?</h2>
+  <div class="flow">
+    <div class="n"><b>You send a message</b><span><code>logChat()</code> in script.js adds it to <code>chatLog</code>.</span></div><div class="arr">→</div>
+    <div class="n"><b>Trim</b><span>Only the newest <strong>80</strong> messages are kept.</span></div><div class="arr">→</div>
+    <div class="n"><b>Send to server</b><span><code>POST /api/state</code> with key <code>jarvis.chat</code>.</span></div><div class="arr">→</div>
+    <div class="n hot"><b>Saved on disk</b><span>Server writes <code>~/jarvis/.jarvis-state.json</code> 300 ms later.</span></div>
+  </div>
   <div class="grid g2">
-    <div class="box"><h3>1. Local only</h3><p>The server binds to <code>127.0.0.1</code>, so other computers on the network cannot reach it.</p></div>
-    <div class="box"><h3>2. Same page only</h3><p>Each request must come from JARVIS's own page (Origin and Sec-Fetch-Site headers), so a random website cannot call its API.</p></div>
-    <div class="box"><h3>3. Tool registry</h3><p>Only named tools with checked arguments exist. The AI cannot invent new ones.</p></div>
-    <div class="box"><h3>4. Permission tiers</h3><p>Safe actions run; risky ones preview and ask; the most dangerous can require Windows Hello.</p></div>
-    <div class="box"><h3>5. Access zones</h3><p>Read anywhere; ask before changing outside <code>~/jarvis</code>; never touch Windows, Program Files or AppData.</p></div>
-    <div class="box"><h3>6. No remote approvals</h3><p>Phone commands and unattended routines can never approve a change. The card only appears at the laptop.</p></div>
-    <div class="box"><h3>7. Undo and trash</h3><p>Deletes go to JARVIS's trash, overwrites keep the old version, and secrets in backups are encrypted.</p></div>
-    <div class="box"><h3>Panic switch</h3><p>Say "panic" and all automation, routines and triggers stop until you say "resume".</p></div>
+    <div class="box"><h3>Answer</h3><p>The chat is stored in <strong>one JSON file on the user's own laptop</strong>: <code>C:\Users\&lt;name&gt;\jarvis\.jarvis-state.json</code>. It is not in a cloud database and not in the browser.</p></div>
+    <div class="box"><h3>Why the server, not the browser</h3><p>Browser storage is per browser and per port. Keeping state on the server means every browser and port shows the same JARVIS, and the scheduler can fire reminders even when no tab is open.</p></div>
+    <div class="box"><h3>Safe writing</h3><p>The file is written to a <code>.tmp</code> copy and renamed, so a crash cannot leave a half-written file. The page loads it before any script runs (<code>/api/state.js</code>), and that route only answers the JARVIS page itself.</p></div>
+    <div class="box"><h3>Long conversations</h3><p>After 80 messages the oldest are dropped from the log, but a rolling summary (<code>jarvis.chatSummary</code>) is kept, so "what were we talking about?" still works the next day.</p></div>
   </div>
 </section>
 
-<section class="slide" data-ch="6 · Safety" data-t="Access zones">
-  <p class="eyebrow">Interactive · access zones</p>
+<section class="slide" data-ch="4 · Data and storage" data-t="Storage map">
+  <p class="eyebrow">4 · Storage map · click a data type</p>
+  <h2>Where does each kind of data live?</h2>
+  <div class="store">
+    <div class="list" id="storeList"></div>
+    <div class="box"><dl class="kv" id="storeDetail"></dl></div>
+  </div>
+  <p style="margin-top:12px;font-size:13.5px;color:var(--haze)">All paths are under the user's home folder. JARVIS does not record audio: the code has no recorder, and only the recognised text is used.</p>
+</section>
+
+<section class="slide" data-ch="4 · Data and storage" data-t="What leaves the laptop">
+  <p class="eyebrow">4 · Privacy</p>
+  <h2>What leaves the laptop, and when</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Data</th><th>Goes where</th><th>Only when</th></tr></thead>
+    <tbody>
+      <tr><td>Your question and recent chat</td><td>The AI provider you chose</td><td>Cloud key is selected. With Ollama it stays on the laptop.</td></tr>
+      <tr><td>Reply text to be spoken</td><td>Microsoft neural voice service</td><td>Neural voice is switched on (Settings)</td></tr>
+      <tr><td>Reply text to be translated</td><td>Online translation</td><td>Online translation is switched on (Settings)</td></tr>
+      <tr><td>Your voice</td><td>The browser's speech service</td><td>You speak to JARVIS. JARVIS itself stores no audio.</td></tr>
+      <tr><td>Reminder text</td><td>ntfy (phone)</td><td>Phone alerts are set up</td></tr>
+      <tr><td>Files, notes, PDFs</td><td>Nowhere by default</td><td>Only passages you ask about go to the AI, and only a cloud AI sees them off the laptop</td></tr>
+      <tr><td>API keys</td><td>Only to their own provider</td><td>Stored in <code>.config.json</code>; the page sees them masked; file tools and the AI cannot read them</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note"><b>Summary</b><p>With Ollama and neural voice off, no message leaves the laptop except the browser's own speech recognition.</p></div>
+</section>
+
+<section class="slide" data-ch="4 · Data and storage" data-t="Backup and undo">
+  <p class="eyebrow">4 · Recovery</p>
+  <h2>Nothing is lost by accident</h2>
+  <div class="grid g2">
+    <div class="box"><h3>Trash</h3><p>Deleted files and overwritten versions go to <code>~/jarvis/.trash</code>. "Undo" restores them, even from another drive.</p></div>
+    <div class="box"><h3>Daily snapshots</h3><p>A copy of all app data is saved to <code>~/jarvis/.backups</code> at least once a day. The newest 7 daily copies are kept, plus the newest 10 safety copies taken before erase, import or restore.</p></div>
+    <div class="box"><h3>Export and import</h3><p>The user can export everything to a file. Secrets in the export are sealed with AES-256-GCM, with a key derived from a password using scrypt.</p></div>
+    <div class="box"><h3>Erase all</h3><p>"Erase all data" takes a safety snapshot first, and is guarded by Windows Hello when it is enrolled.</p></div>
+    <div class="box"><h3>Undo a single action</h3><p>"Undo" (or the ↶ chip) reverses the last action: deletes, file moves, volume, brightness, dark mode, opened or closed apps. The last 40 within 30 minutes.</p></div>
+    <div class="box"><h3>Undo a whole task</h3><p>Every action a plan makes is tagged with its run ID, so "undo that task" (or <strong>ROLLBACK</strong> on a failed plan) reverses the whole plan newest first, and says what could not be undone.</p></div>
+  </div>
+</section>
+
+<!-- =========================== 6 VOICE + TECHNIQUES -->
+<section class="slide" data-ch="5 · Key techniques" data-t="Speech to text" data-part="Key techniques|Voice, languages, search, study logic, coding">
+  <p class="eyebrow">5 · Voice input (voice.js)</p>
+  <h2>Speech to text</h2>
+  <div class="cols">
+    <div>
+      <ul class="list">
+        <li>Uses the browser's <strong>Web Speech API</strong> (<code>SpeechRecognition</code>) in Chrome and Edge, in continuous mode.</li>
+        <li><strong>Interim results</strong> show words live; <strong>final results</strong> arrive per phrase.</li>
+        <li>Language is set per request: <code>en-IN</code>, <code>te-IN</code>, <code>kn-IN</code>.</li>
+        <li><strong>Utterance collector:</strong> joins the pieces and waits for a real quiet gap, so JARVIS answers only when the user has finished the sentence.</li>
+      </ul>
+    </div>
+    <div class="box"><h3>Speaking from far away</h3><p>A gain node in the Web Audio API creates a boosted audio track, which is passed to <code>SpeechRecognition.start(track)</code> (Chrome 135+). Settings offer Normal, High and Max sensitivity.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="5 · Key techniques" data-t="Wake word">
+  <p class="eyebrow">5 · Wake word (wakeword.js)</p>
+  <h2>"Jarvis" works even in other tabs</h2>
+  <div class="grid g2">
+    <div class="box"><h3>Problem</h3><p>Browsers pause speech recognition in background tabs.</p></div>
+    <div class="box"><h3>Solution</h3><p>A background Windows listener (System.Speech, offline) waits for the single word. It also loads an "anything else" grammar, so random speech is rejected rather than forced into a false match.</p></div>
+    <div class="box"><h3>Notification</h3><p>The server pushes a <code>wake</code> event to the page over Server-Sent Events. The page comes forward and starts full recognition.</p></div>
+    <div class="box"><h3>Conflict handling</h3><p>Only one recogniser can hold the microphone. A generation counter makes late-finishing recognisers retire instead of aborting the new one.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="5 · Key techniques" data-t="Text to speech">
+  <p class="eyebrow">5 · Text to speech (tts.js)</p>
+  <h2>How JARVIS speaks</h2>
+  <div class="flow">
+    <div class="n"><b>Reply text</b><span>Markdown answer.</span></div><div class="arr">→</div>
+    <div class="n"><b>Clean</b><span>Remove code blocks, symbols and links.</span></div><div class="arr">→</div>
+    <div class="n"><b>Choose voice</b><span>By language and personality.</span></div><div class="arr">→</div>
+    <div class="n hot"><b>Synthesize</b><span>Browser voice or neural voice.</span></div><div class="arr">→</div>
+    <div class="n"><b>Play</b><span>Audio plays; the orb animates.</span></div>
+  </div>
+  <div class="grid g2">
+    <div class="box"><h3>Path A: browser voice</h3><p><code>speechSynthesis</code> with voices installed on the device. Instant and offline; Telugu and Kannada voices are often missing.</p></div>
+    <div class="box"><h3>Path B: neural voice</h3><p>The server opens a WebSocket to Microsoft's online voice service, sends the text as <strong>SSML</strong> and receives <strong>MP3</strong> chunks. Only the reply text is sent.</p></div>
+  </div>
+  <div class="tw" style="margin-top:14px"><table>
+    <thead><tr><th>Language</th><th>JARVIS (male)</th><th>FRIDAY (female)</th></tr></thead>
+    <tbody><tr><td>English</td><td>Ryan (en-GB)</td><td>Neerja (en-IN)</td></tr><tr><td>Telugu</td><td>Mohan</td><td>Shruti</td></tr><tr><td>Kannada</td><td>Gagan</td><td>Sapna</td></tr></tbody>
+  </table></div>
+</section>
+
+<section class="slide" data-ch="5 · Key techniques" data-t="Voice demo">
+  <p class="eyebrow">5 · Live demo · optional</p>
+  <h2>Hear a browser voice</h2>
+  <div class="box sim" style="max-width:640px">
+    <label for="ttsText" class="eyebrow" style="margin:0">Text to speak</label>
+    <input id="ttsText" type="text" value="Good evening. All systems are online. Your DBMS exam is in three days.">
+    <label for="ttsVoice" class="eyebrow" style="margin:0">Voice on this device</label>
+    <select id="ttsVoice"></select>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn solid" id="ttsGo">Speak</button><button class="btn" id="ttsStop">Stop</button></div>
+    <p id="ttsMsg" style="font-size:13px;color:var(--haze);margin:0">Uses this device's own voices. Neural voices need the JARVIS server, so they are not in this demo.</p>
+  </div>
+</section>
+
+<section class="slide" data-ch="5 · Key techniques" data-t="Telugu and Kannada">
+  <p class="eyebrow">5 · Languages (lang.js)</p>
+  <h2>Telugu and Kannada support</h2>
+  <div class="cols">
+    <div>
+      <ol class="list">
+        <li>Detect the script of the input (Telugu, Kannada or Latin).</li>
+        <li>Translate the command to English so the same rule engine understands it.</li>
+        <li>Run the tool as usual.</li>
+        <li>Translate the reply back and speak it with a Telugu or Kannada neural voice.</li>
+      </ol>
+      <p>Words typed in English letters also work, for example <code>volume penchu</code> (volume up).</p>
+    </div>
+    <div class="box"><h3>Design benefit</h3><p>One rule engine serves three languages. Adding a language means adding words and a voice, not rewriting the commands.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="5 · Key techniques" data-t="Notes search">
+  <p class="eyebrow">5 · Retrieval (rag.js)</p>
+  <h2>Answers from the user's own documents</h2>
+  <div class="flow">
+    <div class="n"><b>Extract</b><span>PDF text per page (unpdf); Word, PowerPoint and Excel read from their zipped XML.</span></div><div class="arr">→</div>
+    <div class="n"><b>Chunk</b><span>Passages tagged with file and page.</span></div><div class="arr">→</div>
+    <div class="n"><b>Keyword score</b><span>BM25 ranking.</span></div><div class="arr">→</div>
+    <div class="n"><b>Semantic score</b><span>Optional embeddings.</span></div><div class="arr">→</div>
+    <div class="n hot"><b>Fuse</b><span>Merge rankings; send top passages to the AI.</span></div>
+  </div>
+  <p>Answers include <strong>page numbers</strong>, so a teacher can check the source. A scanned PDF is detected and reported instead of being treated as empty. The index lives only in memory and is rebuilt by a file watcher.</p>
+</section>
+
+<section class="slide" data-ch="5 · Key techniques" data-t="Study logic">
+  <p class="eyebrow">5 · Study tools (study.js)</p>
+  <h2>Attendance and grade calculations</h2>
+  <div class="grid g2">
+    <div class="box"><h3>Attendance bunk-o-meter (75% rule)</h3><p>Attended <em>a</em> of <em>t</em> classes:</p><p>Can skip: <code>floor(a / 0.75 − t)</code><br>Must attend in a row (if below): <code>ceil((0.75·t − a) / 0.25)</code></p><p>Example: 30 of 36 attended, so 4 more classes can be skipped.</p></div>
+    <div class="box"><h3>SGPA and CGPA</h3><p><code>SGPA = Σ(credit × grade point) / Σ credits</code></p><p>CGPA is the credit-weighted average across semesters. Covered by 60 tests in <code>student.test.js</code>.</p></div>
+    <div class="box"><h3>Flashcards</h3><p>Spaced repetition: cards answered wrong return sooner.</p></div>
+    <div class="box"><h3>Reminders</h3><p>One-off, daily, weekly, monthly and yearly. The server fires them, so they work with the tab closed.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="5 · Key techniques" data-t="Coding and automation">
+  <p class="eyebrow">5 · Coding and automation</p>
+  <h2>Coding help, routines and triggers</h2>
+  <div class="grid g2">
+    <div class="box"><h3>Run and fix code</h3><p>Runs Python, JavaScript, C and C++ with a 10-second limit. On a crash, one click sends code and error to the AI to explain and fix.</p></div>
+    <div class="box"><h3>Coding-AI hand-off</h3><p>"Open dsa sprint in VS Code and ask Copilot to add tests." JARVIS opens the tool in the right folder and pastes the request. Supports Copilot, Claude Code, Gemini, Codex, Kiro, Trae, Antigravity, OpenCode, Qwen, Codebuff and Devin.</p></div>
+    <div class="box"><h3>Dev environments</h3><p>"Prepare my development environment for AgriLoop": locate the project, open VS Code, start backend and frontend, open the browser. Commands come only from the project's own <code>package.json</code> or entry files; ports are read from the server's own output. Failures are recovered or explained.</p></div>
+    <div class="box"><h3>Learn and create</h3><p>"I want to learn Python" checks the toolchain, writes and runs a real Hello World, and opens VS Code. "Create a C++ project called SmartCalc…" shows the AI's code first, compiles and runs it, and repairs it at most twice.</p></div>
+    <div class="box"><h3>Routines</h3><p>Named bundles of steps, for example "start my study mode".</p></div>
+    <div class="box"><h3>Triggers</h3><p>"When I plug in my charger, set brightness to 80." A server watcher applies cooldowns so it does not repeat.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="5 · Key techniques" data-t="Tech stack">
+  <p class="eyebrow">5 · Tech stack</p>
+  <h2>A small stack that uses what the platform provides</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Layer</th><th>Technology</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td>Server runtime</td><td>Node.js 18+</td><td>Tools, files, code runner, schedules</td></tr>
+      <tr><td>Web framework</td><td>Express 4</td><td>JSON routes under <code>/api/…</code></td></tr>
+      <tr><td>PDF text</td><td>unpdf</td><td>Page-by-page text from PDFs</td></tr>
+      <tr><td>Front end</td><td>HTML, CSS, vanilla JavaScript</td><td>No framework, no build step</td></tr>
+      <tr><td>Speech in / out</td><td>Web Speech, Web Audio, speechSynthesis, neural voice over WebSocket</td><td>Voice interface</td></tr>
+      <tr><td>Live updates</td><td>Server-Sent Events</td><td>Reminders, wake word, phone commands</td></tr>
+      <tr><td>Installable app</td><td>Web manifest and service worker</td><td>Own window, offline shell</td></tr>
+      <tr><td>Security</td><td>WebAuthn (Windows Hello), TOTP (RFC 6238)</td><td>Approvals and phone codes</td></tr>
+      <tr><td>Windows glue</td><td>PowerShell, VBScript, System.Speech</td><td>Volume, apps, OCR, silent start, wake word</td></tr>
+      <tr><td>AI</td><td>Ollama or cloud APIs</td><td>Chat, planning, vision, embeddings</td></tr>
+      <tr><td>Testing</td><td>Node scripts and headless Edge (DevTools Protocol)</td><td>30 suites, no test framework</td></tr>
+    </tbody>
+  </table></div>
+  <p>Only <strong>two npm dependencies</strong>: Express and unpdf. Everything else uses Node, the browser and Windows.</p>
+</section>
+
+<!-- =========================== 7 SECURITY -->
+<section class="slide" data-ch="6 · Security" data-t="Security layers" data-part="Security|Layers of protection and access zones">
+  <p class="eyebrow">6 · Security model</p>
+  <h2>Seven layers between a request and the laptop</h2>
+  <div class="grid g2">
+    <div class="box"><h3>1. Local only</h3><p>The server binds to <code>127.0.0.1</code>; other machines cannot reach it.</p></div>
+    <div class="box"><h3>2. Same page only</h3><p>Every request is checked for JARVIS's own Host and Origin, so a random website cannot call the API (and DNS rebinding is blocked). The saved-state script also needs the browser's <code>Sec-Fetch-Site: same-origin</code>.</p></div>
+    <div class="box"><h3>3. Tool registry</h3><p>Only named tools with checked arguments exist. The AI cannot invent new ones.</p></div>
+    <div class="box"><h3>4. Permission tiers</h3><p>Safe actions run; risky ones preview and ask; the most dangerous can require Windows Hello.</p></div>
+    <div class="box"><h3>5. Access zones</h3><p>Read anywhere; ask before changing outside <code>~/jarvis</code>; never touch system folders.</p></div>
+    <div class="box"><h3>6. No remote approval</h3><p>Phone commands and unattended routines can never approve a change.</p></div>
+    <div class="box"><h3>7. Undo and panic</h3><p>Trash, earlier versions and an undo stack. Saying "panic" pauses all automation.</p></div>
+    <div class="box"><h3>Secrets</h3><p>API keys stay on the server, masked in the page, hidden from file tools and the AI.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="6 · Security" data-t="Access zones demo">
+  <p class="eyebrow">6 · Live demo · access zones</p>
   <h2>Can JARVIS touch this path?</h2>
   <div class="sim">
     <label for="zin" class="eyebrow" style="margin:0">A path on the laptop</label>
@@ -610,92 +711,116 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-fam
     <div class="trace" id="zout"></div>
   </div>
   <div class="grid g3" style="margin-top:14px">
-    <div class="box"><h3>Home: ~/jarvis</h3><p>JARVIS's own workspace. Read and change freely; undo covers it.</p></div>
-    <div class="box"><h3>Laptop: everywhere else</h3><p>Open and read freely. Write, rename, move, copy into or delete: shows <strong>ALLOW / CANCEL</strong> first.</p></div>
-    <div class="box"><h3>Blocked</h3><p>Windows, Program Files, ProgramData, AppData, .ssh-style key folders, the Recycle Bin and JARVIS's own config. Refused even if approved.</p></div>
+    <div class="box"><h3>Home: ~/jarvis</h3><p>JARVIS's own workspace. Changes need no question; undo covers them.</p></div>
+    <div class="box"><h3>Laptop: everywhere else</h3><p>Open and read freely. Write, rename, move, copy into and delete show <strong>ALLOW / CANCEL</strong>.</p></div>
+    <div class="box"><h3>Blocked</h3><p>Windows, Program Files, ProgramData, AppData, key folders such as <code>.ssh</code>, the Recycle Bin and JARVIS's own config.</p></div>
   </div>
 </section>
 
-<!-- ===================================================== PART 7 -->
-<section class="slide" data-ch="7 · Testing" data-t="Part 7 — Testing and review" data-part="Testing & review|How we know it works, limits, quiz">
-  <div class="divider"><p class="eyebrow">Part seven</p><div class="big">PROOF</div><h2>How do we know it works?</h2></div>
-</section>
-
-<section class="slide" data-ch="7 · Testing" data-t="Testing">
-  <p class="eyebrow">Testing</p>
-  <h2>29 test suites, none of which touch your real data</h2>
-  <div class="cols">
-    <div>
-      <ul class="list">
-        <li><strong>Isolated server:</strong> tests start a real JARVIS whose home folder is a temporary directory, with the AI pointed at a dead port. Your files and settings are never used.</li>
-        <li><strong>Page self-test:</strong> headless Edge loads the real page, controlled over the Chrome DevTools Protocol. A fake speech recogniser "speaks" commands, and laptop actions are replaced by recording fakes.</li>
-        <li><strong>Route gate:</strong> the API suite fails if any server route is neither tested nor listed with a reason why it cannot be.</li>
-        <li><strong>Paraphrase test:</strong> the same request said many ways. Correct, handed to the AI, or confidently wrong. The last one must stay at zero.</li>
-        <li><strong>Live test (opt-in):</strong> reversible checks on the real laptop, restoring volume and brightness afterwards.</li>
-      </ul>
-    </div>
-    <div class="tw"><table>
-      <thead><tr><th>Suite</th><th class="num">Checks</th></tr></thead>
-      <tbody>
-        <tr><td>coverage (176 commands)</td><td class="num">366</td></tr>
-        <tr><td>nlu</td><td class="num">261</td></tr>
-        <tr><td>paraphrase (97% correct)</td><td class="num">258</td></tr>
-        <tr><td>e2e page self-test</td><td class="num">254</td></tr>
-        <tr><td>agent routing + safety</td><td class="num">186</td></tr>
-        <tr><td>api (every route)</td><td class="num">169</td></tr>
-        <tr><td>llm providers</td><td class="num">66</td></tr>
-        <tr><td>student maths</td><td class="num">60</td></tr>
-        <tr><td>…and 21 more suites</td><td class="num">—</td></tr>
-      </tbody>
-    </table></div>
-  </div>
-  <div class="note"><b>Teacher's note</b><p>A good test answers one question: "if I break this, will something turn red?" Faking the laptop lets tests run hundreds of commands in two minutes without actually changing your volume or opening apps.</p></div>
-</section>
-
-<section class="slide" data-ch="7 · Testing" data-t="Limits and next steps">
-  <p class="eyebrow">Honest limits</p>
-  <h2>What JARVIS cannot do yet</h2>
-  <div class="grid g2">
-    <div class="box"><h3>Windows first</h3><p>Laptop controls use Windows features. Chat, study tools and AI run elsewhere, but Windows is the supported platform.</p></div>
-    <div class="box"><h3>Online speech recognition</h3><p>The browser's recogniser needs internet. The wake word works offline; full sentences do not.</p></div>
-    <div class="box"><h3>Small local models</h3><p>A 4B model on a 6 GB GPU is limited for long reasoning. Cloud keys (Gemini, Groq free tiers) help.</p></div>
-    <div class="box"><h3>Page must be open</h3><p>Phone commands run inside the page, so a JARVIS tab must be open on the laptop.</p></div>
-  </div>
-  <h3 style="margin-top:18px">Ideas for the future</h3>
-  <ul class="list"><li>Fully offline speech recognition (for example a Whisper model)</li><li>macOS and Linux controls</li><li>A shared knowledge base across devices</li><li>More languages beyond English, Telugu and Kannada</li></ul>
-</section>
-
-<section class="slide" data-ch="7 · Testing" data-t="Quiz">
-  <p class="eyebrow">Check your understanding</p>
-  <h2>Quiz: six questions</h2>
-  <p>Score: <span class="score" id="score">0 / 6</span> <button class="btn" id="qReset" style="margin-left:10px">Reset</button></p>
-  <div class="grid g2" id="quiz"></div>
-</section>
-
-<section class="slide" data-ch="7 · Testing" data-t="Summary and glossary">
-  <p class="eyebrow">Summary</p>
-  <h2>Remember these five sentences</h2>
-  <ul class="list" style="font-size:17px">
-    <li>JARVIS is a <strong>Node.js server + web page</strong> that runs on your laptop.</li>
-    <li>Every command goes <strong>Normalize → Classify → Route → Act & verify → Speak</strong>.</li>
-    <li><strong>Rules first, AI second</strong>: fast and predictable for clear commands, flexible for everything else.</li>
-    <li><strong>The server decides</strong> what is allowed; risky actions ask, and almost everything can be undone.</li>
-    <li>Voice uses <strong>Web Speech</strong> to hear, a <strong>Windows listener</strong> for the wake word, and <strong>neural TTS</strong> to speak.</li>
+<!-- =========================== 8 TESTING -->
+<section class="slide" data-ch="7 · Testing" data-t="Testing method" data-part="Testing and results|How it was verified, and the results">
+  <p class="eyebrow">7 · Testing method</p>
+  <h2>How the system was verified</h2>
+  <ul class="list" style="font-size:16.5px">
+    <li><strong>Isolated server:</strong> tests start a real JARVIS with a temporary home folder and the AI pointed at a dead port. The user's own data is never touched.</li>
+    <li><strong>Page self-test:</strong> headless Edge loads the real page over the DevTools Protocol. A fake speech recogniser "speaks" commands; laptop actions are replaced by recording fakes.</li>
+    <li><strong>Route gate:</strong> the API suite fails if any server route is neither tested nor listed with a reason.</li>
+    <li><strong>Paraphrase test:</strong> the same request said many ways. Results are correct, handed to the AI, or confidently wrong. The last must be zero.</li>
+    <li><strong>Live test (opt-in):</strong> reversible checks on the real laptop, restoring volume and brightness.</li>
+    <li><strong>Manual checklist:</strong> microphone, speaker, Windows Hello and phone, which need real hardware.</li>
   </ul>
-  <h3 style="margin-top:18px">Glossary</h3>
+</section>
+
+<section class="slide" data-ch="7 · Testing" data-t="Test results">
+  <p class="eyebrow">7 · Results</p>
+  <h2>30 suites, all passing</h2>
+  <div class="grid g3" style="margin-bottom:16px">
+    <div class="stat"><b>178</b><span>commands covered</span></div>
+    <div class="stat"><b>138</b><span>server routes, each tested or justified</span></div>
+    <div class="stat"><b>0</b><span>confidently wrong in the paraphrase test</span></div>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>Suite</th><th>What it checks</th><th class="num">Checks</th></tr></thead>
+    <tbody>
+      <tr><td>coverage</td><td>Every command understood from its test phrases</td><td class="num">373</td></tr>
+      <tr><td>nlu</td><td>Intents, typos, dates, languages</td><td class="num">262</td></tr>
+      <tr><td>paraphrase</td><td>Same request said many ways (97% correct, 8 sent to the AI)</td><td class="num">259</td></tr>
+      <tr><td>e2e (page)</td><td>Real page in headless Edge, laptop faked</td><td class="num">265</td></tr>
+      <tr><td>agent</td><td>Multi-step routing (72) and safety (132)</td><td class="num">204</td></tr>
+      <tr><td>api</td><td>Every server route on an isolated server, including a real crash on missing dependencies</td><td class="num">174</td></tr>
+      <tr><td>plan</td><td>Goal plans, state awareness, failure recovery (install → restart → verify), RETRY / CONTINUE / ROLLBACK</td><td class="num">53</td></tr>
+      <tr><td>llm</td><td>Providers, streaming, retries, keys</td><td class="num">66</td></tr>
+      <tr><td>student</td><td>Attendance and GPA maths</td><td class="num">60</td></tr>
+      <tr><td>codeask</td><td>Coding-AI phrases and safe command building</td><td class="num">58</td></tr>
+      <tr><td>skills-page</td><td>Website, coach and viva conversations</td><td class="num">50</td></tr>
+      <tr><td>backup</td><td>Export, import, encryption, snapshots</td><td class="num">44</td></tr>
+      <tr><td>skills, hello, triggers, rag, doctext, study, undo, instance, and 11 more</td><td>Each feature area</td><td class="num">—</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="slide" data-ch="7 · Testing" data-t="Limitations and future work">
+  <p class="eyebrow">7 · Limitations and future work</p>
+  <h2>What it does not do yet</h2>
+  <div class="grid g2">
+    <div class="box"><h3>Limitations</h3><ul class="list"><li>Windows is the supported platform.</li><li>The browser's speech recognition needs internet; only the wake word is offline.</li><li>A 4B local model on a 6 GB GPU is limited for long reasoning.</li><li>Phone commands need a JARVIS tab open on the laptop.</li><li>Neural voices need internet.</li><li>Automatic repair covers missing dependencies, a stale port and generated code; other crashes are explained, not fixed.</li><li>Rollback reverses only actions JARVIS knows how to undo, within 30 minutes.</li></ul></div>
+    <div class="box"><h3>Future work</h3><ul class="list"><li>Fully offline speech recognition (for example a Whisper model).</li><li>macOS and Linux controls.</li><li>Encrypted sync of state between devices.</li><li>More Indian languages.</li></ul></div>
+  </div>
+</section>
+
+<!-- =========================== 9 DEMO / QA -->
+<section class="slide" data-ch="8 · Demo and Q&A" data-t="Demo script" data-part="Demo and Q&A|A live demo order and prepared answers">
+  <p class="eyebrow">8 · Live demo script</p>
+  <h2>Seven steps that show the whole system</h2>
+  <ol class="list demo" style="font-size:16.5px">
+    <li><strong>Voice and language:</strong> say "Jarvis, what time is it", then a Telugu or Kannada command.</li>
+    <li><strong>Laptop control:</strong> "open chrome", "set volume to 30", then "undo".</li>
+    <li><strong>Multi-step plan:</strong> "open vs code in dsa sprint and set a 25 minute timer". Show the preview and the ✓ verification.</li>
+    <li><strong>Flagship: the developer agent.</strong> "Prepare my development environment for AgriLoop." Show the preview (state notes such as "already open → reuse"), then locate → VS Code → backend → frontend → browser, each verified. To show recovery, rehearse on a copy of the project with <code>backend/node_modules</code> deleted: the backend fails, JARVIS explains why, asks to run <code>npm install</code>, restarts and verifies it. End with <strong>ROLLBACK</strong> or "undo that task" to stop the servers it started.</li>
+    <li><strong>Your documents:</strong> "what do my notes say about normalization?" and point to the page numbers.</li>
+    <li><strong>Safety:</strong> "rename report.md to final.md" on the Desktop. Show the ALLOW / CANCEL card, press CANCEL, then show nothing changed.</li>
+    <li><strong>Where the data is:</strong> open <code>~/jarvis/.jarvis-state.json</code> to show the stored chat.</li>
+  </ol>
+</section>
+
+<section class="slide" data-ch="8 · Demo and Q&A" data-t="Questions and answers">
+  <p class="eyebrow">8 · Prepared answers · click a question</p>
+  <h2>Questions evaluators may ask</h2>
+  <div id="qa"></div>
+</section>
+
+<section class="slide" data-ch="8 · Demo and Q&A" data-t="Terms">
+  <p class="eyebrow">Reference</p>
+  <h2>Terms used in this presentation</h2>
   <div class="tw"><table><tbody>
-    <tr><td>Intent</td><td>What the user wants done, such as SET_VOLUME.</td></tr>
-    <tr><td>NLU</td><td>Natural Language Understanding: turning text into intent plus arguments.</td></tr>
+    <tr><td>Intent</td><td>What the user wants done, for example SET_VOLUME.</td></tr>
+    <tr><td>NLU</td><td>Natural Language Understanding: text to intent plus arguments.</td></tr>
     <tr><td>RAG</td><td>Retrieval-Augmented Generation: find relevant text first, then let the AI answer from it.</td></tr>
-    <tr><td>Embedding</td><td>A list of numbers that represents a text's meaning, so similar meanings are close together.</td></tr>
+    <tr><td>Embedding</td><td>Numbers that represent a text's meaning; similar meanings sit close together.</td></tr>
     <tr><td>STT / TTS</td><td>Speech to text / text to speech.</td></tr>
-    <tr><td>SSML</td><td>Markup that tells a voice engine what to say and how (voice, speed, pitch).</td></tr>
+    <tr><td>SSML</td><td>Markup that tells a voice engine what to say and how.</td></tr>
     <tr><td>SSE</td><td>Server-Sent Events: a live one-way stream from server to page.</td></tr>
-    <tr><td>TOTP</td><td>Time-based one-time password, the 6-digit code in an authenticator app.</td></tr>
-    <tr><td>WebAuthn</td><td>The web standard behind Windows Hello fingerprint, face and PIN checks.</td></tr>
-    <tr><td>Ollama</td><td>A program that runs open AI models locally on your GPU.</td></tr>
+    <tr><td>TOTP</td><td>Time-based one-time password, the 6-digit authenticator code.</td></tr>
+    <tr><td>WebAuthn</td><td>Web standard behind Windows Hello fingerprint, face and PIN checks.</td></tr>
+    <tr><td>Ollama</td><td>A program that runs open AI models locally.</td></tr>
+    <tr><td>Rollback</td><td>Reversing the reversible changes a failed plan made, newest first.</td></tr>
+    <tr><td>State awareness</td><td>Checking what is already running or open before acting, so nothing is done twice.</td></tr>
+    <tr><td>Dependencies</td><td>The packages a project needs (<code>node_modules</code>, Python packages), installed by <code>npm install</code> or <code>pip</code>.</td></tr>
   </tbody></table></div>
-  <div class="note"><b>Homework</b><p>Pick one command you use daily. Write down its intent, its arguments, which route it takes (rule, agent or AI), which permission tier it needs, and how JARVIS could verify it worked.</p></div>
+</section>
+
+<section class="slide" data-ch="8 · Demo and Q&A" data-t="Summary">
+  <p class="eyebrow">Summary</p>
+  <h2>Summary</h2>
+  <ul class="list" style="font-size:17.5px">
+    <li>JARVIS is a <strong>local assistant</strong>: a Node.js server plus a web page, on the user's own Windows laptop.</li>
+    <li>Commands flow <strong>Normalize → Classify → Route → Act and verify → Speak</strong>, with rules first and AI second.</li>
+    <li>Data lives in <strong>one folder, <code>~/jarvis</code></strong>; chat is in <code>.jarvis-state.json</code>; secrets are in <code>.config.json</code>.</li>
+    <li>Safety comes from the <strong>server</strong>: tiers, access zones, approvals, undo, panic.</li>
+    <li>The agent <strong>plans, checks state, verifies, recovers from failures</strong> and offers RETRY / CONTINUE / ROLLBACK.</li>
+    <li>Quality is shown by <strong>30 passing test suites</strong>, including a page test in a real browser.</li>
+  </ul>
+  <p class="lead" style="margin-top:24px">Thank you. Questions?</p>
 </section>
 
 </main>
@@ -713,6 +838,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-fam
 </aside>
 
 <script>
+
 (() => {
   const $ = s => document.querySelector(s);
   const slides = [...document.querySelectorAll('.slide')];
@@ -779,9 +905,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-fam
     ['Study planner', 'To-dos, deadlines, reminders, focus sessions, multi-day plans.', 'remind me to pay fees every year in july\nplan my DBMS exam in 5 days\nstart a 25 minute focus session'],
     ['Student maths', 'Attendance bunk-o-meter, SGPA and CGPA.', 'I attended 30 of 36 classes\nhow many classes can I bunk\ncalculate my sgpa'],
     ['Files & notes', 'Read anywhere, answers with page numbers, flashcards from PDFs.', 'what do my notes say about joins\nsummarise lecture3.pdf\nmake flashcards from lecture3.pdf'],
-    ['Coding', 'Run code, EXPLAIN & FIX, DSA coach, website generator.', 'write binary search in python\nrun it\ngive me a hint for two sum\nmake a portfolio website'],
+    ['Coding', 'Run code, EXPLAIN & FIX, DSA coach, website generator, dev environments that recover from failures.', 'prepare my development environment for agriloop\nwrite binary search in python\nrun it\ngive me a hint for two sum\nmake a portfolio website'],
     ['Coding AIs', 'Open a project in an editor and hand its AI a task.', 'open dsa sprint in vs code and ask copilot to add tests\nask claude in agriloop to write unit tests'],
-    ['Automation', 'Multi-step plans, routines, triggers, global hotkey.', 'open vs code and start a focus session\nwhen I plug in my charger set brightness to 80\nstart my study mode'],
+    ['Automation', 'Multi-step plans with retry, continue and rollback; routines, triggers, global hotkey.', 'open vs code and start a focus session\nundo that task\nwhen I plug in my charger set brightness to 80\nstart my study mode'],
     ['Phone & safety', 'ntfy alerts, authenticator codes, Windows Hello, undo, panic.', 'send a test notification\nundo\npanic\nresume'],
   ];
   const feats = $('#feats');
@@ -912,21 +1038,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-fam
   /* project files */
   const FILES = [
     ['index.html', 'Page', 'The app page: chat, orb, settings'], ['script.js', 'Page', 'Turn pipeline, UI, tasks, reminders, files, settings'],
-    ['nlu.js', 'Page', 'Normalization, intent rules, fuzzy matching, dates'], ['agent.js', 'Page', 'Multi-step plans, confirmations, verification, learning'],
+    ['nlu.js', 'Page', 'Normalization, intent rules, fuzzy matching, dates'], ['agent.js', 'Page', 'Multi-step plans, state checks, confirmations, verification, failure recovery, RETRY / CONTINUE / ROLLBACK, learning'],
     ['voice.js', 'Voice', 'Utterance collector: waits until you finish speaking'], ['wakeword.js', 'Voice', 'Background Windows wake-word listener'],
     ['tts.js', 'Voice', 'Neural voices in English, Telugu, Kannada'], ['lang.js', 'Voice', 'Detects Telugu / Kannada, translates commands to English and replies back'],
     ['persona.js', 'Page', 'JARVIS and FRIDAY personality lines'], ['palette.js', 'Page', 'Ctrl+K command palette'],
-    ['server.js', 'Server', 'Express routes, security, files, apps, code runner'], ['llm.js', 'Server', 'AI providers, streaming, retries, keys'],
+    ['server.js', 'Server', 'Express routes, security, files, apps, code runner, dev servers (start, stop, health check, dependency install)'], ['instance.js', 'Server', 'One running copy: lock file, remembered port'], ['llm.js', 'Server', 'AI providers, streaming, retries, keys'],
     ['agent-tools.js', 'Server', 'Tool registry, schemas, permission tiers'], ['scheduler.js', 'Server', 'Reminders, triggers, phone, live events'],
     ['system-tools.js', 'Server', 'Brightness, theme, Wi-Fi, windows, OCR, clipboard'], ['codetools.js', 'Server', 'Coding AIs in editors and terminals'],
     ['rag.js', 'Server', 'Hybrid search over notes, code, PDFs'], ['pdftext.js · doctext.js', 'Server', 'PDF and Office text extraction'],
     ['skills.js', 'Server', 'Website generator, DSA coach, viva, code fixer'], ['hello.js', 'Security', 'Windows Hello approvals (WebAuthn)'],
     ['phoneauth.js', 'Security', 'Authenticator codes for phone commands'], ['backup.js', 'Security', 'Export, import, encrypted secrets, snapshots'],
-    ['undo.js', 'Page', 'Undo stack'], ['study.js', 'Page', 'Study planner, attendance and GPA maths'],
+    ['undo.js', 'Page', 'Undo stack; reversing a whole plan (undo that task, ROLLBACK)'], ['study.js', 'Page', 'Study planner, attendance and GPA maths'],
     ['routines.js · triggers.js', 'Page', 'Routines and "when X, do Y" rules'], ['hotkey.js', 'Server', 'Global Ctrl+Shift+J helper'],
     ['autostart.js', 'Server', 'Start with Windows'], ['update.js', 'Server', 'Checks GitHub for new releases'],
     ['sw.js · manifest', 'Page', 'Installable app, offline shell'], ['start.ps1 · jarvis-silent.vbs', 'Launch', 'One-click start, hidden server, desktop shortcut'],
-    ['tests/', 'Tests', '29 suites, isolated server, headless browser'],
+    ['tests/', 'Tests', '30 suites, isolated server, headless browser'],
   ];
   const fb = $('#files'), ff = $('#fileFilter');
   function drawFiles(layer) {
@@ -961,38 +1087,97 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-fam
   };
   $('#ttsStop').onclick = () => { try { speechSynthesis.cancel(); } catch {} ttsMsg.textContent = 'Stopped.'; };
 
-  /* quiz */
-  const QUIZ = [
-    ['Which part decides whether an action is allowed?', ['The AI model', 'The Node.js server', 'The browser page', 'Windows Defender'], 1, 'The server checks the tool, arguments, permission tier and access zone. The AI can only propose.'],
-    ['What is the correct order of the command pipeline?', ['Classify → Normalize → Speak → Route', 'Normalize → Classify → Route → Act & verify → Speak', 'Route → Classify → Act → Normalize', 'Speak → Act → Route → Classify'], 1, 'Clean the text, find the intent, choose the path, do and check the work, then answer.'],
-    ['Why does "set volume to 30" not use the AI?', ['The AI is not allowed to change volume', 'A rule already understands it: instant, free and predictable', 'Volume is controlled by the browser', 'The AI is offline at night'], 1, 'Rules first, AI second. Clear commands never need a model.'],
-    ['How does the wake word work while you are in another browser tab?', ['The tab keeps full speech recognition running', 'A Windows System.Speech listener on the server hears "Jarvis" and sends an SSE event', 'The phone listens instead', 'It does not work in other tabs'], 1, 'Browsers pause background recognition, so a small offline Windows engine waits for the one word.'],
-    ['What does the neural voice service receive and return?', ['Audio in, text out', 'SSML text in, MP3 audio out', 'Your microphone stream', 'A PDF of the reply'], 1, 'The server sends SSML (text plus voice settings) over a WebSocket and gets MP3 chunks back.'],
-    ['You ask JARVIS to rename a file on your Desktop from your phone. What happens?', ['It renames it immediately', 'It shows ALLOW / CANCEL on the phone', 'It refuses: changes outside ~/jarvis need approval at the laptop', 'It deletes the file'], 2, 'Phone commands and routines can never approve changes. The approval card only appears at the laptop.'],
+  /* feature checklist */
+  const CK = [
+    ['Voice input and wake word', 'Tap to talk; say "Jarvis" hands-free, even in other tabs', 'voice.js, wakeword.js', 'voice, wakeword, e2e', 'done'],
+    ['Telugu and Kannada', 'Commands and replies in three languages', 'lang.js, tts.js', 'nlu, e2e', 'done'],
+    ['Rule-based understanding', '178 commands, typos, fuzzy app names, context', 'nlu.js', 'coverage, nlu, paraphrase', 'done'],
+    ['Multi-step agent', 'Plan, dependencies, state checks, permissions, execution, verification', 'agent.js, agent-tools.js', 'agent, plan', 'done'],
+    ['Failure recovery', 'Diagnose a crash, install missing dependencies, free a stale port, restart, verify', 'agent.js, server.js', 'plan, api', 'done'],
+    ['Retry, continue, rollback', 'Honest choices after a plan fails; rollback of reversible changes', 'agent.js, undo.js', 'plan, undo', 'done'],
+    ['One running copy', 'A second start reuses the running JARVIS', 'instance.js', 'instance', 'done'],
+    ['AI brain', 'Ollama plus 9 cloud providers, streaming, tool choice', 'llm.js', 'llm', 'done'],
+    ['Text to speech', 'Browser voice and neural voices, JARVIS and FRIDAY', 'tts.js, script.js', 'e2e (faked), manual', 'done'],
+    ['Laptop control', 'Apps, volume, brightness, theme, Wi-Fi, windows, screen', 'system-tools.js, server.js', 'api, e2e, live', 'done'],
+    ['Files and access zones', 'Open and read anywhere; approval for changes; system folders blocked', 'server.js', 'api, e2e', 'done'],
+    ['Notes and PDF search', 'Hybrid keyword and semantic search with page numbers', 'rag.js, pdftext.js, doctext.js', 'rag, doctext', 'done'],
+    ['Study tools', 'To-dos, reminders, focus, attendance, SGPA/CGPA, flashcards, viva', 'study.js, script.js, skills.js', 'study, student, skills', 'done'],
+    ['Coding tools', 'Run code, explain and fix, DSA coach, coding-AI hand-off', 'skills.js, codetools.js', 'skills, codeask', 'done'],
+    ['Routines and triggers', 'Named routines and "when X, do Y" rules', 'routines.js, triggers.js, scheduler.js', 'triggers, scheduler', 'done'],
+    ['Safety layer', 'Tiers, Windows Hello, undo, trash, panic', 'hello.js, undo.js, server.js', 'hello, undo, api', 'done'],
+    ['Backup and export', 'Daily snapshots, encrypted export and import', 'backup.js', 'backup', 'done'],
+    ['Installable app and autostart', 'Own window, start with Windows, silent launch', 'sw.js, autostart.js, jarvis-silent.vbs', 'autostart', 'done'],
+    ['Update check', 'Compares the version with GitHub releases', 'update.js', 'update', 'done'],
+    ['Phone reminders and commands', 'ntfy alerts; commands need a 6-digit code', 'scheduler.js, phoneauth.js', 'phoneauth', 'part|A JARVIS tab must be open on the laptop'],
+    ['Fully offline speech recognition', 'Recognising full sentences without internet', '—', '—', 'no|Only the wake word is offline today'],
+    ['macOS and Linux controls', 'Laptop control on other systems', '—', '—', 'no|Windows only'],
   ];
-  const qz = $('#quiz'); let score = 0;
-  function drawQuiz() {
-    qz.innerHTML = ''; score = 0; $('#score').textContent = '0 / ' + QUIZ.length;
-    QUIZ.forEach(([q, opts, right, why], qi) => {
-      const box = document.createElement('div'); box.className = 'q';
-      box.innerHTML = '<p class="qq"></p><div class="opts"></div><div class="why" hidden></div>';
-      box.querySelector('.qq').textContent = (qi + 1) + '. ' + q;
-      const o = box.querySelector('.opts');
-      opts.forEach((t, i) => {
-        const b = document.createElement('button'); b.textContent = t;
-        b.onclick = () => {
-          o.querySelectorAll('button').forEach((x, k) => { x.disabled = true; if (k === right) x.classList.add('right'); });
-          if (i === right) { score++; $('#score').textContent = score + ' / ' + QUIZ.length; } else b.classList.add('wrong');
-          const w = box.querySelector('.why'); w.textContent = (i === right ? 'Correct. ' : 'Not quite. ') + why; w.hidden = false;
-        };
-        o.appendChild(b);
-      });
-      qz.appendChild(box);
+  const ckBody = $('#ck'), ckF = $('#ckFilter'); let ckMode = 'all';
+  const pillFor = s => { const k = s.split('|')[0]; return '<span class="pill ' + (k === 'done' ? 'done' : k === 'part' ? 'part' : 'no') + '">' + (k === 'done' ? 'Done' : k === 'part' ? 'Partial' : 'Not built') + '</span>' + (s.split('|')[1] ? '<br><small style="color:var(--haze)">' + s.split('|')[1] + '</small>' : ''); };
+  function drawCk() {
+    ckBody.innerHTML = '';
+    CK.filter(r => ckMode === 'all' || r[4].split('|')[0] === ckMode).forEach(r => {
+      const tr = document.createElement('tr');
+      r.slice(0, 4).forEach(x => { const td = document.createElement('td'); td.textContent = x; tr.appendChild(td); });
+      const td = document.createElement('td'); td.innerHTML = pillFor(r[4]); tr.appendChild(td); ckBody.appendChild(tr);
     });
+    ckF.querySelectorAll('.chip').forEach(c => { c.style.borderColor = c.dataset.m === ckMode ? 'var(--ember)' : ''; c.style.color = c.dataset.m === ckMode ? 'var(--brick)' : ''; });
   }
-  $('#qReset').onclick = drawQuiz; drawQuiz();
+  [['all', 'All (' + CK.length + ')'], ['done', 'Done (' + CK.filter(r => r[4] === 'done').length + ')'], ['part', 'Partial'], ['no', 'Not built']].forEach(([m, t]) => {
+    const c = document.createElement('button'); c.className = 'chip'; c.dataset.m = m; c.textContent = t; c.onclick = () => { ckMode = m; drawCk(); }; ckF.appendChild(c);
+  });
+  drawCk();
 
-  const h = /^#s(\d+)$/.exec(location.hash);
-  go(h ? +h[1] - 1 : 0, false);
+  /* storage map */
+  const STORE = [
+    ['Chat messages', { Location: '~/jarvis/.jarvis-state.json, key jarvis.chat', Format: 'JSON, written by the server 300 ms after each change', Limit: 'Newest 80 messages; the page shows the last 40 on load', Readable: 'JARVIS pages on this laptop only. File tools and the AI cannot read this file.', 'Leaves laptop?': 'Only recent messages sent as context to the AI you chose (never if Ollama is used)' }],
+    ['Conversation summary', { Location: 'Same file, key jarvis.chatSummary', Format: 'Short text', Limit: 'One rolling summary', Readable: 'JARVIS pages only', 'Leaves laptop?': 'Sent as context to the AI you chose' }],
+    ['Tasks and study data', { Location: 'Same file: todos, reminders, deadlines, classes, attendance, marks, flashcards, study plans', Format: 'JSON arrays', Limit: 'None set', Readable: 'JARVIS pages only', 'Leaves laptop?': 'Reminder text goes to ntfy only if phone alerts are on' }],
+    ['Settings and memory', { Location: 'Same file: settings, memory, routines, triggers, snippets, stats, command history', Format: 'JSON', Limit: 'Sessions capped at 300', Readable: 'JARVIS pages only', 'Leaves laptop?': 'No' }],
+    ['API keys and config', { Location: '~/jarvis/.config.json', Format: 'JSON (project folders, provider keys, Windows Hello key)', Limit: '—', Readable: 'Server only. The page sees keys masked; file tools and the AI are blocked from this file.', 'Leaves laptop?': 'A key is sent only to its own provider' }],
+    ['Files JARVIS creates', { Location: '~/jarvis/Notes, Documents, Code, Projects', Format: 'Normal files (.md, .pdf, .py and so on)', Limit: 'Files over 200 KB are not read aloud', Readable: 'You, and JARVIS through its file tools', 'Leaves laptop?': 'No, unless you ask about them with a cloud AI' }],
+    ['Deleted files and old versions', { Location: '~/jarvis/.trash', Format: 'The original files, renamed with a timestamp', Limit: 'Kept until you empty it', Readable: 'Hidden from file tools', 'Leaves laptop?': 'No' }],
+    ['Backups', { Location: '~/jarvis/.backups', Format: 'JSON snapshots of app data', Limit: 'Newest 7 daily plus newest 10 safety copies', Readable: 'Hidden from file tools', 'Leaves laptop?': 'No. Exports can be sealed with AES-256-GCM.' }],
+    ['Search index', { Location: 'Memory only (RAM)', Format: 'BM25 index and optional embedding vectors', Limit: 'Rebuilt from files by a watcher', Readable: 'The server process', 'Leaves laptop?': 'No. Nothing is written to disk.' }],
+    ['Clipboard history and screenshots for vision', { Location: 'Memory only', Format: 'Last 30 text items; screenshots under a 2-minute single-use token', Limit: 'Forgotten when JARVIS restarts', Readable: 'The server process', 'Leaves laptop?': 'Screenshots only go to a vision model you asked to use' }],
+  ];
+  const sl = $('#storeList'), sd = $('#storeDetail');
+  STORE.forEach(([name, d], i) => {
+    const b = document.createElement('button'); b.textContent = name;
+    b.onclick = () => { sl.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); sd.innerHTML = ''; Object.entries(d).forEach(([k, v]) => { const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = k; dd.textContent = v; sd.append(dt, dd); }); };
+    sl.appendChild(b); if (!i) b.click();
+  });
+
+  /* Q&A */
+  const QA = [
+    ['Why not just use ChatGPT?', ['A cloud chatbot cannot open your apps, change your volume, read your local files with page numbers, or run your code. It also sends everything to a server. JARVIS acts on the laptop, and with Ollama it keeps every message on the laptop.']],
+    ['Where is the chat stored?', ['In one JSON file on the user\'s laptop: <code>~/jarvis/.jarvis-state.json</code>. The newest 80 messages are kept, plus a rolling summary. Nothing is stored in a cloud database.']],
+    ['What if the AI makes a mistake or a dangerous suggestion?', ['The AI only proposes a tool. The server checks the tool name, arguments and permission tier, and refuses anything outside the registry. Risky actions show a preview and wait for approval. Steps that cannot be verified are labelled "not checked".']],
+    ['Why use rules first instead of only AI?', ['Rules are instant, free, work offline and behave the same every time. A small local model is slow on a laptop GPU and can be wrong. Rules handle the common 178 commands; the AI handles the unusual ones.']],
+    ['How do you protect privacy?', ['The server listens only on 127.0.0.1 and accepts only its own page. Keys stay server-side. Audio is never recorded. With Ollama and neural voice off, only the browser\'s speech recognition uses the internet.']],
+    ['How did you test it?', ['30 automated suites: 373 command-coverage checks, 262 language checks, 259 paraphrase checks (0 confidently wrong), 265 end-to-end checks in a real headless browser, 174 API checks, 53 plan and recovery checks, and more. Tests run on an isolated copy so real data is never touched.']],
+    ['What was the hardest problem?', ['The wake word. Browsers pause speech recognition in background tabs and two recognisers fight for the microphone. It was solved with a Windows background listener and a generation counter that retires late recognisers.']],
+    ['Who is it for?', ['Students and developers who want one private assistant for study planning, notes, coding help and laptop control, in English, Telugu and Kannada.']],
+    ['What happens when a step fails?', ['JARVIS reads the real error output and works out why. Missing dependencies, a stale port held by its own earlier run, and compile errors in code it generated are fixed after you approve (one attempt; two for generated code), then the server is restarted and checked on its port. Other crashes get a one-line cause. Steps that depended on the failed one are skipped, and the card offers RETRY, CONTINUE and ROLLBACK.']],
+    ['Can it undo a whole task?', ['Yes, for the parts that can be reversed. Every action in a plan is tagged with its run ID, so "undo that task" or ROLLBACK reverses them newest first and lists what could not be undone. It is transaction-like, not a full transaction: a sent message cannot be unsent.']],
+    ['Does JARVIS install software?', ['No compilers, runtimes or extensions. The only thing it installs is a project\'s own dependencies, with the project\'s own command (npm install or pip install -r requirements.txt), and only after you click ALLOW.']],
+    ['How does it avoid doing things twice?', ['Before a plan runs it checks the current state: apps already open, servers it already started, a focus session already running. The preview shows "already running on port 5000 → keep", and those steps are kept instead of repeated.']],
+    ['What would you improve next?', ['Fully offline speech recognition, macOS and Linux support, and encrypted sync of the state file between devices.']],
+  ];
+  const qa = $('#qa');
+  QA.forEach(([q, a]) => {
+    const wrap = document.createElement('div'); wrap.className = 'qa';
+    const b = document.createElement('button'); b.textContent = q; b.setAttribute('aria-expanded', 'false');
+    const d = document.createElement('div'); d.innerHTML = a.map(x => '<p>' + x + '</p>').join('');
+    b.onclick = () => b.setAttribute('aria-expanded', b.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');
+    wrap.append(b, d); qa.appendChild(wrap);
+  });
+
+
+
+  const fromHash = () => { const h = /^#s(\d+)$/.exec(location.hash); go(h ? +h[1] - 1 : 0, false); };
+  addEventListener('hashchange', fromHash);
+  fromHash();
 })();
+
 </script>

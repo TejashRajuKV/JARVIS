@@ -85,7 +85,7 @@ const CASES = [
   [['CGPA_REPORT'], ['whats my cgpa', 'current cgpa', 'show my sgpa']],
   [['CREATE_FOLDER'], ['create folder called notes', 'make a folder named os', 'new folder os-lab']],
   [['GET_TIME'], ['what is the time', 'current time', 'time now']],
-  [['WEATHER'], ['weather today', 'how is the weather in hyderabad', 'will it rain tomorrow']],
+  [['WEATHER'], ['weather today', 'how is the weather in hyderabad', 'will it rain tomorrow', 'what is the weather in manali']],
 ];
 // Not requests: the wider hand-off to the AI planner must leave these with chat.
 const CHAT_ONLY = ['explain how browser tabs use memory', 'i go to the gym every day', 'what is volume in physics', 'my brightness is always low, why?', 'we have exams every year in may',

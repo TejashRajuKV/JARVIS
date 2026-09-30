@@ -187,6 +187,20 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     r = await post('/api/tool/stopProcess', { name: 'AgriLoop', which: 'backend' });
     check('Projects', 'stop the backend JARVIS started', r.json.success, r.json);
     check('Projects', 'invalid "which" is refused', (await post('/api/tool/startProcess', { name: 'AgriLoop', which: 'rm -rf' })).status === 400);
+    // A start that dies on a missing package is recognised as missing dependencies (→ the agent offers npm install);
+    // a missing *relative* file is a code bug and is not.
+    for (const [nm, req, want] of [['DepsGone', 'left-pad-nope', true], ['CodeBug', './routes/nope', false]]) {
+      fs.mkdirSync(path.join(S.home, 'projects', nm, 'backend'), { recursive: true });
+      fs.writeFileSync(path.join(S.home, 'projects', nm, 'backend', 'package.json'), JSON.stringify({ name: 'b', scripts: { start: 'node app.js' } }));
+      fs.writeFileSync(path.join(S.home, 'projects', nm, 'backend', 'app.js'), `require('${req}');`);
+      if (!want) fs.mkdirSync(path.join(S.home, 'projects', nm, 'backend', 'node_modules'));
+      r = await post('/api/tool/startProcess', { name: nm, which: 'backend' });
+      check('Projects', want ? 'a crash on a missing package is reported as missing dependencies (npm install)' : 'a missing relative module is not mistaken for missing dependencies',
+        r.json.success === false && (want ? r.json.missingDeps && r.json.missingDeps.command === 'npm install' && r.json.missingDeps.module === req : !r.json.missingDeps), r.json);
+    }
+    check('Projects', 'installDeps refuses an invalid "which"', (await post('/api/tool/installDeps', { name: 'DepsGone', which: 'x; rm' })).status === 400);
+    check('Projects', 'installDeps needs a known project', (await post('/api/tool/installDeps', { name: 'NoSuchProject', which: 'backend' })).status === 404);
+    check('Projects', 'processStatus of a project with nothing running says so', (await post('/api/tool/processStatus', { name: 'DepsGone', which: 'backend' })).json.found === false);
     check('Projects', 'checkPort validates the number', (await post('/api/tool/checkPort', { port: 99999 })).status === 400);
     check('Projects', 'checkPort answers for a real port', (await post('/api/tool/checkPort', { port: S.port })).status === 200);
     check('Projects', 'portOwner answers', (await post('/api/tool/portOwner', { port: S.port })).status === 200);

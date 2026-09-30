@@ -35,6 +35,8 @@ const FEATURES = [
   ['Memory', 'MISSES_LIST', ["what didn't you understand", 'show missed phrases']],
   ['Memory', 'WHY_ACTION', ['why did you do that', 'why was that permission needed']],
   ['Memory', 'AGENT_HISTORY', ['what did you just do', 'show my last runs']],
+  ['Memory', 'AGENT_INSPECT', ['inspect the last run', 'inspect agt-20260930-021', 'show run details']],
+  ['Laptop', 'UNDO_TASK', ['undo that task', 'undo the whole plan', 'roll back the last task', 'undo everything you just did']],
   // ---- laptop
   ['Laptop', 'OPEN_APPLICATION', ['open chrome', 'launch vs code', 'go to leetcode', 'Open the Smart India hackathon website', 'open sih website', 'open the official leetcode website']], ['Laptop', 'CLOSE_APPLICATION', ['close chrome', 'quit spotify']],
   ['Laptop', 'CONTEXT_CLOSE', ['close it', 'kill that']],

@@ -146,6 +146,71 @@ const check = (d, ok) => results.push([d, !!ok]);
   check('a crashed backend stops the frontend and browser', !executed.includes('START_PROCESS:frontend') && /skipped — step 3/.test(crash.text));
   await envRun({ text: 'no backend in this project', absent: true });
   check('a frontend-only project (no backend at all) still starts its frontend', executed.includes('START_PROCESS:frontend'));
+
+  // failure recovery: a backend that crashed on missing dependencies → ask → the project's own install → restart → verify
+  const baseTool = global.callTool, calls = [];
+  const devTools = (over = {}) => async (url, body) => {
+    calls.push(url);
+    if (url in over) return typeof over[url] === 'function' ? over[url](body) : over[url];
+    if (url === '/tool/installDeps') return { success: true, command: 'npm install', ms: 900 };
+    if (url === '/tool/startProcess') return { success: true, port: 5000 };
+    // a role counts as running once it was (re)started in this run
+    if (url === '/tool/processStatus') return (body.which === 'backend' ? calls.includes('/tool/installDeps') : executed.includes('START_PROCESS:' + body.which)) ? { found: true, alive: true, port: body.which === 'backend' ? 5000 : 5173, responding: true } : { found: false };
+    return baseTool(url, body);
+  };
+  const DEPS = { text: 'Could not start the backend for "AgriLoop"', startFailed: true, missingDeps: { tool: 'npm', command: 'npm install', module: 'express' }, project: 'AgriLoop', which: 'backend', tail: "Error: Cannot find module 'express'" };
+  calls.length = 0; said.length = 0; global.callTool = devTools();
+  const healed = await envRun(DEPS);
+  check('missing dependencies: the fix is explained and asked for', said.some(o => o.intent === 'AGENT_CONFIRM' && /npm install/.test(o.text) && /“express” isn’t installed/.test(o.text)));
+  check('…the install runs, then the backend is started again', calls.indexOf('/tool/installDeps') >= 0 && calls.lastIndexOf('/tool/startProcess') > calls.indexOf('/tool/installDeps'));
+  check('…the restarted server is verified as answering', /installed dependencies .*backend on port 5000 is answering/.test(healed.text));
+  check('…and the rest of the plan carries on, verified', /frontend is answering/.test(healed.text));
+  calls.length = 0; said.length = 0;
+  global.jarvisSay = o => { said.push(o); if (o.confirm) setTimeout(() => (o.intent === 'AGENT_CONFIRM' ? o.confirm.onCancel() : o.confirm.onConfirm()), 0); };
+  const declined = await envRun(DEPS);
+  check('declining the install runs nothing and says why the step failed', !calls.includes('/tool/installDeps') && /you declined `npm install`/.test(declined.text));
+  global.jarvisSay = o => { said.push(o); if (o.confirm) setTimeout(() => o.confirm.onConfirm(), 0); };
+  calls.length = 0; global.callTool = devTools({ '/tool/startProcess': { success: false, tail: 'MongooseServerSelectionError: connect ECONNREFUSED 127.0.0.1:27017' } });
+  const still = await envRun(DEPS);
+  check('a second, different failure is diagnosed, not retried in a loop', calls.filter(u => u === '/tool/installDeps').length === 1 && /can’t reach MongoDB/.test(still.text));
+  calls.length = 0;
+  const other = await envRun({ text: 'Could not start the backend', startFailed: true, project: 'AgriLoop', which: 'backend', tail: 'Error: uri parameter to openUri() must be a string, got undefined' });
+  check('an unrecognised-by-install crash gets a one-line cause, not just ✗', /backend crashed: a required setting looks missing/.test(other.text));
+
+  // state awareness: a backend already running is kept, not started twice
+  calls.length = 0; global.callTool = devTools({ '/tool/processStatus': b => b.which === 'backend' ? { found: true, alive: true, port: 5000, responding: true } : { found: false } });
+  said.length = 0;
+  const kept = await envRun({ text: 'should not be called' });
+  check('the preview says the running backend will be kept', said.some(o => o.intent === 'AGENT_PREVIEW' && /already running on port 5000 → keep/.test(o.text)));
+  check('…and it is not started again', !executed.includes('START_PROCESS:backend') && /already running — kept it/.test(kept.text));
+
+  // transactional choices on a failed plan: RETRY, CONTINUE (independent steps only), ROLLBACK (reversible changes only)
+  const { createUndo } = require(path.join(root, 'undo.js'));
+  global.Undo = createUndo(); global.runUndoTask = id => global.Undo.undoRun(id);
+  let rolledBack = 0;
+  global.executeTool = async p => {
+    if (p.intent === 'CREATE_FOLDER') { Undo.push('created folder dsa', () => { rolledBack++; return 'removed'; }); return { text: 'Created.', op: { kind: 'file', name: 'dsa' } }; }
+    if (p.intent === 'OPEN_IN_EDITOR') return { text: 'Could not open it.' };
+    return { text: 'Volume set to 30%.' };
+  };
+  world.files.push('dsa');
+  global.callTool = baseTool;
+  const tx = await Agent.execute({ goal: 'tx', steps: [
+    { id: 'step_1', intent: 'CREATE_FOLDER', args: { name: 'dsa' }, text: 'create a folder called dsa', tier: 'safe', check: 'file', label: 'Create folder dsa', needs: [] },
+    { id: 'step_2', intent: 'OPEN_IN_EDITOR', args: { name: 'dsa' }, text: 'open it in vs code', tier: 'safe', label: 'Open dsa in VS Code', needs: ['step_1'] },
+    { id: 'step_3', intent: 'READ_FILE', args: {}, text: 'open dsa/notes', tier: 'safe', label: 'Read notes', needs: ['step_2'] },
+    { id: 'step_4', intent: 'VOLUME_SET', args: { level: 30 }, text: 'set volume to 30', tier: 'safe', label: 'Set volume', needs: [] },
+  ] }, { source: 'planner', stopOnFail: true });
+  const act = l => (tx.actions || []).find(a => a.label.startsWith(l));
+  check('a failed plan offers RETRY, CONTINUE and ROLLBACK', act('RETRY') && act('CONTINUE') && act('ROLLBACK (1)'));
+  check('the card says what each choice means', /continue with the 1 step that don’t depend on it or roll back the 1 reversible change/.test(tx.text));
+  let cont = null; global.deliver = r => { cont = r; };
+  await act('CONTINUE').fn();
+  check('CONTINUE runs only the step that didn’t depend on the failure', cont && /Set volume/.test(cont.text) && !/Read notes/.test(cont.text));
+  await act('ROLLBACK').fn();
+  check('ROLLBACK reverses the run’s reversible change', rolledBack === 1);
+  global.deliver = () => {}; delete global.Undo; delete global.runUndoTask;
+  global.callTool = baseTool;
   global.executeTool = realExec;
 
   // the server's reminder check accepts what the reminder handler accepts — repeats too — and nothing vaguer

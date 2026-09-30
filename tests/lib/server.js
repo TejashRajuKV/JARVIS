@@ -12,8 +12,8 @@ const freePort = () => new Promise((resolve, reject) => {
   s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
 });
 
-async function startServer({ env = {}, keepHome = false } = {}) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-test-'));
+async function startServer({ env = {}, keepHome = false, home: reuseHome } = {}) {
+  const home = reuseHome || fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-test-'));
   const port = await freePort();
   const child = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     cwd: ROOT, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],

@@ -109,6 +109,27 @@ const Agent = (() => {
     if (r.error || !Array.isArray(r.checked) || !r.checked.includes(app)) return null;   // can't tell
     return r.running.includes(app);
   }
+  // A dev server JARVIS started: still alive, and answering HTTP on its port? A server that died right after
+  // "starting" is a failure; one that is alive but not answering yet is reported as unchecked, never as a ✓.
+  // A server that can't be asked (older server, mocked tool) keeps the old "running" note.
+  async function checkProcess(name, which, port) {
+    const label = port ? which + ' on port ' + port : which;
+    for (let i = 0; i < 3; i++) {
+      const st = await callTool('/tool/processStatus', { name, which });
+      if (!st || st.found === undefined) return { status: 'verified', note: port ? which + ' listening on port ' + port : which + ' running' };
+      if (!st.found || st.alive === false) return { status: 'failed', note: which + ' stopped right after starting' + (st.tail ? ': ' + lastLine(st.tail) : '') };
+      if (st.responding === true) return { status: 'verified', note: label + ' is answering' };
+      if (st.responding === null) return { status: 'unverified', note: which + ' running (no port to check)' };
+      await wait(1200);
+    }
+    return { status: 'unverified', note: which + ' running, but port ' + port + ' isn’t answering yet' };
+  }
+  // The most telling line of a process's output for a one-line note: the last line that names an error, else the
+  // last line that isn't stack-trace noise.
+  const lastLine = t => {
+    const L = String(t || '').split(/\r?\n/).map(x => x.trim()).filter(x => x && !/^at\s|^\^+$|^node:internal|^Node\.js v\d|^npm (?:ERR!|error) (?:A complete log|code|path|errno|syscall)/.test(x));
+    return (L.filter(x => /error|cannot|can't|failed|not found|denied|refused|missing|invalid/i.test(x)).pop() || L.pop() || '').slice(0, 160);
+  };
   // Before-state for checks that need it (open/close app).
   async function before(step) {
     if (step.check === 'app_started' || step.check === 'app_closed' || step.intent === 'OPEN_APPLICATION' || step.intent === 'CLOSE_APPLICATION') {
@@ -142,7 +163,7 @@ const Agent = (() => {
       if (op && op.kind === 'project') return { status: 'verified', note: 'found: ' + op.name };
       if (op && op.kind === 'attendance') return { status: 'verified', note: 'attendance saved for ' + op.subject };
       if (op && op.kind === 'marks') return { status: 'verified', note: 'result saved: ' + op.title };
-      if (op && op.kind === 'process') return { status: 'verified', note: op.port ? op.which + ' listening on port ' + op.port : op.which + ' running' };
+      if (op && op.kind === 'process') return checkProcess(op.name, op.which, op.port);
       if (op && op.kind === 'process_stopped') return { status: 'verified', note: op.which + ' stopped' };
       if (op && op.kind === 'browser_url') return { status: op.guessed ? 'unverified' : 'verified', note: 'opened ' + op.url };
       if (op && op.kind === 'toolchain_check') return { status: op.found ? 'verified' : 'failed', note: op.found ? op.label + ' found' : op.label + ' not found — I don’t install software myself; install it and try again' };
@@ -253,7 +274,7 @@ const Agent = (() => {
   // check get no note (never a guess).
   async function annotate(steps) {
     const appOf = s => (s.args && s.args.app) || (NLU.findApp(s.text || '') || {}).k;
-    const apps = [...new Set(steps.flatMap(s => /^(OPEN|CLOSE)_APPLICATION$/.test(s.intent) ? [appOf(s)] : s.intent === 'BLOCK_DISTRACTIONS' ? DISTRACTORS : []).filter(Boolean))];
+    const apps = [...new Set(steps.flatMap(s => /^(OPEN|CLOSE)_APPLICATION$/.test(s.intent) ? [appOf(s)] : s.intent === 'BLOCK_DISTRACTIONS' ? DISTRACTORS : s.intent === 'OPEN_IN_EDITOR' ? ['vscode'] : []).filter(Boolean))];
     const r = apps.length ? await callTool('/tool/runningApps', { apps }) : {};
     const checked = new Set(r.checked || []), running = new Set(r.running || []);
     const nm = k => (NLU.appByKey(k) || { n: k }).n;
@@ -264,6 +285,12 @@ const Agent = (() => {
       if (s.intent === 'BLOCK_DISTRACTIONS' && DISTRACTORS.every(d => checked.has(d))) {
         const on = DISTRACTORS.filter(d => running.has(d));
         s.state = on.length ? 'will close ' + on.map(nm).join(', ') : 'nothing open → skip';
+      }
+      if (s.intent === 'OPEN_IN_EDITOR' && checked.has('vscode') && running.has('vscode')) s.state = 'VS Code is already open → reuse it';
+      // A dev server JARVIS already started for this project: the step keeps it instead of starting a second copy.
+      if (s.intent === 'START_PROCESS' && s.args && s.args.name && s.args.which) {
+        const st = await callTool('/tool/processStatus', { name: s.args.name, which: s.args.which });
+        if (st && st.found && st.alive) s.state = 'already running' + (st.port ? ' on port ' + st.port : '') + ' → keep';
       }
       if (s.intent === 'FOCUS_START' && focus && focus.phase === 'focus') {
         const want = minutesOf(s);
@@ -292,21 +319,48 @@ const Agent = (() => {
     steps.forEach(s => { s.status = undefined; s.note = ''; s.ms_execute = undefined; s.ms_verify = undefined; });
     return execute({ goal: run.goal, steps }, { source: run.source, stopOnFail: true });
   }
+  // Steps a failure stopped that never needed the failed step, directly or through another stopped step — safe to
+  // run on their own ("continue anyway"). The failed step itself is left as it is.
+  function continuableSteps(run) {
+    const bad = new Set(run.steps.filter(s => ['failed', 'declined', 'blocked'].includes(s.status)).map(s => s.id));
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const s of run.steps) if (!bad.has(s.id) && s.status === 'notrun' && (s.needs || []).some(id => bad.has(id))) { bad.add(s.id); grew = true; }
+    }
+    return run.steps.filter(s => s.status === 'notrun' && !bad.has(s.id));
+  }
+  async function continueRun(run) {
+    const steps = continuableSteps(run);
+    if (!steps.length) return { text: 'Nothing left to continue with.', intent: 'AGENT_RUN', noPersona: true };
+    steps.forEach(s => { s.status = undefined; s.note = ''; s.ms_execute = undefined; s.ms_verify = undefined; });
+    return execute({ goal: run.goal, steps }, { source: run.source, stopOnFail: false });
+  }
   function finish(run) {
     run.total = Math.round(performance.now() - run.t0);
     run.done = true;
     const failed = run.steps.filter(s => s.status === 'failed').length, ok = run.steps.filter(s => s.status === 'verified' || s.status === 'unverified').length;
     const rec = { id: run.id, goal: run.goal, source: run.source, at: Date.now(), ms_route: run.ms_route, ms_plan: run.ms_plan || 0, total: run.total, cancelled: !!run.cancelled,
-      steps: run.steps.map(s => ({ id: s.id, tool: s.tool || s.intent, args: s.args, tier: s.tier, status: s.status || 'notrun', verified: s.status === 'verified', note: s.note || '', reason: s.reason || '', label: s.label, ms_execute: s.ms_execute ?? null, ms_verify: s.ms_verify ?? null })) };
+      steps: run.steps.map(s => ({ id: s.id, tool: s.tool || s.intent, args: s.args, tier: s.tier, status: s.status || 'notrun', verified: s.status === 'verified', note: s.note || '', reason: s.reason || '', label: s.label, ms_execute: s.ms_execute ?? null, ms_verify: s.ms_verify ?? null, asked: !!s.asked, undoable: s.undoable || 0 })) };
     saveRun(rec); logTree(run); bumpStat('agentRuns');
     const retryable = retryableSteps(run);
     const nVer = run.steps.filter(s => s.status === 'verified').length, nUn = run.steps.filter(s => s.status === 'unverified').length;
     const nSkip = run.steps.filter(s => ['notrun', 'skipped', 'declined', 'blocked'].includes(s.status)).length;
     const summary = run.steps.length > 1 ? '\n\n**' + nVer + ' of ' + run.steps.length + ' verified**' + (nUn ? ' · ' + nUn + ' sent but not checkable' : '') + (failed ? ' · ' + failed + ' failed' : '') + (nSkip ? ' · ' + nSkip + ' not run' : '') : (failed ? '\n\n1 step failed.' : '');
-    const tail = run.cancelled ? '\n\n*Task cancelled.*' : summary;
-    const actions = retryable.length ? [{ label: run.cancelled ? 'RESUME' : 'RETRY', fn: () => retryRun(run).then(res => deliver(res, { intent: 'AGENT_RUN', confidence: 1 })) }] : undefined;
+    // After a failure the run is left half-done, so offer the three honest ways out: retry what failed, continue with
+    // the steps that don't depend on it, or roll back what this run changed that can be reversed (not everything can).
+    const broken = failed || run.cancelled || run.steps.some(s => s.status === 'declined');
+    const continuable = broken && !run.cancelled ? continuableSteps(run) : [];
+    const reversible = broken && typeof Undo !== 'undefined' && Undo.countRun ? Undo.countRun(run.id) : 0;
+    const options = [retryable.length && 'retry what didn’t complete', continuable.length && 'continue with the ' + plural(continuable.length, 'step') + ' that don’t depend on it', reversible && 'roll back ' + (reversible === 1 ? 'the 1 reversible change' : 'the ' + reversible + ' reversible changes')].filter(Boolean);
+    const tail = (run.cancelled ? '\n\n*Task cancelled.*' : summary) + (options.length > 1 ? '\n*You can ' + options.slice(0, -1).join(', ') + ' or ' + options[options.length - 1] + '.*' : '');
+    const actions = [];
+    if (retryable.length) actions.push({ label: run.cancelled ? 'RESUME' : 'RETRY', fn: () => retryRun(run).then(res => deliver(res, { intent: 'AGENT_RUN', confidence: 1 })) });
+    if (continuable.length) actions.push({ label: 'CONTINUE', fn: () => continueRun(run).then(res => deliver(res, { intent: 'AGENT_RUN', confidence: 1 })) });
+    if (reversible && typeof runUndoTask === 'function') actions.push({ label: 'ROLLBACK (' + reversible + ')', fn: () => runUndoTask(run.id) });
+    if (run.steps.length > 1) actions.push({ label: 'INSPECT', fn: () => deliver(inspect(run.id), { intent: 'AGENT_INSPECT', confidence: 1 }) });
     return { text: render(run) + tail, speak: run.cancelled ? 'Task cancelled, ' + Persona.sir() + '.' : (failed ? 'Done, with ' + plural(failed, 'problem') + '. ' : 'All done, ' + Persona.sir() + '. ') + plural(ok, 'step') + ' completed.',
-      intent: 'AGENT_RUN', tool: 'agent', meta: 'AGENT · ' + run.id + ' · ' + (run.ms_plan ? 'plan ' + (run.ms_plan / 1000).toFixed(1) + 's · ' : '') + 'total ' + (run.total / 1000).toFixed(1) + 's', noPersona: true, actions };
+      intent: 'AGENT_RUN', tool: 'agent', meta: 'AGENT · ' + run.id + ' · ' + (run.ms_plan ? 'plan ' + (run.ms_plan / 1000).toFixed(1) + 's · ' : '') + 'total ' + (run.total / 1000).toFixed(1) + 's', noPersona: true, actions: actions.length ? actions : undefined };
   }
   // A card asking to allow one step (confirm / explicit tier). Resolves true / false.
   // idx: explicit step number for a virtual step built for failure recovery (not itself in run.steps).
@@ -343,8 +397,70 @@ const Agent = (() => {
     await wait(600);
     log('agent', 'recovery: restarting the ' + which + '…');
     const retry = await callTool('/tool/startProcess', { name: project, which });
-    if (retry.success) return { ok: true, note: (retry.port ? which + ' restarted on port ' + retry.port : which + ' restarted') + ' after closing the stale process' };
+    if (retry.success) { if (!retry.existed) trackStarted(run, s, project, which); return { ok: true, note: (retry.port ? which + ' restarted on port ' + retry.port : which + ' restarted') + ' after closing the stale process' }; }
     return { ok: false, note: 'closed the previous process, but the ' + which + ' failed again' + (retry.tail ? ': ' + retry.tail.trim().slice(-200) : '') };
+  }
+  // Pause the run's "busy" state while a permission card is up (same dance as runStep's own permission gate).
+  async function askPaused(run, s, idx) {
+    busy = false; idleState();
+    const ok = await ask(run, s, idx);
+    if (busy) await new Promise(r => { const t = setInterval(() => { if (!busy) { clearInterval(t); r(); } }, 50); });
+    busy = true;
+    return ok;
+  }
+  // A server JARVIS (re)started during recovery is filed under the run like any other step's action, so the
+  // plan's ROLLBACK / "undo that task" stops it again.
+  function trackStarted(run, s, project, which) {
+    if (typeof Undo === 'undefined' || !Undo.setRun) return;
+    Undo.setRun(run.id);
+    Undo.push('started the ' + which + ' for ' + project, async () => { const x = await callTool('/tool/stopProcess', { name: project, which }); if (x.error) throw new Error(x.error); return 'Stopped the ' + which + ' for `' + project + '`.'; });
+    Undo.setRun(null);
+    s.undoable = (s.undoable || 0) + 1;
+  }
+  // Why a dev server crashed on start, in one line: the common causes are recognised from the output itself;
+  // anything else goes to the local AI for a one-sentence diagnosis (shown, never acted on), else the error line.
+  const START_CAUSES = [
+    [/EACCES|permission denied|EPERM/i, 'permission denied'],
+    [/MongoNetworkError|MongooseServerSelectionError|ECONNREFUSED[^\n]*27017/i, 'it can’t reach MongoDB — is the database running?'],
+    [/ECONNREFUSED[^\n]*(?:5432|3306)/i, 'it can’t reach its database — is the database running?'],
+    [/(?:MONGO_?URI|DATABASE_URL|API_KEY|SECRET|\.env)\b[^\n]*(?:undefined|missing|not (?:set|defined))|(?:undefined|missing|not (?:set|defined))[^\n]*(?:MONGO_?URI|DATABASE_URL|API_KEY|SECRET|\.env)\b|uri parameter[^\n]*must be a string/i, 'a required setting looks missing — check the project’s .env file'],
+    [/SyntaxError/, 'there’s a syntax error in the code'],
+    [/Missing script/i, 'package.json has no matching start script'],
+  ];
+  async function diagnoseStart(which, tail) {
+    const line = lastLine(tail);
+    const known = START_CAUSES.find(([re]) => re.test(tail || ''));
+    if (known) return which + ' crashed: ' + known[1] + (line ? ' (' + line + ')' : '');
+    if (tail && typeof llmReady === 'function' && llmReady() && typeof askLLM === 'function') {
+      try {
+        const ai = await askLLM('A development server (' + which + ') crashed on start. Output:\n```text\n' + String(tail).slice(-1500) + '\n```\nIn ONE short sentence, what is the most likely cause? No code.', { noTools: true });
+        const why = ai && String(ai.text || '').split(/```/)[0].trim().split('\n')[0].slice(0, 200);
+        if (why) return which + ' crashed — likely cause: ' + why + (line ? ' (' + line + ')' : '');
+      } catch (e) { /* fall back to the error line */ }
+    }
+    return which + ' crashed' + (line ? ': ' + line : '');
+  }
+  // A backend/frontend died because its dependencies were never installed (the server recognised it from the
+  // output: no node_modules, "Cannot find module 'express'", "No module named flask"). Explain it, ask once, run the
+  // project's OWN install command (never anything the AI made up), restart, then verify the server answers.
+  // Bounded to one attempt: a second failure is diagnosed and reported, not retried.
+  async function attemptDepsRecovery(run, s, info) {
+    const { project, which } = info, d = info.missingDeps;
+    const cause = d.module ? '“' + d.module + '” isn’t installed' : 'its dependencies aren’t installed';
+    log('agent', 'recovery: ' + which + ' for ' + project + ' failed — ' + cause + '; proposing `' + d.command + '`');
+    if (run.unattended) return { ok: false, note: which + ' failed: ' + cause + ' — run `' + d.command + '` in it' };
+    const ok = await askPaused(run, { tier: 'confirm', label: 'Install ' + project + '’s ' + which + ' dependencies (' + d.command + ') and restart it',
+      reason: 'The ' + which + ' crashed because ' + cause + '. This runs the project’s own `' + d.command + '` (it can take a few minutes), then starts the ' + which + ' again.' }, run.steps.indexOf(s));
+    if (!ok) return { ok: false, note: which + ' failed: ' + cause + '; you declined `' + d.command + '`' };
+    setState('EXECUTING', run.id + ' → ' + d.command);
+    const inst = await callTool('/tool/installDeps', { name: project, which });
+    if (!inst.success) return { ok: false, note: '`' + d.command + '` failed' + (inst.timedOut ? ' (timed out after 5 minutes)' : '') + ': ' + (lastLine(inst.tail) || inst.error || 'no output') };
+    log('agent', 'recovery: dependencies installed in ' + ((inst.ms || 0) / 1000).toFixed(0) + 's — restarting the ' + which + '…');
+    const retry = await callTool('/tool/startProcess', { name: project, which });
+    if (!retry.success) return { ok: false, note: 'installed dependencies, but the ' + which + ' still ' + (retry.portInUse ? 'can’t start: port ' + (retry.port || '?') + ' is in use' : (await diagnoseStart(which, retry.tail)).replace(which + ' ', '')) };
+    if (!retry.existed) trackStarted(run, s, project, which);
+    const v = await checkProcess(project, which, retry.port);
+    return { status: v.status, ok: v.status !== 'failed', note: 'installed dependencies (`' + d.command + '`), restarted · ' + v.note };
   }
   // A program createProject just generated failed to compile or exited with an error. Feed the real compiler/
   // runtime output back to the local AI, show the diagnosis and the proposed fix (same transparency as showing
@@ -393,11 +509,20 @@ const Agent = (() => {
     // State first: closing an app that isn't running is already done — no permission prompt, no "failed".
     const pre = s.tier === 'nested' || s.tier === 'unknown' ? null : await before(s);
     if (s.intent === 'CLOSE_APPLICATION' && pre && pre.running === false) { s.status = 'verified'; s.note = (NLU.appByKey(pre.app) || { n: pre.app }).n + ' was already closed — nothing to do'; return; }
+    // Same for a dev server that is already running: keep it (and check it still answers) — no prompt, no second copy.
+    if (s.intent === 'START_PROCESS' && s.args && s.args.name && s.args.which) {
+      const st = await callTool('/tool/processStatus', { name: s.args.name, which: s.args.which });
+      if (st && st.found && st.alive) {
+        const v = await checkProcess(s.args.name, s.args.which, st.port);
+        if (v.status !== 'failed') { s.status = v.status; s.note = 'already running — kept it · ' + v.note; return; }
+      }
+    }
     if (run.unattended && s.tier !== 'safe') { s.status = 'skipped'; s.note = s.tier === 'nested' ? 'routines can’t run inside a routine' : 'needs your permission — run it by itself'; return; }
     if (s.tier === 'nested' || s.tier === 'unknown') { s.status = 'blocked'; s.note = s.reason; return; }
     if (s.tier === 'explicit' || (s.tier === 'confirm' && !run.previewAccepted)) {
       if (!approved) {
         busy = false; idleState();
+        s.asked = true;
         const ok = await ask(run, s);
         if (busy) await new Promise(r => { const t = setInterval(() => { if (!busy) { clearInterval(t); r(); } }, 50); });
         busy = true;
@@ -406,12 +531,18 @@ const Agent = (() => {
     }
     setState('EXECUTING', run.id + ' → ' + s.label);
     const t0 = performance.now();
-    let res;
-    try { res = await executeTool({ intent: s.intent, args: s.args, text: s.text, original: s.original || s.text, confidence: s.confidence || .95, tool: s.tool, viaAgent: true }, s.text); }
-    catch (e) { res = { text: 'failed: ' + e.message }; }
-    s.ms_execute = Math.round(performance.now() - t0);
-    const one = Array.isArray(res) ? res[0] : res;
-    if (one && one.confirm && typeof one.confirm.onConfirm === 'function') { try { await one.confirm.onConfirm(); } catch (e) { /* reported by the handler */ } }
+    let res, one;
+    // Everything this step can undo is filed under this run, so "undo that task" can reverse the whole plan.
+    const hasUndo = typeof Undo !== 'undefined' && !!Undo.setRun;
+    const u0 = hasUndo ? Undo.countRun(run.id) : 0;
+    if (hasUndo) Undo.setRun(run.id);
+    try {
+      try { res = await executeTool({ intent: s.intent, args: s.args, text: s.text, original: s.original || s.text, confidence: s.confidence || .95, tool: s.tool, viaAgent: true }, s.text); }
+      catch (e) { res = { text: 'failed: ' + e.message }; }
+      s.ms_execute = Math.round(performance.now() - t0);
+      one = Array.isArray(res) ? res[0] : res;
+      if (one && one.confirm && typeof one.confirm.onConfirm === 'function') { try { await one.confirm.onConfirm(); } catch (e) { /* reported by the handler */ } }
+    } finally { if (hasUndo) { Undo.setRun(null); s.undoable = Undo.countRun(run.id) - u0; } }
     if (one && one.askLLM) { s.status = 'skipped'; s.note = 'needs the AI — ask it by itself'; return; }
     if (one && one.absent) { s.status = 'skipped'; s.note = one.text; return; }
     if (one && one.portInUse) {
@@ -419,6 +550,13 @@ const Agent = (() => {
       s.status = rec.ok ? 'verified' : 'failed'; s.note = rec.note;
       return;
     }
+    if (one && one.missingDeps) {
+      const rec = await attemptDepsRecovery(run, s, one);
+      s.status = rec.status || (rec.ok ? 'verified' : 'failed'); s.note = rec.note;
+      return;
+    }
+    // Any other crash on start: not fixed automatically, but never just "✗" either — say what went wrong.
+    if (one && one.startFailed) { s.status = 'failed'; s.note = await diagnoseStart(one.which, one.tail); return; }
     // A compiled/run program that failed or exited non-zero is a real failure, not just "unverified" — otherwise
     // stopOnFail never triggers and later steps (e.g. opening the editor) proceed on a broken result.
     if (s.intent === 'RUN_FILE' && one && one.text) {
@@ -461,7 +599,7 @@ const Agent = (() => {
     if (!run.unattended && ((run.source === 'planner' && (run.steps.length >= 2 || risky)) || (run.source === 'split' && run.steps.length >= 2 && risky))) {
       try { await annotate(run.steps); } catch (e) { /* preview without state notes */ }
       busy = false; idleState();
-      const go = await new Promise(resolve => jarvisSay({ text: '**Plan: ' + (run.goal || 'your request') + '** · `' + run.id + '`\n' + run.steps.map((s, i) => (i + 1) + '. ' + (s.tier === 'safe' || /→ skip$/.test(s.state || '') ? '✓ ' : '⚠ ') + s.label + (s.state ? ' — *' + s.state + '*' : s.tier !== 'safe' ? ' — *' + s.reason + '*' : '') + (s.needs && s.needs.length ? ' *(after step ' + s.needs.map(id => run.steps.findIndex(x => x.id === id) + 1).join(', ') + ')*' : '')).join('\n')
+      const go = await new Promise(resolve => jarvisSay({ text: '**Plan: ' + (run.goal || 'your request') + '** · `' + run.id + '`\n' + run.steps.map((s, i) => (i + 1) + '. ' + (s.tier === 'safe' || /→ (?:skip|keep)$/.test(s.state || '') ? '✓ ' : '⚠ ') + s.label + (s.state ? ' — *' + s.state + '*' : s.tier !== 'safe' ? ' — *' + s.reason + '*' : '') + (s.needs && s.needs.length ? ' *(after step ' + s.needs.map(id => run.steps.findIndex(x => x.id === id) + 1).join(', ') + ')*' : '')).join('\n')
           + (run.notes.length ? '\n\n*Plan: ' + run.notes.join('; ') + '.*' : '') + (risky ? '\n\n*⚠ needs your permission — one EXECUTE approves them all.*' : '') + '\n\n*No changes have been made yet.*',
         intent: 'AGENT_PREVIEW', noPersona: true, confirm: { yes: 'EXECUTE', no: 'CANCEL', onConfirm: () => resolve(true), onCancel: () => resolve(false) } }));
       if (busy) await new Promise(r => { const t = setInterval(() => { if (!busy) { clearInterval(t); r(); } }, 50); });
@@ -948,6 +1086,41 @@ const Agent = (() => {
     const app = (NLU.findApp((p.args && p.args.app) || p.text || '') || {}).k;
     return app ? appState(app).then(running => ({ app, running })) : null;
   }
+  /* ---------- execution inspector ---------- */
+  // One stored run as a readable card: goal, timings, validation, permissions, every step, verification, undo.
+  // Built only from what was recorded when the run happened (saveRun), never from a fresh AI guess.
+  const fmtMs = ms => ms == null ? '–' : ms < 1000 ? Math.round(ms) + ' ms' : (ms / 1000).toFixed(2) + ' s';
+  function formatRun(rec) {
+    const st = rec.steps || [], n = k => st.filter(s => s.status === k).length;
+    const ver = n('verified'), un = n('unverified'), fail = n('failed'), decl = n('declined');
+    const refused = st.filter(s => s.tier === 'unknown' || s.tier === 'nested').length;
+    const notRun = n('notrun') + n('skipped') + n('blocked');
+    const tier = t => st.filter(s => s.tier === t).length, asked = st.filter(s => s.asked).length;
+    const undoable = st.reduce((a, s) => a + (s.undoable || 0), 0);
+    const status = rec.cancelled ? 'CANCELLED' : fail ? (ver + un ? 'PARTIAL' : 'FAILED') : (decl || notRun) ? 'PARTIAL' : 'COMPLETED';
+    const bar = '━'.repeat(34), row = (k, v) => (k + ' '.repeat(13)).slice(0, 13) + v;
+    const L = [bar, 'EXECUTION ' + rec.id, bar, '',
+      row('Goal', rec.goal || '(no goal text)'), row('Source', rec.source || '–'),
+      row('Route', fmtMs(rec.ms_route)) + (rec.ms_plan ? '   Planner ' + fmtMs(rec.ms_plan) : ''), '',
+      'Validation', '  ' + (refused ? '⚠ ' + (st.length - refused) + '/' + st.length + ' tools valid, ' + refused + ' refused' : '✓ ' + st.length + '/' + st.length + ' tools valid'), '',
+      'Permissions', '  ' + tier('safe') + ' safe · ' + tier('confirm') + ' confirmation · ' + tier('explicit') + ' explicit' + (asked ? ' · asked ' + asked + (decl ? ', declined ' + decl : ', all allowed') : ''), '',
+      'Execution'];
+    st.forEach((s, i) => L.push('  ' + (i + 1) + '. ' + (ICON[s.status || 'notrun'] || '·') + ' ' + String(s.label || s.tool).slice(0, 44) + '  (' + fmtMs(s.ms_execute) + (s.ms_verify != null ? ' + ' + fmtMs(s.ms_verify) + ' check' : '') + ')' + (s.note ? '\n       ' + String(s.note).slice(0, 70) : '')));
+    L.push('', 'Verification', '  ' + ver + ' verified' + (un ? ' · ' + un + ' sent, not checkable' : '') + (fail ? ' · ' + fail + ' failed' : '') + (notRun ? ' · ' + notRun + ' not run' : ''), '',
+      'Undo', '  ' + (undoable ? undoable + ' reversible action' + (undoable === 1 ? '' : 's') + ' (say "undo that task")' : 'nothing to reverse'), '',
+      row('Total', fmtMs(rec.total)), '', 'STATUS: ' + status, bar);
+    return '```text\n' + L.join('\n') + '\n```';
+  }
+  // id: a run id (any case), or empty for the most recent run.
+  function inspect(id) {
+    const runs = store.get(RUNS_KEY, []);
+    const want = String(id || '').toUpperCase();
+    const rec = want ? runs.find(r => r.id === want) : runs[runs.length - 1];
+    if (!rec) return { text: want ? 'I have no record of run ' + want + '. Say "show my last runs" to see the recent ones.' : 'I haven’t run any multi-step plans yet, so there is nothing to inspect.', noPersona: true };
+    const canUndo = typeof Undo !== 'undefined' && !!Undo.countRun && Undo.countRun(rec.id) > 0;
+    return { text: formatRun(rec), noPersona: true, tool: 'agentInspect',
+      actions: canUndo ? [{ label: 'UNDO THIS TASK', fn: () => runUndoTask(rec.id) }] : undefined };
+  }
   function history() {
     const runs = lastRuns(3);
     if (!runs.length) return { text: 'I haven’t run any multi-step plans yet.' };
@@ -955,7 +1128,7 @@ const Agent = (() => {
   }
 
   registry();
-  return { route, parts, optimize, splitGoal, annotate, DISTRACTORS, isAction, wantsAction, isQuestion, execute, handleMulti, plan, chatTool, runUnattended, watchSingle, preSingle, history, registry, tierFor, lastRuns, envGoal, prepareEnvironment,
+  return { route, parts, optimize, splitGoal, annotate, DISTRACTORS, isAction, wantsAction, isQuestion, execute, handleMulti, plan, chatTool, runUnattended, watchSingle, preSingle, history, formatRun, inspect, registry, tierFor, lastRuns, envGoal, prepareEnvironment,
     learnedMatch, learnSave, runLearned, learnedSummary, forgetAllLearned, learnedCount, recordMiss, missList, forgetMiss, aliasMatch, teach, learnGoal, learnLanguage,
     createProjectGoal, createProject, explainLastAction, LEARN_LANG_MAP,
     designPromptGoal, buildTcreiPrompt, DESIGN_PROMPT_QUESTIONS, DESIGN_PROMPT_STEPS,

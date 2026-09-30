@@ -248,7 +248,53 @@ for (const t of ['create a project', 'create a new folder called notes', 'what i
   const whyNamed = Agent.explainLastAction('why did you close chrome');
   SAFETY.push(['explainLastAction: named step uses its real stored reason', whyNamed, r => /unsaved work in it may be lost/.test(r.text)]);
 }
+// formatRun / inspect: the inspector card is built only from the stored run record.
+{
+  const rec = (over) => Object.assign({ id: 'AGT-20260930-021', goal: 'Prepare DemoApp environment', source: 'planner', ms_route: 12, ms_plan: 1800, total: 4820, cancelled: false, steps: [
+    { id: 'step_1', tool: 'locate_project', label: 'Locate DemoApp', tier: 'safe', status: 'verified', ms_execute: 40, ms_verify: 5, note: 'found D:/DemoApp', asked: false, undoable: 0 },
+    { id: 'step_2', tool: 'create_folder', label: 'Create folder notes', tier: 'confirm', status: 'verified', ms_execute: 120, ms_verify: 8, note: '', asked: true, undoable: 1 },
+    { id: 'step_3', tool: 'start_backend', label: 'Start the backend', tier: 'confirm', status: 'verified', ms_execute: 2400, ms_verify: 900, note: 'responding on :5000', asked: true, undoable: 0 },
+  ] }, over || {});
+  const good = Agent.formatRun(rec());
+  SAFETY.push(['formatRun: header, goal and id', { s: good }, x => /EXECUTION AGT-20260930-021/.test(x.s) && /Prepare DemoApp environment/.test(x.s)]);
+  SAFETY.push(['formatRun: timings shown (route, planner, total, per step)', { s: good }, x => /12 ms/.test(x.s) && /Planner 1\.80 s/.test(x.s) && /Total\s+4\.82 s/.test(x.s) && /2\.40 s \+ 900 ms check/.test(x.s)]);
+  SAFETY.push(['formatRun: validation and permissions counted from the tiers', { s: good }, x => /3\/3 tools valid/.test(x.s) && /1 safe · 2 confirmation · 0 explicit · asked 2, all allowed/.test(x.s)]);
+  SAFETY.push(['formatRun: verification and undo summary', { s: good }, x => /3 verified/.test(x.s) && /1 reversible action \(say "undo that task"\)/.test(x.s)]);
+  SAFETY.push(['formatRun: a fully verified run is COMPLETED', { s: good }, x => /STATUS: COMPLETED/.test(x.s)]);
+  const failed = Agent.formatRun(rec({ steps: rec().steps.map((s, i) => i === 2 ? Object.assign({}, s, { status: 'failed', note: 'port 5000 already in use' }) : s) }));
+  SAFETY.push(['formatRun: a failed step among successes is PARTIAL and shows its reason', { s: failed }, x => /STATUS: PARTIAL/.test(x.s) && /✗ Start the backend/.test(x.s) && /port 5000 already in use/.test(x.s) && /1 failed/.test(x.s)]);
+  const allFail = Agent.formatRun(rec({ steps: rec().steps.map(s => Object.assign({}, s, { status: 'failed' })) }));
+  SAFETY.push(['formatRun: every step failed is FAILED', { s: allFail }, x => /STATUS: FAILED/.test(x.s)]);
+  const cancelled = Agent.formatRun(rec({ cancelled: true, steps: rec().steps.map((s, i) => i ? Object.assign({}, s, { status: 'notrun' }) : s) }));
+  SAFETY.push(['formatRun: a cancelled run says CANCELLED and counts the steps not run', { s: cancelled }, x => /STATUS: CANCELLED/.test(x.s) && /2 not run/.test(x.s)]);
+  const declined = Agent.formatRun(rec({ steps: rec().steps.map((s, i) => i === 1 ? Object.assign({}, s, { status: 'declined', note: 'you cancelled it' }) : s) }));
+  SAFETY.push(['formatRun: a declined permission is shown and the run is PARTIAL', { s: declined }, x => /declined 1/.test(x.s) && /STATUS: PARTIAL/.test(x.s)]);
+  const refused = Agent.formatRun(rec({ steps: rec().steps.concat([{ id: 'step_4', tool: 'x', label: 'Invented tool', tier: 'unknown', status: 'blocked', note: 'not a tool', ms_execute: null }]) }));
+  SAFETY.push(['formatRun: a refused (unknown) tool shows in validation', { s: refused }, x => /3\/4 tools valid, 1 refused/.test(x.s)]);
+  store.set('jarvis.agentRuns', [rec({ id: 'AGT-20260930-020' }), rec()]);
+  SAFETY.push(['inspect: no id shows the newest run', Agent.inspect(''), r => /AGT-20260930-021/.test(r.text)]);
+  SAFETY.push(['inspect: a named run (any case)', Agent.inspect('agt-20260930-020'), r => /AGT-20260930-020/.test(r.text)]);
+  SAFETY.push(['inspect: an unknown id is said plainly', Agent.inspect('AGT-20200101-001'), r => /no record of run AGT-20200101-001/.test(r.text)]);
+  store.set('jarvis.agentRuns', []);
+  SAFETY.push(['inspect: nothing run yet', Agent.inspect(''), r => /nothing to inspect/.test(r.text)]);
+}
 (async () => {
+  // A plan run files the undo entries of its steps under the run, and records how many each step made.
+  {
+    const { createUndo } = require(path.join(root, 'undo.js'));
+    global.Undo = createUndo();
+    global.deliver = async () => {};
+    const steps = [1, 2].map(n => ({ id: 'step_' + n, tool: 'add_todo', intent: 'ADD_TODO', args: { text: 'u' + n }, text: 'add u' + n, tier: 'safe', reason: '', check: null, label: 'Add u' + n }));
+    global.todos = [{ id: 'x' }];
+    global.executeTool = async (p) => { if (p.args.text === 'u1') global.Undo.push('added u1', () => 'removed u1'); return { op: { kind: 'todo', id: 'x' } }; };
+    const res = await Agent.execute({ goal: 'undo tagging', steps }, { source: 'planner', ms_route: 0 });
+    const rec = Agent.lastRuns(1)[0];
+    SAFETY.push(['execute: the run record notes which steps made a reversible action', { rec }, x => x.rec.steps[0].undoable === 1 && x.rec.steps[1].undoable === 0]);
+    SAFETY.push(['execute: those actions are filed under the run id', { n: global.Undo.countRun(rec.id) }, x => x.n === 1]);
+    SAFETY.push(['execute: a multi-step run offers INSPECT', { a: (res.actions || []).map(a => a.label) }, x => x.a.includes('INSPECT')]);
+    SAFETY.push(['execute: nothing stays tagged after the run', { s: (global.Undo.push('later', () => 1), global.Undo.countRun(rec.id)) }, x => x.s === 1]);
+    delete global.Undo;
+  }
   // Mid-task cancellation: click the cancel-offer action right after execution starts — steps not yet
   // reached must show as not run, and the run must say so plainly (not look like a normal failure).
   {

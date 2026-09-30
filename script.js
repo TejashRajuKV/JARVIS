@@ -35,10 +35,12 @@ function fmtDay(d) {
 // /api/state.js runs before this script and provides a snapshot, so reads stay synchronous; writes update the
 // snapshot and go to the server in small batches. Values are kept as JSON strings so get() returns a fresh
 // copy, exactly like localStorage did. If the snapshot didn't load, this falls back to plain localStorage.
+const TAB_ID = Math.random().toString(36).slice(2, 10);   // tells the server (and other tabs) which tab wrote a change
 const store = (() => {
   const local = {
     get(k, f) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : f; } catch (e) { return f; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+    adopt() { return false; },
     clear() {},
   };
   if (!window.JARVIS_STATE) return local;
@@ -49,7 +51,7 @@ const store = (() => {
     clearTimeout(timer); timer = null;
     const keys = Object.keys(pending);
     if (!keys.length) return;
-    const body = '{"set":{' + keys.map(k => JSON.stringify(k) + ':' + (pending[k] === null ? 'null' : pending[k])).join(',') + '}}';
+    const body = '{"src":' + JSON.stringify(TAB_ID) + ',"set":{' + keys.map(k => JSON.stringify(k) + ':' + (pending[k] === null ? 'null' : pending[k])).join(',') + '}}';
     keys.forEach(k => delete pending[k]);
     if (beacon && navigator.sendBeacon && body.length < 60000) navigator.sendBeacon('api/state', new Blob([body], { type: 'application/json' }));
     else fetch('api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: body.length < 60000 })
@@ -81,6 +83,8 @@ const store = (() => {
   return {
     get(k, f) { return cache[k] === undefined ? f : JSON.parse(cache[k]); },
     set(k, v) { const s = JSON.stringify(v); if (s === undefined) return; cache[k] = pending[k] = s; queue(); },
+    // A change made in another tab (server push): take it without writing it back. Skipped while this tab has an unsent change of its own.
+    adopt(k, v) { if (k in pending) return false; cache[k] = JSON.stringify(v); return true; },
     clear(helloToken) {
       return fetch('api/state', { method: 'DELETE', headers: helloToken ? { 'X-Hello-Token': helloToken } : {} }).then(r => {
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -138,6 +142,28 @@ async function runUndo(say = true) {
   const text = !r ? 'There’s nothing I can undo right now. (I can undo deletes, file moves and renames, a cleared chat, volume, brightness and dark mode for 30 minutes; shutdowns, sent messages and commits can’t be undone.)'
     : r.error ? 'I couldn’t undo **' + r.label + '**: ' + r.error + '.' : '↶ Undone: ' + (r.msg || r.label);
   if (say) jarvisSay({ text, intent: 'UNDO', tool: 'undo' });
+  return text;
+}
+// "Undo that task": reverse every reversible action of one multi-step plan, newest first, and say plainly what was
+// reversed, what couldn't be, and which steps have nothing to reverse (a started server, an opened editor).
+async function runUndoTask(id, say = true) {
+  // "That task" is the plan that ran last. Once it is undone (or expired) asking again does NOT reach back to an
+  // older plan by surprise; name it ("undo AGT-…") to go further back.
+  const target = id || (Agent.lastRuns(1)[0] || {}).id;
+  const r = target ? await Undo.undoRun(target) : null;
+  let text;
+  if (!r) text = target
+    ? 'There’s no whole plan I can undo right now: `' + target + '` has nothing left to reverse (already undone, more than 30 minutes ago, or it had no reversible steps). For an older plan, name it: “undo AGT-…”; plain “undo” takes back one single action.'
+    : 'There’s no whole plan I can undo right now. I can reverse a multi-step plan for 30 minutes after it ran; plain “undo” takes back just the last single action.';
+  else {
+    const rec = (Agent.lastRuns(50) || []).find(x => x.id === r.id);
+    const notTracked = rec ? rec.steps.filter(s => (s.status === 'verified' || s.status === 'unverified') && !s.undoable).map(s => s.label) : [];
+    const lines = r.done.map(d => '- ↶ ' + (d.msg || d.label)).concat(r.failed.map(f => '- ✗ Couldn’t undo **' + f.label + '**: ' + f.error));
+    text = '**Undid ' + plural(r.done.length, 'step') + '** of `' + r.id + '`' + (r.failed.length ? ' · ' + r.failed.length + ' couldn’t be undone' : '') + '\n' + lines.join('\n')
+      + (r.expired ? '\n\n' + plural(r.expired, 'step') + ' happened more than 30 minutes ago, so I can’t undo ' + (r.expired === 1 ? 'it' : 'them') + '.' : '')
+      + (notTracked.length ? '\n\nNothing to reverse for: ' + notTracked.join(', ') + '. (Opened editors, and servers that were already running, are left alone; close them yourself if you want.)' : '');
+  }
+  if (say) jarvisSay({ text, intent: 'UNDO', tool: 'undo', noPersona: true });
   return text;
 }
 function memDel(id) { undoRemoved('deleted memory', () => memory, v => { memory = v; }, () => { store.set('jarvis.memory', memory); renderMemory(); }, removedFrom(memory, m => m.id !== id)); memory = memory.filter(m => m.id !== id); store.set('jarvis.memory', memory); renderMemory(); }
@@ -1116,6 +1142,18 @@ if (serverScheduler && 'EventSource' in window) {
     log('ok', 'reminder fired: ' + ev.text);
     jarvisSay({ text: '⏰ ' + Persona.Sir() + ', you asked me to remind you: **' + ev.text + '**.', speak: Persona.Sir() + ', you asked me to remind you: ' + ev.text.replace(/\s—\shttps?:\/\/\S+/, ''), intent: 'REMINDER', tool: 'remind' });
   });
+  // The chat was changed in another tab of this same JARVIS: show it here too (never written back, so tabs can't ping-pong).
+  // Waits for a reply in progress to finish, so a half-typed answer isn't wiped.
+  events.addEventListener('state', e => {
+    const ev = JSON.parse(e.data);
+    if (ev.key !== 'jarvis.chat' || ev.src === TAB_ID || !Array.isArray(ev.value)) return;
+    const apply = () => {
+      if (busy || pumping || replyQ.length) return setTimeout(apply, 1000);
+      if (!store.adopt('jarvis.chat', ev.value)) return;
+      chatLog = store.get('jarvis.chat', []); restoreChat();
+    };
+    apply();
+  });
   // Ctrl+Shift+J pressed in another app: the selected text arrives here (see hotkey.js).
   events.addEventListener('hotkey', e => {
     const ev = JSON.parse(e.data);
@@ -2070,10 +2108,24 @@ async function executeTool(p, raw) {
     case 'WEATHER': {
       if (!settings.online) return { text: 'Weather needs the internet, and Online tools are switched off. Enable them?', actions: enableOnlineAction() };
       let city = a.city || ((s.match(/\b(?:in|at|for|of)\s+([a-z][a-z .'-]+?)(?:\s+(?:today|tomorrow|now|right now|this week|tonight))?$/) || [])[1] || '').trim();
-      if (/^(the|my|here|outside)$/.test(city)) city = '';
+      // "the weather in this/that place" names no city — use the home city, or ask which place.
+      if (/^(the|my|here|outside|this place|that place|there)$/.test(city)) city = '';
+      if (!city && /\b(this|that) (place|location|area|city)\b/.test(s)) {
+        if (settings.city) return executeTool({ ...p, text: p.text.replace(/\b(this|that) (place|location|area|city)\b/g, ' ').replace(/\s+/g, ' ').trim(), args: {} }, raw);
+        return { text: 'Which place? Name it — "weather in **Manali**" — or set a home city ("my city is Bengaluru") and "this place" will mean it.', speak: 'Which place should I check the weather for?' };
+      }
       toolStep('weather → ' + (city || settings.city || 'auto'));
       const w = await fetchWeather(city);
-      if (w.error) return { text: 'I could not reach the weather service — ' + w.error };
+      if (w.error) {
+        // Service down or place unknown: fall back to a web search, never guess.
+        const placeName = city || settings.city || '';
+        if (placeName && settings.online && backend.online) {
+          toolStep('research → weather in ' + placeName);
+          const res = await doResearch('current weather in ' + placeName);
+          if (!res.askLLM || llmReady()) return { ...res, speak: 'I could not reach the weather service, so I searched the web for the weather in ' + placeName + '.' };
+        }
+        return { text: 'I could not reach the weather service — ' + w.error };
+      }
       if (w.approximate) return { text: 'Your internet connection only tells me the country, not the city, so I would be guessing. Tell me your city — say "my city is Bengaluru" — and I will remember it.', suggestions: ['My city is Bengaluru', 'Weather in Bengaluru'] };
       ctx.lastIntent = 'WEATHER';
       if (/tomorrow/.test(s) && w.tomorrow) return { text: 'Tomorrow in **' + w.place + '**: ' + w.tomorrow.desc.toLowerCase() + ', ' + w.tomorrow.minC + '–' + w.tomorrow.maxC + '°C.', tool: 'weather' };
@@ -2213,6 +2265,7 @@ async function executeTool(p, raw) {
           confirm: { yes: 'RESTART', no: 'KEEP IT', onConfirm: async () => deliver(await executeTool(Object.assign({}, p, { args: Object.assign({}, a, { restart: true }) }), raw), { intent: 'FOCUS_START', confidence: 1 }) } };
       }
       const min = startFocus(want);
+      Undo.push('started a ' + min + '-minute focus session', () => stopFocus(true) ? 'Focus session stopped.' : 'That focus session had already ended.');
       // "focus on DBMS for 25 minutes" → the session is logged under DBMS (shown per subject in Progress)
       const sm = p.original.match(/\b(?:on|for)\s+(?!\d|a\b|an\b|the\b|my\b|me\b)([A-Za-z][\w+#. -]{1,28}?)(?=\s+(?:for|session|timer|mode|\d)|[.,!?]?$)/i);
       const subject = sm ? sm[1].trim().replace(/\s+/g, ' ') : '';
@@ -2756,9 +2809,13 @@ async function executeTool(p, raw) {
         // The project simply has no backend/frontend: not a failure, just nothing to start.
         if (/^No (backend|frontend|app) found/.test(r.error || '')) return { text: 'no ' + which + ' in this project', absent: true, tool: 'startProcess' };
         if (r.portInUse) return { text: 'Port ' + (r.port || '?') + ' is already in use, so the ' + which + ' for "' + name + '" did not start.', portInUse: true, port: r.port, project: name, which, tool: 'startProcess' };
-        return { text: 'Could not start the ' + which + ' for "' + name + '"' + (r.error ? ': ' + r.error : (r.tail ? ':\n```text\n' + r.tail.trim().slice(-400) + '\n```' : '.')) };
+        return { text: 'Could not start the ' + which + ' for "' + name + '"' + (r.error ? ': ' + r.error : (r.tail ? ':\n```text\n' + r.tail.trim().slice(-400) + '\n```' : '.')),
+          // project/which/tail let a multi-step plan diagnose the crash (and, for missing dependencies, offer to install them).
+          startFailed: !r.error, missingDeps: r.missingDeps || null, project: name, which, tail: r.tail || '', tool: 'startProcess' };
       }
       ctx.lastProject = name;
+      // A server JARVIS just started can be stopped again ("undo", or ROLLBACK on a failed plan); one that was already running is left alone.
+      if (!r.existed) Undo.push('started the ' + which + ' for ' + name, async () => { const x = await callTool('/tool/stopProcess', { name, which }); if (x.error) throw new Error(x.error); return 'Stopped the ' + which + ' for `' + name + '`.'; });
       return { text: (r.existed ? '✓ The ' + which + ' for `' + name + '` is already running' : '✓ Started the ' + which + ' for `' + name + '`') + (r.port ? ' on port ' + r.port : '') + '.', op: { kind: 'process', name, which, id: r.id, port: r.port }, tool: 'startProcess' };
     }
     case 'STOP_PROCESS': {
@@ -2948,8 +3005,13 @@ async function executeTool(p, raw) {
       }
       const names = running.map(k => (NLU.APPS.find(x => x.k === k) || { n: k }).n);
       return { text: 'Deep work mode: I will close **' + names.join(', ') + '**' + (withFocus ? ' and start a ' + min + '-minute focus session' : '') + '. Unsaved chats/music will stop.', op: { kind: 'distractions', closed: running, all: DISTRACTORS }, confirm: { yes: withFocus ? 'CLOSE & FOCUS' : 'CLOSE THEM', no: 'CANCEL', onConfirm: async () => {
-        for (const k of running) { toolStep('closeApplication → ' + k); await callTool('/tool/closeApplication', { app: k }); }
-        if (withFocus) startFocus(min);
+        const shut = [];
+        for (const k of running) { toolStep('closeApplication → ' + k); const c = await callTool('/tool/closeApplication', { app: k }); if (c && c.success) shut.push(k); }
+        if (shut.length) Undo.push('closed ' + shut.map(k => (NLU.APPS.find(x => x.k === k) || { n: k }).n).join(', '), async () => {
+          for (const k of shut) { const x = await callTool('/tool/openApplication', { app: k }); if (x.error) throw new Error(x.error); }
+          return 'Opened ' + shut.map(k => (NLU.APPS.find(x => x.k === k) || { n: k }).n).join(', ') + ' again (unsaved work in them can’t come back).';
+        });
+        if (withFocus) { startFocus(min); Undo.push('started a ' + min + '-minute focus session', () => stopFocus(true) ? 'Focus session stopped.' : 'That focus session had already ended.'); }
         jarvisSay({ text: 'Closed ' + names.join(', ') + '.' + (withFocus ? ' Focus session running for **' + min + ' minutes** — you have got this.' : ''), intent: 'BLOCK_DISTRACTIONS' });
       } } };
     }
@@ -2966,6 +3028,8 @@ async function executeTool(p, raw) {
         actions: [{ label: 'EXPORT NOW', fn: async () => { const r = await bkExport(false, ''); jarvisSay({ text: r.error ? 'Could not export: ' + r.error : '✓ Saved **' + r.filename + '** to your Downloads. Keep it somewhere safe.', intent: 'BACKUP' }); } }] };
     }
     case 'UNDO': return { text: await runUndo(false), tool: 'undo' };
+    case 'UNDO_TASK': { const m = String(p.original || '').match(/agt-\d{8}-\d{3}/i); return { text: await runUndoTask(m ? m[0].toUpperCase() : '', false), tool: 'undo', noPersona: true }; }
+    case 'AGENT_INSPECT': { const m = String(p.original || '').match(/agt-\d{8}-\d{3}/i); return Agent.inspect(m ? m[0] : ''); }
     case 'REGENERATE': {
       let me = -1; for (let k = chatLog.length - 1; k >= 0; k--) if (chatLog[k].role === 'user') { me = k; break; }
       let prev = -1; for (let k = me - 1; k >= 0; k--) if (chatLog[k].role === 'user') { prev = k; break; }

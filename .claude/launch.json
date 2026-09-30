@@ -3,10 +3,8 @@
   "configurations": [
     {
       "name": "jarvis",
-      "runtimeExecutable": "node",
-      "runtimeArgs": ["server.js"],
-      "env": { "PORT": "3001" },
-      "port": 3001
+      "url": "http://localhost:3002",
+      "port": 3002
     }
   ]
 }
