@@ -8,6 +8,9 @@ node_modules/
 .jarvis-port
 .autostart.json
 
+# Stray PowerShell cache folder created in the project dir
+Microsoft/
+
 # OS junk
 Thumbs.db
 Desktop.ini
