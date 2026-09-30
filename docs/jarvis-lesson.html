@@ -1,0 +1,998 @@
+<title>JARVIS Lesson Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one slide at a time on a clean white page — a thin top bar, the slide in the middle, controls at the bottom.
+   Palette: "Red Mist" as accents on white — ember for highlights and fills, brick for small accent text, oxblood for type. */
+:root {
+  --ember: #DF643F;       /* fills, big accents, progress */
+  --brick: #A73728;       /* small accent text (readable on white), buttons */
+  --oxblood: #3D1F1D;     /* headings and main text */
+  --white: #FFFFFF;       /* page */
+  --text: #3D1F1D;
+  --mist: #5C4541;        /* body text */
+  --haze: #8A726C;        /* captions */
+  --tint: #FDF5F2;        /* panel fill */
+  --tint2: #FBE9E2;       /* stronger tint */
+  --line: #F0D6CC;        /* borders */
+  --good: #2F7A3A;
+  --goodbg: #E8F4EA;
+  --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; color: var(--text); font: 16px/1.6 var(--body); background: var(--white); display: flex; flex-direction: column; overflow: hidden; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+
+/* ---------- top bar ---------- */
+.bar { display: flex; align-items: center; gap: 14px; padding: 12px 24px; border-bottom: 1px solid var(--line); flex: none; background: var(--white); }
+.brand { font: 700 15px var(--display); letter-spacing: .32em; color: var(--brick); white-space: nowrap; }
+.chapter { font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--haze); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.count { font: 500 13px var(--mono); color: var(--mist); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.btn { background: var(--white); border: 1px solid var(--line); color: var(--oxblood); padding: 7px 14px; border-radius: 6px; cursor: pointer; font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.btn:hover { border-color: var(--ember); color: var(--brick); }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.solid { background: var(--ember); border-color: var(--ember); color: var(--white); }
+.btn.solid:hover { background: var(--brick); border-color: var(--brick); color: var(--white); }
+.progress { height: 3px; background: var(--tint2); flex: none; }
+.progress i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--brick), var(--ember)); transition: width .35s ease; }
+
+/* ---------- slides ---------- */
+.stage { flex: 1; min-height: 0; position: relative; background: var(--white); }
+.slide { position: absolute; inset: 0; overflow-y: auto; padding-block: 38px 44px; padding-inline: max(20px, calc((100% - 1080px) / 2)); display: none; }
+.slide.on { display: block; animation: rise .4s ease both; }
+@keyframes rise { from { opacity: .4; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .slide.on { animation: none; } .progress i { transition: none; } }
+
+.eyebrow { font: 600 12px var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--brick); margin: 0 0 10px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; color: var(--oxblood); }
+h1 { font-size: clamp(44px, 8vw, 92px); line-height: .98; letter-spacing: .06em; font-weight: 700; }
+h2 { font-size: clamp(28px, 4vw, 42px); line-height: 1.12; font-weight: 600; letter-spacing: .01em; margin-bottom: 16px; }
+h3 { font-size: 18px; font-weight: 600; color: var(--brick); letter-spacing: .02em; margin-bottom: 6px; }
+p { margin: 0 0 12px; max-width: 70ch; color: var(--mist); }
+.lead { font-size: 19px; color: var(--oxblood); max-width: 62ch; }
+strong { color: var(--oxblood); font-weight: 600; }
+em { color: var(--brick); font-style: normal; font-weight: 500; }
+code, .mono { font-family: var(--mono); font-size: .88em; color: var(--brick); background: var(--tint2); padding: 1px 6px; border-radius: 4px; }
+ul.list { margin: 0 0 12px; padding-left: 20px; color: var(--mist); max-width: 72ch; }
+ul.list li { margin: 5px 0; }
+ul.list li::marker { color: var(--ember); }
+
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.grid > * { min-width: 0; }
+.box { background: var(--tint); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.box p:last-child, .box ul:last-child { margin-bottom: 0; }
+.cols { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 820px) { .cols { grid-template-columns: 1fr; } }
+
+/* teacher's note */
+.note { border-left: 4px solid var(--ember); background: var(--tint2); padding: 12px 16px; border-radius: 0 10px 10px 0; margin-top: 20px; }
+.note b { font: 600 11px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--brick); display: block; margin-bottom: 4px; }
+.note p { margin: 0; color: var(--oxblood); }
+.ask { margin-top: 14px; font-style: italic; color: var(--mist); }
+.ask::before { content: "Think: "; font: 600 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--brick); font-style: normal; }
+
+/* tables */
+.tw { overflow-x: auto; margin-bottom: 12px; }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th { text-align: left; font: 600 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--brick); padding: 9px 10px; border-bottom: 2px solid var(--ember); white-space: nowrap; }
+td { padding: 9px 10px; border-bottom: 1px solid var(--line); color: var(--mist); vertical-align: top; }
+td:first-child { color: var(--oxblood); font-weight: 500; }
+tbody tr:hover td { background: var(--tint); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+
+/* title slide */
+.hero { display: grid; gap: 22px; padding-top: 4vh; }
+.hero .sub { font: 400 clamp(18px, 2.2vw, 23px)/1.5 var(--body); color: var(--mist); max-width: 46ch; }
+.hero h1 span { color: var(--ember); }
+.swatches { display: flex; gap: 12px; flex-wrap: wrap; }
+.sw { display: flex; align-items: center; gap: 8px; font: 500 12px var(--mono); color: var(--haze); }
+.sw i { width: 22px; height: 22px; border-radius: 50%; box-shadow: 0 2px 6px rgba(61,31,29,.18); }
+.agenda { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.agenda button { text-align: left; background: var(--white); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.agenda button:hover { border-color: var(--ember); box-shadow: 0 6px 18px rgba(223,100,63,.14); }
+.agenda b { display: block; font: 600 17px var(--display); color: var(--oxblood); letter-spacing: .02em; margin: 2px 0; }
+.agenda span { font-size: 13px; color: var(--haze); }
+.agenda small { font: 600 11px var(--mono); color: var(--brick); letter-spacing: .12em; }
+
+/* chapter divider */
+.divider { display: grid; align-content: center; min-height: 70%; gap: 14px; }
+.divider .big { font: 700 clamp(70px, 14vw, 170px)/.85 var(--display); color: var(--ember); letter-spacing: .02em; }
+
+/* feature cards */
+.feat { text-align: left; cursor: pointer; background: var(--white); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 4px; transition: border-color .15s, box-shadow .15s; }
+.feat:hover, .feat[aria-expanded="true"] { border-color: var(--ember); box-shadow: 0 6px 18px rgba(223,100,63,.14); }
+.feat b { font: 600 17px var(--display); color: var(--oxblood); }
+.feat span { font-size: 14px; color: var(--mist); }
+.feat .ex { display: none; margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 8px; font: 13px/1.7 var(--mono); color: var(--brick); }
+.feat[aria-expanded="true"] .ex { display: block; }
+
+/* text flow diagrams */
+.flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 8px 0 18px; }
+.flow .n { flex: 1 1 140px; background: var(--tint); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.flow .n b { display: block; font: 600 15px var(--display); color: var(--oxblood); }
+.flow .n span { font-size: 13px; color: var(--mist); }
+.flow .arr { align-self: center; color: var(--ember); font: 600 18px var(--mono); }
+.flow .n.hot { border-color: var(--ember); background: var(--tint2); }
+
+/* architecture layers */
+.arch { display: grid; gap: 8px; }
+.layer { display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 14px; background: var(--white); border: 1px solid var(--line); border-radius: 10px; padding: 13px 16px; cursor: pointer; text-align: left; }
+.layer:hover, .layer.sel { border-color: var(--ember); background: var(--tint); }
+.layer b { font: 600 16px var(--display); color: var(--brick); }
+.layer span { color: var(--mist); font-size: 14.5px; }
+@media (max-width: 600px) { .layer { grid-template-columns: 1fr; gap: 2px; } }
+.detail { margin-top: 14px; min-height: 90px; }
+
+/* stepper + traces */
+.steps { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.steps button { background: var(--white); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; color: var(--mist); font: 500 13px var(--mono); }
+.steps button:hover { border-color: var(--ember); }
+.steps button.on { background: var(--ember); border-color: var(--ember); color: var(--white); }
+.trace { font: 14px/1.75 var(--mono); background: var(--tint); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; white-space: pre-wrap; word-break: break-word; color: var(--mist); }
+.trace .k { color: var(--brick); font-weight: 500; }
+.trace .v { color: var(--oxblood); font-weight: 600; }
+
+/* simulators */
+.sim { display: grid; gap: 10px; }
+.sim input[type=text], .sim select { width: 100%; background: var(--white); border: 1px solid var(--line); border-radius: 8px; padding: 11px 13px; font: 15px var(--mono); color: var(--oxblood); }
+.sim input[type=text]:focus, .sim select:focus { border-color: var(--ember); outline: none; box-shadow: 0 0 0 3px var(--tint2); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { background: var(--white); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font: 12.5px var(--mono); color: var(--mist); cursor: pointer; }
+.chip:hover { border-color: var(--ember); color: var(--brick); }
+.pill { display: inline-block; font: 600 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; padding: 3px 9px; border-radius: 4px; }
+.pill.rule { background: var(--ember); color: var(--white); }
+.pill.agent { background: var(--brick); color: var(--white); }
+.pill.ai { background: var(--oxblood); color: var(--white); }
+.pill.block { background: var(--white); color: var(--brick); border: 1px solid var(--brick); }
+.pill.ok { background: var(--goodbg); color: var(--good); }
+
+/* quiz */
+.q { background: var(--white); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.q p.qq { color: var(--oxblood); font-weight: 500; margin-bottom: 8px; }
+.q .opts { display: grid; gap: 6px; }
+.q .opts button { text-align: left; background: var(--tint); border: 1px solid var(--line); border-radius: 6px; padding: 8px 11px; cursor: pointer; color: var(--mist); font-size: 14.5px; }
+.q .opts button:hover:not(:disabled) { border-color: var(--ember); }
+.q .opts button.right { border-color: var(--good); color: var(--good); background: var(--goodbg); }
+.q .opts button.wrong { border-color: var(--brick); background: var(--tint2); color: var(--brick); }
+.q .why { margin-top: 8px; font-size: 14px; color: var(--mist); }
+.score { font: 600 20px var(--display); color: var(--brick); }
+
+/* bottom controls */
+.ctrl { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 24px; border-top: 1px solid var(--line); flex: none; background: var(--white); }
+.ctrl .hint { font: 12px var(--mono); color: var(--haze); text-align: center; flex: 1; }
+@media (max-width: 560px) { .ctrl .hint { display: none; } .chapter { display: none; } }
+
+/* contents drawer */
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(380px, 92vw); background: var(--white); border-left: 1px solid var(--line); box-shadow: -12px 0 32px rgba(61,31,29,.12); z-index: 10; transform: translateX(105%); transition: transform .28s ease; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.drawer.open { transform: none; }
+.drawer header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--line); font: 600 14px var(--display); letter-spacing: .2em; color: var(--brick); }
+.drawer ol { list-style: none; margin: 0; padding: 8px 0; overflow-y: auto; }
+.drawer li button { width: 100%; text-align: left; background: none; border: 0; padding: 7px 18px; cursor: pointer; color: var(--mist); display: grid; grid-template-columns: 34px 1fr; font-size: 14px; }
+.drawer li button:hover { background: var(--tint); color: var(--oxblood); }
+.drawer li button.cur { color: var(--brick); background: var(--tint2); font-weight: 600; }
+.drawer li button i { font: 12px var(--mono); color: var(--ember); font-style: normal; padding-top: 2px; }
+.drawer li.ch { font: 600 11px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--haze); padding: 12px 18px 4px; }
+.scrim { position: fixed; inset: 0; background: rgba(61,31,29,.25); z-index: 9; display: none; }
+.scrim.on { display: block; }
+@media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }
+.kbd { font: 12px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 6px; color: var(--oxblood); background: var(--white); }
+</style>
+
+<div class="bar">
+  <div class="brand">J.A.R.V.I.S.</div>
+  <div class="chapter" id="chap">Introduction</div>
+  <div class="count" id="count">01 / 01</div>
+  <button class="btn" id="tocBtn" aria-controls="drawer">Contents</button>
+</div>
+<div class="progress"><i id="prog"></i></div>
+
+<main class="stage" id="stage">
+
+<!-- ===================================================== INTRO -->
+<section class="slide" data-ch="Introduction" data-t="Title">
+  <div class="hero">
+    <p class="eyebrow">A lesson on the JARVIS project</p>
+    <h1>J.A.R.V.I.S.<br><span>explained</span></h1>
+    <p class="sub">Your own AI assistant that lives on your laptop. You talk or type, and it opens apps, plans your study, reads your notes, fixes your code and automates your day. This deck teaches how all of it works, from the first word you speak to the voice that answers back.</p>
+    <div class="swatches" aria-label="Colour palette used in this deck">
+      <span class="sw"><i style="background:var(--ember)"></i>#DF643F</span>
+      <span class="sw"><i style="background:var(--brick)"></i>#A73728</span>
+      <span class="sw"><i style="background:var(--oxblood)"></i>#3D1F1D</span>
+      <span class="sw"><i style="background:var(--white);border:1px solid var(--line)"></i>#FFFFFF</span>
+    </div>
+    <p style="font:13px var(--mono);color:var(--haze)">Move with <span class="kbd">→</span> <span class="kbd">←</span> or <span class="kbd">Space</span>, swipe on a phone, or press <span class="kbd">C</span> for contents.</p>
+  </div>
+</section>
+
+<section class="slide" data-ch="Introduction" data-t="Lesson plan">
+  <p class="eyebrow">Lesson plan</p>
+  <h2>What you will learn today</h2>
+  <p class="lead">Seven parts, from the idea to the tests. Each part ends with something to try or think about. Click any part to jump to it.</p>
+  <div class="agenda" id="agenda"></div>
+  <div class="note"><b>How to use this deck</b><p>Every slide has a <strong>Teacher's note</strong> that says the idea in plain words. Some slides are interactive: you can type commands into a pretend JARVIS, step through a command's journey, test file paths against the safety rules, hear a voice, and take a quiz at the end.</p></div>
+</section>
+
+<!-- ===================================================== PART 1 -->
+<section class="slide" data-ch="1 · What is JARVIS" data-t="Part 1 — What is JARVIS" data-part="What is JARVIS|The idea, the problem, the core principles">
+  <div class="divider"><p class="eyebrow">Part one</p><div class="big">WHAT</div><h2>What is JARVIS, and why build it?</h2></div>
+</section>
+
+<section class="slide" data-ch="1 · What is JARVIS" data-t="Definition">
+  <p class="eyebrow">Definition</p>
+  <h2>A voice and text assistant that runs on your own Windows laptop</h2>
+  <div class="cols">
+    <div>
+      <p class="lead">JARVIS is named after Tony Stark's AI in Iron Man. It is a small <strong>Node.js server</strong> plus a <strong>web page</strong> you open in Chrome or Edge. You speak or type; it understands, acts on your computer, and answers out loud.</p>
+      <ul class="list">
+        <li><strong>Understands</strong> clear commands instantly with a rule engine, with no AI and no internet needed.</li>
+        <li><strong>Thinks</strong> with an AI brain for casual, misspelled or open-ended requests: a free local model through Ollama, or a cloud model with your own API key.</li>
+        <li><strong>Acts</strong> on the laptop: apps, volume, brightness, Wi-Fi, windows, files, code, dev servers, coding AIs.</li>
+        <li><strong>Speaks</strong> in English, Telugu and Kannada, with two personalities: JARVIS and FRIDAY.</li>
+        <li><strong>Stays safe</strong>: the server, not the AI, decides what is allowed, and "undo" reverses almost everything.</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3>One-line summary</h3>
+      <p><strong>JARVIS = ears + brain + hands + mouth + a safety guard, all running locally.</strong></p>
+      <p>Ears: speech recognition and a wake word.<br>Brain: rules first, then AI.<br>Hands: tools on the Node server.<br>Mouth: neural text-to-speech.<br>Guard: permission tiers, approvals, undo.</p>
+    </div>
+  </div>
+  <div class="note"><b>Teacher's note</b><p>Think of JARVIS as a very fast receptionist for your laptop. Simple requests ("open Chrome") it handles from memory in milliseconds. Hard questions it passes to an expert, the AI. Risky jobs it checks with you first.</p></div>
+</section>
+
+<section class="slide" data-ch="1 · What is JARVIS" data-t="The problem it solves">
+  <p class="eyebrow">Motivation</p>
+  <h2>Why not just use a cloud assistant?</h2>
+  <div class="grid g2">
+    <div class="box"><h3>Problem: assistants live in the cloud</h3><p>Most assistants send every word to a company's server. They cannot touch your files, your VS Code or your study plan, and they stop when the internet stops.</p></div>
+    <div class="box"><h3>JARVIS: runs on your machine</h3><p>The server listens only on <code>127.0.0.1</code>. With Ollama, nothing leaves the laptop. Direct commands work fully offline.</p></div>
+    <div class="box"><h3>Problem: students juggle many tools</h3><p>A timetable app, a flashcard app, an attendance sheet, a notes app, an IDE, a PDF reader. Switching costs focus.</p></div>
+    <div class="box"><h3>JARVIS: one conversation</h3><p>"How many classes can I bunk?", "make flashcards from lecture3.pdf", "open dsa sprint in VS Code and ask Copilot to add tests", all in one place.</p></div>
+    <div class="box"><h3>Problem: AI makes things up</h3><p>A chatbot can claim it did something it never did.</p></div>
+    <div class="box"><h3>JARVIS: verifies</h3><p>Steps are checked after they run. A step that cannot be checked is marked <code>○ not checked</code>, never a fake <code>✓</code>.</p></div>
+  </div>
+  <div class="note"><b>Teacher's note</b><p>Good projects start from a real pain. Here the pains are privacy, scattered tools and untrustworthy AI. Every design choice later in this deck answers one of these three.</p></div>
+</section>
+
+<section class="slide" data-ch="1 · What is JARVIS" data-t="Core principles">
+  <p class="eyebrow">Design principles</p>
+  <h2>Four rules the whole project follows</h2>
+  <div class="grid g2">
+    <div class="box"><h3>1. Rules first, AI second</h3><p>A rule engine understands about 176 commands directly. It is instant, free and predictable. Only unclear or open-ended input goes to the AI. This keeps JARVIS fast even on a laptop GPU.</p></div>
+    <div class="box"><h3>2. The server decides, never the AI</h3><p>Every action is a named tool with a checked argument schema and a permission tier. If the AI suggests something outside the list, the server refuses it.</p></div>
+    <div class="box"><h3>3. Ask before anything risky</h3><p>Deleting, overwriting, changing files outside <code>~/jarvis</code>, shutting down: all show an ALLOW / CANCEL card. The most dangerous actions can require Windows Hello (fingerprint, face or PIN).</p></div>
+    <div class="box"><h3>4. Everything can be undone</h3><p>Deleted files go to JARVIS's own trash, overwritten files keep their earlier version, and volume or to-do changes sit on an undo stack. Say "undo" and it goes back.</p></div>
+  </div>
+  <p class="ask">Why is "rules first" better for a command like "set volume to 30" than asking an AI every time?</p>
+</section>
+
+<!-- ===================================================== PART 2 -->
+<section class="slide" data-ch="2 · Functions" data-t="Part 2 — Functions" data-part="Functions|Everything JARVIS can do, with examples">
+  <div class="divider"><p class="eyebrow">Part two</p><div class="big">DOES</div><h2>What can JARVIS do?</h2></div>
+</section>
+
+<section class="slide" data-ch="2 · Functions" data-t="Feature map">
+  <p class="eyebrow">Feature map · click a card for real commands</p>
+  <h2>Nine areas, about 176 commands</h2>
+  <div class="grid g3" id="feats"></div>
+  <div class="note"><b>Teacher's note</b><p>You never need to memorise exact commands. The rule engine accepts many phrasings, typos and even Telugu or Kannada typed in English letters. What does not match a rule goes to the AI, which can still pick the right tool.</p></div>
+</section>
+
+<section class="slide" data-ch="2 · Functions" data-t="Voice and chat">
+  <p class="eyebrow">Function · Voice & chat</p>
+  <h2>Talk to it like a person</h2>
+  <div class="cols">
+    <div>
+      <ul class="list">
+        <li><strong>Tap to talk</strong> or hold the mic button; or say the <strong>wake word</strong> ("Jarvis") hands-free, even while you are in another tab.</li>
+        <li>It <strong>listens until you finish</strong>. Short pauses do not cut you off; it waits for a real end of sentence.</li>
+        <li><strong>Three languages</strong>: English, తెలుగు and ಕನ್ನಡ, and "Tenglish" such as <code>volume penchu</code> (volume up).</li>
+        <li><strong>Two personalities</strong>: JARVIS (formal British male voice) and FRIDAY (Indian English female voice, Neerja).</li>
+        <li><strong>Context memory</strong>: "close it", "and Firefox too", "what were we talking about?" all work because a rolling summary follows the conversation.</li>
+        <li><strong>Ctrl+K</strong> command palette puts every command one keystroke away; <strong>Ctrl+Shift+J</strong> works on selected text in any app.</li>
+        <li>Say <strong>"panic"</strong> to pause all automation instantly and <strong>"resume"</strong> to continue.</li>
+      </ul>
+    </div>
+    <div class="box"><h3>Try saying</h3><p class="mono" style="display:block;background:none;padding:0;line-height:1.9">Jarvis, what time is it<br>open chrome and youtube<br>volume penchu<br>close it<br>switch to friday<br>what were we talking about</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="2 · Functions" data-t="Laptop control">
+  <p class="eyebrow">Function · Laptop control</p>
+  <h2>Hands on the computer</h2>
+  <div class="grid g3">
+    <div class="box"><h3>Apps</h3><p>Opens any Start-menu app by fuzzy name ("vs code", "spotify"), closes allowed ones, checks what is running.</p></div>
+    <div class="box"><h3>System</h3><p>Volume, brightness, dark or light theme, Wi-Fi and Bluetooth, power plans, sleep, lock, shutdown (with confirmation).</p></div>
+    <div class="box"><h3>Windows</h3><p>Snap layouts ("put chrome left and vs code right"), show desktop, bring a window to front.</p></div>
+    <div class="box"><h3>Screen</h3><p>Screenshots, reading text on screen (OCR), and "look at my screen" vision with an image-capable model.</p></div>
+    <div class="box"><h3>Clipboard</h3><p>Read, write and search clipboard history; paste snippets; the global hotkey works on any selected text.</p></div>
+    <div class="box"><h3>Files</h3><p>Open and read files anywhere; write, rename, move and delete with permission outside <code>~/jarvis</code>; system folders off-limits.</p></div>
+  </div>
+  <div class="note"><b>Teacher's note</b><p>The browser page itself cannot change your volume or open apps. It asks the Node server, and the server runs small PowerShell or Windows commands. That split between page and server is the heart of the architecture you will see in Part 3.</p></div>
+</section>
+
+<section class="slide" data-ch="2 · Functions" data-t="Study tools">
+  <p class="eyebrow">Function · Study</p>
+  <h2>Built for students</h2>
+  <div class="grid g2">
+    <div class="box"><h3>Plan</h3><ul class="list"><li>To-dos, deadlines, timetable, reminders (one-off, daily, monthly, yearly)</li><li>Focus sessions (Pomodoro) that block distracting sites</li><li>Multi-day study planner and a progress dashboard</li></ul></div>
+    <div class="box"><h3>Learn</h3><ul class="list"><li>Flashcards with <strong>spaced repetition</strong>: cards you miss come back sooner</li><li><strong>Viva practice</strong> by voice, graded by the AI</li><li>Contests and web research with sources</li></ul></div>
+    <div class="box"><h3>Attendance: the 75% bunk-o-meter</h3><p>Colleges require 75% attendance. If you attended <em>a</em> of <em>t</em> classes, you can still skip <code>floor(a / 0.75 − t)</code> classes. If you are below, you must attend <code>ceil((0.75t − a) / 0.25)</code> in a row.</p><p>Example: 30 of 36 attended → you may skip 4 more.</p></div>
+    <div class="box"><h3>Marks → SGPA / CGPA</h3><p>Give marks and credits; JARVIS converts marks to grade points and computes <code>SGPA = Σ(credit × grade point) / Σ credits</code>. CGPA averages across semesters, weighted by credits.</p></div>
+  </div>
+  <p class="ask">You attended 20 of 30 classes. Are you above or below 75%, and how many must you attend in a row to reach it?</p>
+</section>
+
+<section class="slide" data-ch="2 · Functions" data-t="Files and notes">
+  <p class="eyebrow">Function · Your files & notes</p>
+  <h2>Ask questions about your own documents</h2>
+  <div class="cols">
+    <div>
+      <p>Drop in PDFs, notes, Word, PowerPoint or Excel files and ask. JARVIS finds the right passages and answers <strong>with page numbers</strong>, so you can check the source.</p>
+      <ul class="list">
+        <li>"What do my notes say about normalization?"</li>
+        <li>"Summarise lecture3.pdf" or "make flashcards from lecture3.pdf"</li>
+        <li>"Read notes.txt", "open the agriloop folder", "does dsa sprint exist?"</li>
+      </ul>
+      <p>This technique is called <strong>RAG: Retrieval-Augmented Generation</strong>. First <em>retrieve</em> relevant text, then let the AI <em>generate</em> an answer using only that text.</p>
+    </div>
+    <div class="box"><h3>Why retrieve first?</h3><p>A small local model cannot read a 300-page PDF at once. Retrieval picks the 5–10 most relevant chunks, so the model reads a page, not a book. It also reduces made-up answers, because the model is told to answer from the chunks.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="2 · Functions" data-t="Coding">
+  <p class="eyebrow">Function · Coding</p>
+  <h2>A coding partner that can use your tools</h2>
+  <div class="grid g2">
+    <div class="box"><h3>Write, save, run</h3><p>"Write a binary search in Python", then "run it". JARVIS runs <code>.py</code>, <code>.js</code>, <code>.c</code> and <code>.cpp</code> with a 10-second limit and shows output and errors.</p></div>
+    <div class="box"><h3>EXPLAIN & FIX</h3><p>When a program crashes, one click sends the code and the error to the AI, which explains the bug in plain words and proposes a fixed version.</p></div>
+    <div class="box"><h3>DSA coach</h3><p>Gives hints first and the full solution only when you ask, so you actually learn. Also a website generator and dev-server starter.</p></div>
+    <div class="box"><h3>Drive other coding AIs</h3><p>"open dsa sprint in vs code and ask Copilot to add tests", "ask Claude in agriloop to write unit tests". Supports VS Code Copilot, Claude Code, Gemini, Codex, Kiro, Trae, Antigravity, OpenCode, Qwen, Codebuff and Devin.</p></div>
+  </div>
+  <div class="note"><b>Teacher's note</b><p>For coding AIs, JARVIS does not write code itself. It opens the right tool in the right folder and pastes your request into its chat. It is a <em>conductor</em>, not another musician.</p></div>
+</section>
+
+<section class="slide" data-ch="2 · Functions" data-t="Automation and phone">
+  <p class="eyebrow">Function · Automation & phone</p>
+  <h2>Many steps, on a schedule, from anywhere</h2>
+  <div class="grid g2">
+    <div class="box"><h3>Multi-step commands</h3><p>"Open VS Code in dsa sprint, start the backend and set a 25 minute timer" becomes a checked plan of three steps.</p></div>
+    <div class="box"><h3>Routines</h3><p>Named bundles: "start my study mode" might mute notifications, open notes and start a focus session.</p></div>
+    <div class="box"><h3>Triggers</h3><p>"When I plug in my charger, set brightness to 80". A watcher on the server checks conditions with cooldowns so it does not fire repeatedly.</p></div>
+    <div class="box"><h3>Phone</h3><p>Reminders arrive on your phone through <strong>ntfy</strong>. Commands sent from the phone need a 6-digit <strong>authenticator code</strong> (TOTP, the same kind Google Authenticator shows). Phone commands can never approve file changes.</p></div>
+  </div>
+  <p class="ask">Why should a command from a phone be allowed to read the time, but not to delete a file?</p>
+</section>
+
+<!-- ===================================================== PART 3 -->
+<section class="slide" data-ch="3 · How it works" data-t="Part 3 — How it works" data-part="How it works|Architecture, the life of a command, NLU, agent, AI, RAG">
+  <div class="divider"><p class="eyebrow">Part three</p><div class="big">HOW</div><h2>How does JARVIS work inside?</h2></div>
+</section>
+
+<section class="slide" data-ch="3 · How it works" data-t="Architecture">
+  <p class="eyebrow">Architecture · click a layer</p>
+  <h2>Four layers that talk to each other</h2>
+  <div class="arch" id="arch"></div>
+  <div class="box detail" id="archDetail"><p>Click a layer above to see what lives there and how it talks to its neighbours.</p></div>
+  <div class="note"><b>Teacher's note</b><p>This is a classic <strong>client–server</strong> design. The page (client) is good at listening, showing and speaking. The server is good at acting, because Node.js can run programs and touch files, which a web page is not allowed to do.</p></div>
+</section>
+
+<section class="slide" data-ch="3 · How it works" data-t="Life of a command">
+  <p class="eyebrow">Life of a command · step through it</p>
+  <h2>From "Jarvis, set volume to thirty" to done</h2>
+  <div class="steps" id="lifeSteps"></div>
+  <div class="trace" id="lifeTrace"></div>
+  <div class="note"><b>Teacher's note</b><p>Five steps: <strong>Normalize → Classify → Route → Act & verify → Speak</strong>. Remember this sentence and you understand 80% of JARVIS. Everything else is detail inside one of these boxes.</p></div>
+</section>
+
+<section class="slide" data-ch="3 · How it works" data-t="Try the router">
+  <p class="eyebrow">Interactive · a small copy of the router</p>
+  <h2>Type a command and watch it get routed</h2>
+  <div class="sim">
+    <label for="rin" class="eyebrow" style="margin:0">Your command</label>
+    <input id="rin" type="text" value="Jarvis, open chrome and set volume to thirty" autocomplete="off" spellcheck="false">
+    <div class="chips" id="rchips"></div>
+    <div class="trace" id="rout"></div>
+  </div>
+  <p style="margin-top:12px;font-size:14px;color:var(--haze)">This is a simplified teaching model written for this deck. The real <code>nlu.js</code> has about 95 intent families, fuzzy matching of app and site names, dates and times, and context for follow-ups.</p>
+</section>
+
+<section class="slide" data-ch="3 · How it works" data-t="Understanding language">
+  <p class="eyebrow">nlu.js · Natural Language Understanding</p>
+  <h2>How rules understand messy human speech</h2>
+  <div class="grid g2">
+    <div class="box"><h3>1. Normalize</h3><ul class="list"><li>Remove the wake word and fillers ("hey Jarvis, please, um")</li><li>Fix common typos and speech errors ("main. py" → "main.py")</li><li>Number words to digits ("thirty" → 30)</li><li>Telugu / Kannada words to meaning ("penchu" → up, "tagginchu" → down)</li></ul></div>
+    <div class="box"><h3>2. Classify</h3><ul class="list"><li>Ordered regular-expression rules map text to an <strong>intent</strong> such as <code>SET_VOLUME</code> with <strong>arguments</strong> such as <code>{level: 30}</code></li><li><strong>Fuzzy matching</strong> by edit distance finds "vs cod" → VS Code, "atria university" vs "atria institute"</li><li>Guards stop statements from firing commands: "I opened chrome yesterday" is not a command</li></ul></div>
+    <div class="box"><h3>3. Context</h3><p>A small memory holds the last app, file, folder and project. "Close it" resolves "it"; "and Firefox too" repeats the last action with a new target; "ask Claude to add tests" reuses the last project.</p></div>
+    <div class="box"><h3>4. Confidence</h3><p>Each match carries a confidence. Low confidence or no match goes to the AI planner instead of guessing. The paraphrase test checks that "confidently wrong" stays at <strong>0</strong>.</p></div>
+  </div>
+  <div class="note"><b>Teacher's note</b><p>An <em>intent</em> is the "what" (set volume); <em>arguments</em> are the "details" (to 30). Almost every assistant, from Alexa to JARVIS, turns speech into intent plus arguments.</p></div>
+</section>
+
+<section class="slide" data-ch="3 · How it works" data-t="The agent">
+  <p class="eyebrow">agent.js · multi-step goals</p>
+  <h2>How a sentence with many jobs becomes a safe plan</h2>
+  <div class="flow">
+    <div class="n"><b>Intent</b><span>Split the sentence into steps: "open VS Code in dsa sprint", "start the backend", "set a timer".</span></div><div class="arr">→</div>
+    <div class="n"><b>Planning</b><span>Merge duplicates, order the steps, fill missing details from context.</span></div><div class="arr">→</div>
+    <div class="n"><b>Dependencies</b><span>A backend needs its packages installed; a folder must exist before opening it.</span></div><div class="arr">→</div>
+    <div class="n hot"><b>Permissions</b><span>Every step gets a tier. Risky ones are previewed; you confirm once.</span></div><div class="arr">→</div>
+    <div class="n"><b>Execution</b><span>Steps run one by one; a failure stops the rest.</span></div><div class="arr">→</div>
+    <div class="n"><b>Verification</b><span>Is Chrome really running? Did the file appear? Marked ✓, ✗ or ○ not checked.</span></div>
+  </div>
+  <div class="grid g2">
+    <div class="box"><h3>Run records</h3><p>Each plan gets an ID like <code>AGT-…</code> and a record of what ran, what was checked and what failed. "Why did you do that?" reads this record back to you.</p></div>
+    <div class="box"><h3>Learning</h3><p>Phrases JARVIS did not understand are kept in a miss list. You can <strong>TEACH</strong> it: "when I say <em>lab mode</em>, open VS Code and start a focus session".</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="3 · How it works" data-t="The AI brain">
+  <p class="eyebrow">llm.js · the AI brain</p>
+  <h2>One interface, many possible brains</h2>
+  <div class="cols">
+    <div>
+      <p><strong>Local:</strong> Ollama runs an open model such as <code>qwen3.5:4b</code> on your GPU. Free, private and offline. An RTX 3050 with 6 GB runs it comfortably; bigger models get slow.</p>
+      <p><strong>Cloud:</strong> paste your own key for OpenAI, Anthropic (Claude), Google Gemini, Groq, OpenRouter, DeepSeek, Mistral, Together AI or any OpenAI-compatible server. JARVIS recognises the provider from the key itself: <code>sk-ant-</code> means Anthropic, <code>AIza</code> means Gemini, <code>gsk_</code> means Groq.</p>
+      <p><strong>Streaming:</strong> replies arrive word by word, so you start reading and hearing before the answer is complete. Retries handle timeouts.</p>
+      <p><strong>Tool picking:</strong> for unclear commands the AI may choose a tool, but its choice is checked against the tool registry in <code>agent-tools.js</code> before anything runs.</p>
+    </div>
+    <div class="box"><h3>Why keep the AI on a leash?</h3><p>Language models are good at understanding and bad at being reliable. So the AI only <em>proposes</em>. The server <em>disposes</em>: it checks the tool name, the argument schema and the permission tier. A bad suggestion is refused, not run.</p><p>First reply on Ollama takes about a minute while the model loads into GPU memory, so JARVIS warms it up in the background at startup.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="3 · How it works" data-t="Search over your notes">
+  <p class="eyebrow">rag.js · retrieval</p>
+  <h2>Hybrid search: keywords plus meaning</h2>
+  <div class="flow">
+    <div class="n"><b>Extract</b><span>PDF text per page (unpdf); .docx, .pptx and .xlsx read directly from their zipped XML.</span></div><div class="arr">→</div>
+    <div class="n"><b>Chunk</b><span>Split into passages, each tagged with file and page number.</span></div><div class="arr">→</div>
+    <div class="n"><b>Keyword score</b><span>Words in your question matched against each chunk.</span></div><div class="arr">→</div>
+    <div class="n"><b>Semantic score</b><span>Optional: an embedding model (nomic-embed-text) compares meaning, so "car" can match "vehicle".</span></div><div class="arr">→</div>
+    <div class="n hot"><b>Fuse</b><span>Both rankings are merged; the top chunks go to the AI with their page numbers.</span></div>
+  </div>
+  <div class="grid g2">
+    <div class="box"><h3>Keyword search</h3><p>Fast, exact, needs no model. Misses synonyms.</p></div>
+    <div class="box"><h3>Semantic search</h3><p>Understands meaning. Needs an embedding model and more time. A file watcher re-indexes files when they change.</p></div>
+  </div>
+  <div class="note"><b>Teacher's note</b><p>A scanned PDF contains pictures of pages, not text. JARVIS detects this and tells you, instead of pretending the PDF is empty.</p></div>
+</section>
+
+<!-- ===================================================== PART 4 -->
+<section class="slide" data-ch="4 · Voice" data-t="Part 4 — Voice" data-part="Voice|Speech to text, the wake word, text to speech">
+  <div class="divider"><p class="eyebrow">Part four</p><div class="big">VOICE</div><h2>How JARVIS hears and speaks</h2></div>
+</section>
+
+<section class="slide" data-ch="4 · Voice" data-t="Speech to text">
+  <p class="eyebrow">voice.js · speech to text (STT)</p>
+  <h2>Turning your voice into words</h2>
+  <div class="cols">
+    <div>
+      <p>JARVIS uses the browser's <strong>Web Speech API</strong> (<code>SpeechRecognition</code>) built into Chrome and Edge. The browser streams microphone audio to its speech service and returns text.</p>
+      <ul class="list">
+        <li><strong>Interim results</strong> arrive while you speak, so the words appear live on screen.</li>
+        <li><strong>Final results</strong> arrive after each phrase.</li>
+        <li><strong>Continuous mode</strong> keeps listening across pauses.</li>
+        <li><strong>Language</strong> is set per request: <code>en-IN</code>, <code>te-IN</code> or <code>kn-IN</code>.</li>
+      </ul>
+      <h3 style="margin-top:14px">The utterance collector</h3>
+      <p>Early versions answered after the first pause, cutting you off mid-sentence. Now a collector joins the final pieces and waits for a quiet gap before sending the whole sentence. So "open the SIH website … the smart india hackathon one" arrives as one request.</p>
+    </div>
+    <div class="box"><h3>Microphone sensitivity</h3><p>Speaking from far away used to show the listening animation with no words. The fix: JARVIS builds a <strong>boosted audio track</strong> with the Web Audio API (a gain node raises the volume) and hands that track to the recogniser (<code>SpeechRecognition.start(track)</code>, Chrome 135+).</p><p>Settings offer Normal, High and Max (across the room).</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="4 · Voice" data-t="The wake word">
+  <p class="eyebrow">wakeword.js · hands-free</p>
+  <h2>"Jarvis": listening even in other tabs</h2>
+  <div class="grid g2">
+    <div class="box"><h3>Problem</h3><p>Browsers pause speech recognition in background tabs. If you were on YouTube, saying "Jarvis" did nothing.</p></div>
+    <div class="box"><h3>Solution: a Windows listener</h3><p>The server starts a small background listener using Windows' built-in <strong>System.Speech</strong> engine. It runs offline with a tiny grammar: the word "Jarvis" plus a wildcard "anything else" grammar, so random speech is rejected instead of forced into a false match.</p></div>
+    <div class="box"><h3>How the page finds out</h3><p>When Windows hears "Jarvis", the server pushes a <code>wake</code> event over <strong>Server-Sent Events</strong> (a one-way live stream from server to page). The page comes to the front and starts full recognition.</p></div>
+    <div class="box"><h3>Avoiding fights</h3><p>Only one recogniser can hold the mic. A <strong>generation counter</strong> gives each start a number; old recognisers that finish late are ignored and retired, so they cannot abort the new one.</p></div>
+  </div>
+  <div class="note"><b>Teacher's note</b><p>Two engines, two jobs: a small offline engine that only waits for one word, and a large online engine that understands full sentences. Using a cheap detector to wake an expensive one is how phone assistants save battery too.</p></div>
+</section>
+
+<section class="slide" data-ch="4 · Voice" data-t="Text to speech">
+  <p class="eyebrow">tts.js · text to speech (TTS)</p>
+  <h2>How JARVIS talks back</h2>
+  <div class="flow">
+    <div class="n"><b>Reply text</b><span>The answer in Markdown.</span></div><div class="arr">→</div>
+    <div class="n"><b>Clean</b><span>Remove code blocks, <code>**</code>, links and emoji so they are not read aloud.</span></div><div class="arr">→</div>
+    <div class="n"><b>Pick a voice</b><span>By language and personality (table below).</span></div><div class="arr">→</div>
+    <div class="n hot"><b>Synthesize</b><span>Browser voice, or neural voice via the server.</span></div><div class="arr">→</div>
+    <div class="n"><b>Play</b><span>MP3 audio plays; the orb animates while speaking.</span></div>
+  </div>
+  <div class="grid g2">
+    <div class="box"><h3>Path A: browser voice</h3><p>The Web Speech API's <code>speechSynthesis</code> speaks with voices installed in Windows or the browser. Instant and offline, but can sound robotic, and Telugu or Kannada voices are often missing.</p></div>
+    <div class="box"><h3>Path B: neural voice</h3><p>The server opens a <strong>WebSocket</strong> to Microsoft's online neural voice service (the one Edge's "Read aloud" uses). It sends the text as <strong>SSML</strong> (Speech Synthesis Markup Language, which sets voice, rate and pitch) and receives <strong>MP3</strong> audio chunks back. Only the reply text is sent.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="4 · Voice" data-t="Voices and a demo">
+  <p class="eyebrow">Voices · try it</p>
+  <h2>Which voice speaks which language</h2>
+  <div class="cols">
+    <div>
+      <div class="tw"><table>
+        <thead><tr><th>Language</th><th>JARVIS (male)</th><th>FRIDAY (female)</th></tr></thead>
+        <tbody>
+          <tr><td>English</td><td>Ryan (en-GB)</td><td>Neerja (en-IN)</td></tr>
+          <tr><td>Telugu</td><td>Mohan (te-IN)</td><td>Shruti (te-IN)</td></tr>
+          <tr><td>Kannada</td><td>Gagan (kn-IN)</td><td>Sapna (kn-IN)</td></tr>
+        </tbody>
+      </table></div>
+      <p>FRIDAY uses Neerja because in testing, an Irish English voice took 5–15 seconds per reply and often failed. Neerja answers quickly.</p>
+      <p>The service asks for a security token called <code>Sec-MS-GEC</code>: a SHA-256 hash of the current Windows file time, rounded to 5 minutes, joined with a fixed client token. If the laptop clock is off, JARVIS measures the difference and corrects it.</p>
+    </div>
+    <div class="box sim">
+      <h3>Hear the browser voice (Path A)</h3>
+      <label for="ttsText" class="eyebrow" style="margin:0">Text to speak</label>
+      <input id="ttsText" type="text" value="Good evening. All systems are online. Your DBMS exam is in three days.">
+      <label for="ttsVoice" class="eyebrow" style="margin:0">Voice on this device</label>
+      <select id="ttsVoice"></select>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn solid" id="ttsGo">Speak</button><button class="btn" id="ttsStop">Stop</button></div>
+      <p id="ttsMsg" style="font-size:13px;color:var(--haze);margin:0">Uses your own browser's voices. Neural voices need the JARVIS server, so they are not in this demo.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== PART 5 -->
+<section class="slide" data-ch="5 · Tech stack" data-t="Part 5 — Tech stack" data-part="Tech stack|Languages, libraries, browser and Windows features, files">
+  <div class="divider"><p class="eyebrow">Part five</p><div class="big">STACK</div><h2>What is JARVIS built with?</h2></div>
+</section>
+
+<section class="slide" data-ch="5 · Tech stack" data-t="Tech stack">
+  <p class="eyebrow">Tech stack</p>
+  <h2>Small stack, many platform features</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Layer</th><th>Technology</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td>Server runtime</td><td>Node.js 18+ (built on 24)</td><td>Runs tools, files, code, schedules; built-in <code>fetch</code>, <code>WebSocket</code> and <code>crypto</code></td></tr>
+      <tr><td>Web framework</td><td>Express 4</td><td>HTTP routes under <code>/api/…</code> with JSON bodies</td></tr>
+      <tr><td>PDF text</td><td>unpdf</td><td>Page-by-page text from PDFs</td></tr>
+      <tr><td>Front end</td><td>HTML, CSS, vanilla JavaScript</td><td>No React or build step; plain scripts load in order</td></tr>
+      <tr><td>Speech in</td><td>Web Speech API + Web Audio API</td><td>Recognition, mic gain boost</td></tr>
+      <tr><td>Speech out</td><td>speechSynthesis, neural voices over WebSocket</td><td>Spoken replies in 3 languages</td></tr>
+      <tr><td>Live updates</td><td>Server-Sent Events</td><td>Reminders, wake word, phone commands pushed to the page</td></tr>
+      <tr><td>Offline app</td><td>PWA: manifest + service worker</td><td>Install as an app with its own window</td></tr>
+      <tr><td>Security</td><td>WebAuthn (Windows Hello), TOTP (RFC 6238)</td><td>Fingerprint/PIN approvals, phone codes</td></tr>
+      <tr><td>Windows glue</td><td>PowerShell, VBScript, System.Speech</td><td>Volume, apps, OCR, silent start, wake word</td></tr>
+      <tr><td>AI</td><td>Ollama or cloud APIs</td><td>Chat, planning, vision, embeddings</td></tr>
+      <tr><td>Phone</td><td>ntfy</td><td>Push notifications and phone commands</td></tr>
+      <tr><td>Testing</td><td>Node scripts + headless Edge over CDP</td><td>29 suites, no test framework needed</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note"><b>Teacher's note</b><p>The whole project has only <strong>two npm dependencies</strong>: Express and unpdf. Everything else uses what Node, the browser and Windows already provide. Fewer dependencies means fewer things to break and less to trust.</p></div>
+</section>
+
+<section class="slide" data-ch="5 · Tech stack" data-t="Project files">
+  <p class="eyebrow">Project structure · filter by layer</p>
+  <h2>Where each part lives</h2>
+  <div class="chips" id="fileFilter" style="margin-bottom:12px"></div>
+  <div class="tw"><table><thead><tr><th>File</th><th>Layer</th><th>Role</th></tr></thead><tbody id="files"></tbody></table></div>
+</section>
+
+<!-- ===================================================== PART 6 -->
+<section class="slide" data-ch="6 · Safety" data-t="Part 6 — Safety" data-part="Safety|Permissions, approvals, access zones, undo">
+  <div class="divider"><p class="eyebrow">Part six</p><div class="big">SAFE</div><h2>How JARVIS stays safe</h2></div>
+</section>
+
+<section class="slide" data-ch="6 · Safety" data-t="Layers of safety">
+  <p class="eyebrow">Security model</p>
+  <h2>Seven layers between a request and your laptop</h2>
+  <div class="grid g2">
+    <div class="box"><h3>1. Local only</h3><p>The server binds to <code>127.0.0.1</code>, so other computers on the network cannot reach it.</p></div>
+    <div class="box"><h3>2. Same page only</h3><p>Each request must come from JARVIS's own page (Origin and Sec-Fetch-Site headers), so a random website cannot call its API.</p></div>
+    <div class="box"><h3>3. Tool registry</h3><p>Only named tools with checked arguments exist. The AI cannot invent new ones.</p></div>
+    <div class="box"><h3>4. Permission tiers</h3><p>Safe actions run; risky ones preview and ask; the most dangerous can require Windows Hello.</p></div>
+    <div class="box"><h3>5. Access zones</h3><p>Read anywhere; ask before changing outside <code>~/jarvis</code>; never touch Windows, Program Files or AppData.</p></div>
+    <div class="box"><h3>6. No remote approvals</h3><p>Phone commands and unattended routines can never approve a change. The card only appears at the laptop.</p></div>
+    <div class="box"><h3>7. Undo and trash</h3><p>Deletes go to JARVIS's trash, overwrites keep the old version, and secrets in backups are encrypted.</p></div>
+    <div class="box"><h3>Panic switch</h3><p>Say "panic" and all automation, routines and triggers stop until you say "resume".</p></div>
+  </div>
+</section>
+
+<section class="slide" data-ch="6 · Safety" data-t="Access zones">
+  <p class="eyebrow">Interactive · access zones</p>
+  <h2>Can JARVIS touch this path?</h2>
+  <div class="sim">
+    <label for="zin" class="eyebrow" style="margin:0">A path on the laptop</label>
+    <input id="zin" type="text" value="C:\Users\tejas\Desktop\report.md" autocomplete="off" spellcheck="false">
+    <div class="chips" id="zchips"></div>
+    <div class="trace" id="zout"></div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="box"><h3>Home: ~/jarvis</h3><p>JARVIS's own workspace. Read and change freely; undo covers it.</p></div>
+    <div class="box"><h3>Laptop: everywhere else</h3><p>Open and read freely. Write, rename, move, copy into or delete: shows <strong>ALLOW / CANCEL</strong> first.</p></div>
+    <div class="box"><h3>Blocked</h3><p>Windows, Program Files, ProgramData, AppData, .ssh-style key folders, the Recycle Bin and JARVIS's own config. Refused even if approved.</p></div>
+  </div>
+</section>
+
+<!-- ===================================================== PART 7 -->
+<section class="slide" data-ch="7 · Testing" data-t="Part 7 — Testing and review" data-part="Testing & review|How we know it works, limits, quiz">
+  <div class="divider"><p class="eyebrow">Part seven</p><div class="big">PROOF</div><h2>How do we know it works?</h2></div>
+</section>
+
+<section class="slide" data-ch="7 · Testing" data-t="Testing">
+  <p class="eyebrow">Testing</p>
+  <h2>29 test suites, none of which touch your real data</h2>
+  <div class="cols">
+    <div>
+      <ul class="list">
+        <li><strong>Isolated server:</strong> tests start a real JARVIS whose home folder is a temporary directory, with the AI pointed at a dead port. Your files and settings are never used.</li>
+        <li><strong>Page self-test:</strong> headless Edge loads the real page, controlled over the Chrome DevTools Protocol. A fake speech recogniser "speaks" commands, and laptop actions are replaced by recording fakes.</li>
+        <li><strong>Route gate:</strong> the API suite fails if any server route is neither tested nor listed with a reason why it cannot be.</li>
+        <li><strong>Paraphrase test:</strong> the same request said many ways. Correct, handed to the AI, or confidently wrong. The last one must stay at zero.</li>
+        <li><strong>Live test (opt-in):</strong> reversible checks on the real laptop, restoring volume and brightness afterwards.</li>
+      </ul>
+    </div>
+    <div class="tw"><table>
+      <thead><tr><th>Suite</th><th class="num">Checks</th></tr></thead>
+      <tbody>
+        <tr><td>coverage (176 commands)</td><td class="num">366</td></tr>
+        <tr><td>nlu</td><td class="num">261</td></tr>
+        <tr><td>paraphrase (97% correct)</td><td class="num">258</td></tr>
+        <tr><td>e2e page self-test</td><td class="num">254</td></tr>
+        <tr><td>agent routing + safety</td><td class="num">186</td></tr>
+        <tr><td>api (every route)</td><td class="num">169</td></tr>
+        <tr><td>llm providers</td><td class="num">66</td></tr>
+        <tr><td>student maths</td><td class="num">60</td></tr>
+        <tr><td>…and 21 more suites</td><td class="num">—</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <div class="note"><b>Teacher's note</b><p>A good test answers one question: "if I break this, will something turn red?" Faking the laptop lets tests run hundreds of commands in two minutes without actually changing your volume or opening apps.</p></div>
+</section>
+
+<section class="slide" data-ch="7 · Testing" data-t="Limits and next steps">
+  <p class="eyebrow">Honest limits</p>
+  <h2>What JARVIS cannot do yet</h2>
+  <div class="grid g2">
+    <div class="box"><h3>Windows first</h3><p>Laptop controls use Windows features. Chat, study tools and AI run elsewhere, but Windows is the supported platform.</p></div>
+    <div class="box"><h3>Online speech recognition</h3><p>The browser's recogniser needs internet. The wake word works offline; full sentences do not.</p></div>
+    <div class="box"><h3>Small local models</h3><p>A 4B model on a 6 GB GPU is limited for long reasoning. Cloud keys (Gemini, Groq free tiers) help.</p></div>
+    <div class="box"><h3>Page must be open</h3><p>Phone commands run inside the page, so a JARVIS tab must be open on the laptop.</p></div>
+  </div>
+  <h3 style="margin-top:18px">Ideas for the future</h3>
+  <ul class="list"><li>Fully offline speech recognition (for example a Whisper model)</li><li>macOS and Linux controls</li><li>A shared knowledge base across devices</li><li>More languages beyond English, Telugu and Kannada</li></ul>
+</section>
+
+<section class="slide" data-ch="7 · Testing" data-t="Quiz">
+  <p class="eyebrow">Check your understanding</p>
+  <h2>Quiz: six questions</h2>
+  <p>Score: <span class="score" id="score">0 / 6</span> <button class="btn" id="qReset" style="margin-left:10px">Reset</button></p>
+  <div class="grid g2" id="quiz"></div>
+</section>
+
+<section class="slide" data-ch="7 · Testing" data-t="Summary and glossary">
+  <p class="eyebrow">Summary</p>
+  <h2>Remember these five sentences</h2>
+  <ul class="list" style="font-size:17px">
+    <li>JARVIS is a <strong>Node.js server + web page</strong> that runs on your laptop.</li>
+    <li>Every command goes <strong>Normalize → Classify → Route → Act & verify → Speak</strong>.</li>
+    <li><strong>Rules first, AI second</strong>: fast and predictable for clear commands, flexible for everything else.</li>
+    <li><strong>The server decides</strong> what is allowed; risky actions ask, and almost everything can be undone.</li>
+    <li>Voice uses <strong>Web Speech</strong> to hear, a <strong>Windows listener</strong> for the wake word, and <strong>neural TTS</strong> to speak.</li>
+  </ul>
+  <h3 style="margin-top:18px">Glossary</h3>
+  <div class="tw"><table><tbody>
+    <tr><td>Intent</td><td>What the user wants done, such as SET_VOLUME.</td></tr>
+    <tr><td>NLU</td><td>Natural Language Understanding: turning text into intent plus arguments.</td></tr>
+    <tr><td>RAG</td><td>Retrieval-Augmented Generation: find relevant text first, then let the AI answer from it.</td></tr>
+    <tr><td>Embedding</td><td>A list of numbers that represents a text's meaning, so similar meanings are close together.</td></tr>
+    <tr><td>STT / TTS</td><td>Speech to text / text to speech.</td></tr>
+    <tr><td>SSML</td><td>Markup that tells a voice engine what to say and how (voice, speed, pitch).</td></tr>
+    <tr><td>SSE</td><td>Server-Sent Events: a live one-way stream from server to page.</td></tr>
+    <tr><td>TOTP</td><td>Time-based one-time password, the 6-digit code in an authenticator app.</td></tr>
+    <tr><td>WebAuthn</td><td>The web standard behind Windows Hello fingerprint, face and PIN checks.</td></tr>
+    <tr><td>Ollama</td><td>A program that runs open AI models locally on your GPU.</td></tr>
+  </tbody></table></div>
+  <div class="note"><b>Homework</b><p>Pick one command you use daily. Write down its intent, its arguments, which route it takes (rule, agent or AI), which permission tier it needs, and how JARVIS could verify it worked.</p></div>
+</section>
+
+</main>
+
+<div class="ctrl">
+  <button class="btn" id="prev">← Prev</button>
+  <div class="hint">← → to move · C for contents · Home / End</div>
+  <button class="btn solid" id="next">Next →</button>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Contents">
+  <header>CONTENTS <button class="btn" id="tocClose">Close</button></header>
+  <ol id="toc"></ol>
+</aside>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const slides = [...document.querySelectorAll('.slide')];
+  let cur = 0;
+  const pad = n => String(n).padStart(2, '0');
+
+  function go(i, push = true) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, k) => s.classList.toggle('on', k === cur));
+    slides[cur].scrollTop = 0;
+    $('#count').textContent = pad(cur + 1) + ' / ' + pad(slides.length);
+    $('#chap').textContent = slides[cur].dataset.ch;
+    $('#prog').style.width = ((cur + 1) / slides.length * 100) + '%';
+    $('#prev').disabled = cur === 0; $('#next').disabled = cur === slides.length - 1;
+    document.querySelectorAll('#toc button').forEach(b => b.classList.toggle('cur', +b.dataset.i === cur));
+    if (push) { try { history.replaceState(null, '', '#s' + (cur + 1)); } catch {} }
+  }
+  $('#prev').onclick = () => go(cur - 1);
+  $('#next').onclick = () => go(cur + 1);
+  addEventListener('keydown', e => {
+    if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+    if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); go(cur + 1); }
+    else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); go(cur - 1); }
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(slides.length - 1);
+    else if (e.key.toLowerCase() === 'c') toggleToc();
+    else if (e.key === 'Escape') toggleToc(false);
+  });
+  let tx = null, ty = null;
+  $('#stage').addEventListener('touchstart', e => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, { passive: true });
+  $('#stage').addEventListener('touchend', e => {
+    if (tx === null) return;
+    const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && !e.target.closest('input,.tw,.trace')) go(cur + (dx < 0 ? 1 : -1));
+    tx = null;
+  });
+
+  /* contents drawer + agenda */
+  const toc = $('#toc'), agenda = $('#agenda');
+  let lastCh = '';
+  slides.forEach((s, i) => {
+    if (s.dataset.ch !== lastCh) { lastCh = s.dataset.ch; const li = document.createElement('li'); li.className = 'ch'; li.textContent = lastCh; toc.appendChild(li); }
+    const li = document.createElement('li'), b = document.createElement('button');
+    b.dataset.i = i; b.innerHTML = '<i>' + pad(i + 1) + '</i><span></span>'; b.querySelector('span').textContent = s.dataset.t;
+    b.onclick = () => { go(i); toggleToc(false); };
+    li.appendChild(b); toc.appendChild(li);
+    if (s.dataset.part) {
+      const [name, sub] = s.dataset.part.split('|'), a = document.createElement('button');
+      a.innerHTML = '<small>PART ' + (agenda.children.length + 1) + ' · SLIDE ' + pad(i + 1) + '</small><b></b><span></span>';
+      a.querySelector('b').textContent = name; a.querySelector('span').textContent = sub;
+      a.onclick = () => go(i); agenda.appendChild(a);
+    }
+  });
+  function toggleToc(force) {
+    const open = force === undefined ? !$('#drawer').classList.contains('open') : force;
+    $('#drawer').classList.toggle('open', open); $('#scrim').classList.toggle('on', open);
+  }
+  $('#tocBtn').onclick = () => toggleToc(); $('#tocClose').onclick = () => toggleToc(false); $('#scrim').onclick = () => toggleToc(false);
+
+  /* feature map */
+  const FEATS = [
+    ['Voice & chat', 'Wake word, tap to talk, 3 languages, 2 personalities, context memory.', 'Jarvis, what\'s on my schedule\nvolume penchu\nswitch to friday\nwhat were we talking about'],
+    ['Laptop control', 'Apps, volume, brightness, theme, Wi-Fi, Bluetooth, windows, screenshots.', 'open spotify\nset brightness to 60\nturn on dark mode\nput chrome left and vs code right'],
+    ['Study planner', 'To-dos, deadlines, reminders, focus sessions, multi-day plans.', 'remind me to pay fees every year in july\nplan my DBMS exam in 5 days\nstart a 25 minute focus session'],
+    ['Student maths', 'Attendance bunk-o-meter, SGPA and CGPA.', 'I attended 30 of 36 classes\nhow many classes can I bunk\ncalculate my sgpa'],
+    ['Files & notes', 'Read anywhere, answers with page numbers, flashcards from PDFs.', 'what do my notes say about joins\nsummarise lecture3.pdf\nmake flashcards from lecture3.pdf'],
+    ['Coding', 'Run code, EXPLAIN & FIX, DSA coach, website generator.', 'write binary search in python\nrun it\ngive me a hint for two sum\nmake a portfolio website'],
+    ['Coding AIs', 'Open a project in an editor and hand its AI a task.', 'open dsa sprint in vs code and ask copilot to add tests\nask claude in agriloop to write unit tests'],
+    ['Automation', 'Multi-step plans, routines, triggers, global hotkey.', 'open vs code and start a focus session\nwhen I plug in my charger set brightness to 80\nstart my study mode'],
+    ['Phone & safety', 'ntfy alerts, authenticator codes, Windows Hello, undo, panic.', 'send a test notification\nundo\npanic\nresume'],
+  ];
+  const feats = $('#feats');
+  FEATS.forEach(([t, d, ex]) => {
+    const b = document.createElement('button'); b.className = 'feat'; b.setAttribute('aria-expanded', 'false');
+    b.innerHTML = '<b></b><span></span><div class="ex"></div>';
+    b.querySelector('b').textContent = t; b.querySelector('span').textContent = d;
+    b.querySelector('.ex').innerHTML = ex.split('\n').map(x => '› ' + x.replace(/</g, '&lt;')).join('<br>');
+    b.onclick = () => b.setAttribute('aria-expanded', b.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');
+    feats.appendChild(b);
+  });
+
+  /* architecture */
+  const ARCH = [
+    ['You', 'Voice, keyboard, phone', '<h3>You</h3><p>You speak into the mic, type in the chat box, press Ctrl+K or Ctrl+Shift+J, or send a message from your phone through ntfy. All of these arrive at the same pipeline, so every command works from every input.</p>'],
+    ['Browser page', 'index.html · script.js · nlu.js · agent.js · voice.js', '<h3>Browser page (the client)</h3><p>Listens (Web Speech), understands (nlu.js rules), plans multi-step goals (agent.js), shows replies in Markdown, and speaks. It keeps your to-dos, reminders and settings, saved to the server. It cannot touch the laptop by itself, so it calls the server with <code>fetch(\'/api/tool/…\')</code>.</p>'],
+    ['Node server', 'server.js · llm.js · scheduler.js · rag.js · tts.js', '<h3>Node.js server (Express, 127.0.0.1)</h3><p>Checks every request (origin, tool, arguments, permission, access zone), then acts: runs PowerShell for volume or apps, reads and writes files, runs code, searches notes, calls the AI, generates voice, and fires reminders on time even if the tab is closed. Live events go back to the page over Server-Sent Events.</p>'],
+    ['Outside world', 'Windows · Ollama or cloud AI · voice service · ntfy', '<h3>Outside the server</h3><p><strong>Windows</strong> does the physical work (apps, audio, screen OCR, System.Speech wake word, Windows Hello). <strong>Ollama</strong> runs a local model on the GPU, or a <strong>cloud API</strong> answers with your key. The <strong>neural voice service</strong> turns text into MP3. <strong>ntfy</strong> delivers phone notifications.</p>'],
+  ];
+  const arch = $('#arch');
+  ARCH.forEach(([t, s, html], i) => {
+    const b = document.createElement('button'); b.className = 'layer';
+    b.innerHTML = '<b></b><span></span>'; b.querySelector('b').textContent = t; b.querySelector('span').textContent = s;
+    b.onclick = () => { arch.querySelectorAll('.layer').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); $('#archDetail').innerHTML = html; };
+    arch.appendChild(b);
+  });
+
+  /* life of a command */
+  const LIFE = [
+    ['0 · Hear', 'Mic audio ──► Web Speech API\n<span class="k">interim</span>  "jarvis set volume"\n<span class="k">final</span>    <span class="v">"Jarvis, set volume to thirty"</span>\nUtterance collector waits for a quiet gap, then sends the whole sentence.'],
+    ['1 · Normalize', 'input   "Jarvis, set volume to thirty"\n<span class="k">strip wake word</span>   → "set volume to thirty"\n<span class="k">number words</span>      → "set volume to 30"\n<span class="k">lowercase, typos</span>  → <span class="v">"set volume to 30"</span>'],
+    ['2 · Classify', 'rules tried in order…\n  OPEN_APPLICATION   ✗ no match\n  SET_VOLUME         ✓ /(set|change) (the )?volume to (\\d+)/\n<span class="k">intent</span>      <span class="v">SET_VOLUME</span>\n<span class="k">arguments</span>   <span class="v">{ level: 30 }</span>\n<span class="k">confidence</span>  high'],
+    ['3 · Route', 'one clear command  → <span class="v">run the tool directly</span>   ◄ this one\nseveral commands   → agent.js builds a plan\nquestion / unclear → AI brain (streamed)'],
+    ['4 · Act & verify', 'page  ──► POST /api/sys/volume { level: 30 }\nserver: origin ✓  tool ✓  args 0–100 ✓  tier: safe ✓\nserver ──► PowerShell sets the Windows master volume\n<span class="k">verify</span>  read the volume back → <span class="v">30 ✓</span>\n<span class="k">undo</span>    previous level 50 saved on the undo stack'],
+    ['5 · Speak', 'reply  "Volume set to 30."\n<span class="k">clean</span>  no Markdown to strip\n<span class="k">voice</span>  English + JARVIS → Ryan (en-GB)\n<span class="k">TTS</span>    neural voice → MP3 → plays; orb animates\n<span class="v">Done in well under a second, with no AI involved.</span>'],
+  ];
+  const ls = $('#lifeSteps');
+  LIFE.forEach(([t, body], i) => {
+    const b = document.createElement('button'); b.textContent = t;
+    b.onclick = () => { ls.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); $('#lifeTrace').innerHTML = body; };
+    ls.appendChild(b); if (!i) b.click();
+  });
+
+  /* router simulator (teaching model) */
+  const NUM = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, ten: 10, fifteen: 15, twenty: 20, 'twenty five': 25, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100 };
+  const RULES = [
+    [/^(?:open|launch) (.+?) in (vs ?code|kiro|trae|cursor) and (?:ask|tell) (copilot|claude|it) to (.+)$/, m => ['CODE_ASK', { folder: m[1], tool: m[2], ai: m[3], prompt: m[4] }, 'codeAsk']],
+    [/^ask (claude|copilot|gemini|codex|qwen) in (.+?) to (.+)$/, m => ['CODE_ASK', { tool: m[1], folder: m[2], prompt: m[3] }, 'codeAsk']],
+    [/^open (.+?) (?:folder )?in (?:vs ?code|visual studio code)$/, m => ['OPEN_IN_EDITOR', { name: m[1].replace(/ folder$/, '') }, 'openInEditor']],
+    [/^(?:set |change )?(?:the )?volume (?:to )?(\d+)$/, m => ['SET_VOLUME', { level: +m[1] }, 'sys/volume']],
+    [/^volume (up|down)$/, m => ['SET_VOLUME', { action: m[1] }, 'setVolume']],
+    [/^(?:set )?brightness (?:to )?(\d+)$/, m => ['SET_BRIGHTNESS', { level: +m[1] }, 'sys/brightness']],
+    [/^(?:set )?(?:a )?timer (?:for )?(\d+) (minutes?|seconds?)$/, m => ['SET_TIMER', { amount: +m[1], unit: m[2] }, '(page timer)']],
+    [/^remind me to (.+?) (in \d+ \w+|at .+|tomorrow.*)$/, m => ['SET_REMINDER', { text: m[1], when: m[2] }, '(scheduler)']],
+    [/^(?:read|show) (?:me )?(?:the |my )?(.+\.\w+)$/, m => ['READ_FILE', { name: m[1] }, 'readFile']],
+    [/^(?:open|launch|start) (chrome|firefox|edge|spotify|notepad|discord|vs ?code|calculator|youtube)$/, m => ['OPEN_APPLICATION', { app: m[1] }, 'openApplication']],
+    [/^close (it|chrome|firefox|spotify|notepad|discord)$/, m => ['CLOSE_APPLICATION', { app: m[1] === 'it' ? '(last app from context)' : m[1] }, 'closeApplication']],
+    [/^(?:turn on |switch to )?(dark|light) (?:mode|theme)$/, m => ['SET_THEME', { mode: m[1] }, 'sys/theme']],
+    [/^(?:what(?:'s| is) the )?time(?: is it)?$|^what time is it$/, () => ['TELL_TIME', {}, '(page clock)']],
+    [/^how many classes can i bunk$/, () => ['ATTENDANCE_BUNK', {}, '(study.js maths)']],
+    [/^undo$/, () => ['UNDO', {}, '(undo stack)']],
+    [/^panic$/, () => ['PANIC', {}, '(stop automation)']],
+  ];
+  function normalize(t) {
+    const steps = []; let s = t.trim();
+    const w = s.replace(/^(?:hey |ok |okay )?(?:jarvis|friday)[,!.\s]*/i, ''); if (w !== s) steps.push(['strip wake word', w]); s = w;
+    const f = s.replace(/\b(please|can you|could you|um+|uh+)\b[,]?\s*/gi, '').replace(/\s+/g, ' ').trim(); if (f !== s) steps.push(['remove fillers', f]); s = f;
+    const l = s.toLowerCase().replace(/[?!.]+$/, ''); if (l !== s) steps.push(['lowercase, trim punctuation', l]); s = l;
+    const tel = s.replace(/\bpenchu\b/g, 'up').replace(/\btagginchu\b/g, 'down').replace(/\bterachu\b/g, 'open').replace(/\bheccu\b/g, 'up').replace(/\bkadime\b/g, 'down');
+    if (tel !== s) steps.push(['Telugu / Kannada words', tel]); s = tel;
+    const n = s.replace(/\b(twenty five|zero|one|two|three|four|five|ten|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\b/g, x => NUM[x]);
+    if (n !== s) steps.push(['number words → digits', n]); s = n;
+    const fx = s.replace(/\bvs cod\b/g, 'vs code').replace(/\bchorme\b/g, 'chrome').replace(/\bvolumn\b/g, 'volume');
+    if (fx !== s) steps.push(['fix typos', fx]); s = fx;
+    return { s, steps };
+  }
+  const classify = s => { for (const [re, f] of RULES) { const m = s.match(re); if (m) return f(m); } return null; };
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  function route(text) {
+    if (!text.trim()) return 'Type a command above.';
+    const { s, steps } = normalize(text);
+    let out = '<span class="k">input</span>       ' + esc(text) + '\n';
+    steps.forEach(([k, v]) => { out += '<span class="k">' + k.padEnd(28).slice(0, 28) + '</span>→ ' + esc(v) + '\n'; });
+    out += '<span class="k">normalized</span>  <span class="v">' + esc(s) + '</span>\n\n';
+    if (/^(i|we|he|she|they) (opened|closed|set|played)\b|yesterday/.test(s)) return out + '<span class="pill ai">no command</span>  This is a statement about the past, not a request.\nGuard: statements never fire commands. JARVIS just chats.';
+    const one = classify(s);
+    if (one) return out + '<span class="pill rule">rule match</span>  one clear command → run directly\n<span class="k">intent</span>      <span class="v">' + one[0] + '</span>\n<span class="k">arguments</span>   <span class="v">' + esc(JSON.stringify(one[1])) + '</span>\n<span class="k">tool</span>        ' + esc(one[2]) + '\n<span class="k">AI used?</span>    no';
+    const parts = s.split(/\s*(?:,\s*(?:and\s+)?(?:then\s+)?|\s+and then\s+|\s+then\s+|\s+and\s+)\s*/).filter(Boolean);
+    if (parts.length > 1) {
+      const got = parts.map(p => [p, classify(p)]);
+      if (got.filter(g => g[1]).length >= 2) {
+        out += '<span class="pill agent">agent plan</span>  several commands → agent.js\n';
+        got.forEach(([p, c], i) => { out += '  step ' + (i + 1) + '  ' + (c ? '<span class="v">' + c[0] + '</span> ' + esc(JSON.stringify(c[1])) : '<span class="k">? "' + esc(p) + '" → ask the AI planner</span>') + '\n'; });
+        return out + '<span class="k">then</span>        check permissions → preview if risky → run in order → verify each';
+      }
+    }
+    if (/\?$|^(what|why|how|who|when|where|explain|tell me|is|are|can|should|which|define)\b/.test(s)) return out + '<span class="pill ai">AI brain</span>  a question → llm.js (Ollama or cloud), streamed word by word\nIf it is about your files, rag.js first retrieves passages with page numbers.';
+    return out + '<span class="pill ai">AI planner</span>  no rule matched → the AI may pick a tool\nThe server checks the tool name, arguments and permission tier before anything runs.\nThe phrase is saved in the miss list so you can TEACH it later.';
+  }
+  const rin = $('#rin'), rout = $('#rout');
+  const EX = ['Jarvis, open chrome and set volume to thirty', 'volume penchu', 'please set a timer for ten minutes', 'open dsa sprint in vs code and ask copilot to add tests', 'close it', 'I opened chrome yesterday', 'why is the sky red at sunset?', 'make my laptop feel faster', 'read notes.md', 'how many classes can i bunk'];
+  EX.forEach(x => { const c = document.createElement('button'); c.className = 'chip'; c.textContent = x; c.onclick = () => { rin.value = x; rout.innerHTML = route(x); }; $('#rchips').appendChild(c); });
+  rin.addEventListener('input', () => { rout.innerHTML = route(rin.value); });
+  rout.innerHTML = route(rin.value);
+
+  /* access zones */
+  function zone(p) {
+    const s = p.trim().replace(/\//g, '\\').toLowerCase();
+    if (!s) return 'Type a path above.';
+    const out = '<span class="k">path</span>   ' + esc(p) + '\n';
+    const blocked = [[/^[a-z]:\\windows(\\|$)/, 'Windows system folder'], [/^[a-z]:\\program files( \(x86\))?(\\|$)/, 'Program Files'], [/^[a-z]:\\programdata(\\|$)/, 'ProgramData'],
+      [/\\users\\[^\\]+\\appdata(\\|$)/, 'AppData (app and browser data)'], [/\\users\\[^\\]+\\\.(ssh|aws|gnupg|azure|kube|docker)(\\|$)/, 'secret key folder'],
+      [/\\\$recycle\.bin(\\|$)|\\system volume information(\\|$)/, 'Recycle Bin / system volume'], [/\\jarvis\\\.config\.json$|\\jarvis\\\.backups(\\|$)/, 'JARVIS\'s own settings and backups'], [/^d:\\jarvis(\\|$)/, 'the JARVIS program folder (read-only)']];
+    for (const [re, why] of blocked) if (re.test(s)) {
+      const readOk = /program folder/.test(why);
+      return out + '<span class="k">zone</span>   <span class="pill block">blocked</span>  ' + why + '\n<span class="k">open / read</span>  ' + (readOk ? '<span class="v">✓ allowed</span>' : '✗ refused') + '\n<span class="k">change</span>       ✗ refused, even if you click ALLOW';
+    }
+    if (/^[a-z]:\\users\\[^\\]+\\jarvis(\\|$)/.test(s)) return out + '<span class="k">zone</span>   <span class="pill ok">home · ~/jarvis</span>\n<span class="k">open / read</span>  <span class="v">✓ allowed</span>\n<span class="k">change</span>       <span class="v">✓ allowed, no question</span> (undo and trash cover it)';
+    if (!/^[a-z]:\\/.test(s)) return out + 'Use a full Windows path, like C:\\Users\\you\\Desktop\\notes.txt';
+    return out + '<span class="k">zone</span>   <span class="pill agent">laptop</span>\n<span class="k">open / read</span>  <span class="v">✓ allowed, no setup</span>\n<span class="k">change</span>       ⚠ asks first: "JARVIS wants to rename … ALLOW / CANCEL"\n             from the phone or a routine: refused ("do it at the laptop")';
+  }
+  const zin = $('#zin'), zout = $('#zout');
+  ['C:\\Users\\tejas\\Desktop\\report.md', 'C:\\Users\\tejas\\jarvis\\Notes\\dbms.md', 'D:\\projects\\agriloop\\app.js', 'C:\\Windows\\win.ini', 'C:\\Users\\tejas\\AppData\\Roaming\\Code\\settings.json', 'C:\\Users\\tejas\\.ssh\\id_rsa', 'D:\\jarvis\\server.js']
+    .forEach(x => { const c = document.createElement('button'); c.className = 'chip'; c.textContent = x; c.onclick = () => { zin.value = x; zout.innerHTML = zone(x); }; $('#zchips').appendChild(c); });
+  zin.addEventListener('input', () => { zout.innerHTML = zone(zin.value); });
+  zout.innerHTML = zone(zin.value);
+
+  /* project files */
+  const FILES = [
+    ['index.html', 'Page', 'The app page: chat, orb, settings'], ['script.js', 'Page', 'Turn pipeline, UI, tasks, reminders, files, settings'],
+    ['nlu.js', 'Page', 'Normalization, intent rules, fuzzy matching, dates'], ['agent.js', 'Page', 'Multi-step plans, confirmations, verification, learning'],
+    ['voice.js', 'Voice', 'Utterance collector: waits until you finish speaking'], ['wakeword.js', 'Voice', 'Background Windows wake-word listener'],
+    ['tts.js', 'Voice', 'Neural voices in English, Telugu, Kannada'], ['lang.js', 'Voice', 'Detects Telugu / Kannada, translates commands to English and replies back'],
+    ['persona.js', 'Page', 'JARVIS and FRIDAY personality lines'], ['palette.js', 'Page', 'Ctrl+K command palette'],
+    ['server.js', 'Server', 'Express routes, security, files, apps, code runner'], ['llm.js', 'Server', 'AI providers, streaming, retries, keys'],
+    ['agent-tools.js', 'Server', 'Tool registry, schemas, permission tiers'], ['scheduler.js', 'Server', 'Reminders, triggers, phone, live events'],
+    ['system-tools.js', 'Server', 'Brightness, theme, Wi-Fi, windows, OCR, clipboard'], ['codetools.js', 'Server', 'Coding AIs in editors and terminals'],
+    ['rag.js', 'Server', 'Hybrid search over notes, code, PDFs'], ['pdftext.js · doctext.js', 'Server', 'PDF and Office text extraction'],
+    ['skills.js', 'Server', 'Website generator, DSA coach, viva, code fixer'], ['hello.js', 'Security', 'Windows Hello approvals (WebAuthn)'],
+    ['phoneauth.js', 'Security', 'Authenticator codes for phone commands'], ['backup.js', 'Security', 'Export, import, encrypted secrets, snapshots'],
+    ['undo.js', 'Page', 'Undo stack'], ['study.js', 'Page', 'Study planner, attendance and GPA maths'],
+    ['routines.js · triggers.js', 'Page', 'Routines and "when X, do Y" rules'], ['hotkey.js', 'Server', 'Global Ctrl+Shift+J helper'],
+    ['autostart.js', 'Server', 'Start with Windows'], ['update.js', 'Server', 'Checks GitHub for new releases'],
+    ['sw.js · manifest', 'Page', 'Installable app, offline shell'], ['start.ps1 · jarvis-silent.vbs', 'Launch', 'One-click start, hidden server, desktop shortcut'],
+    ['tests/', 'Tests', '29 suites, isolated server, headless browser'],
+  ];
+  const fb = $('#files'), ff = $('#fileFilter');
+  function drawFiles(layer) {
+    fb.innerHTML = '';
+    FILES.filter(f => layer === 'All' || f[1] === layer).forEach(f => { const tr = document.createElement('tr'); f.forEach(x => { const td = document.createElement('td'); td.textContent = x; tr.appendChild(td); }); fb.appendChild(tr); });
+    ff.querySelectorAll('.chip').forEach(c => c.style.borderColor = c.textContent === layer ? 'var(--ember)' : '');
+  }
+  ['All', 'Page', 'Voice', 'Server', 'Security', 'Launch', 'Tests'].forEach(l => { const c = document.createElement('button'); c.className = 'chip'; c.textContent = l; c.onclick = () => drawFiles(l); ff.appendChild(c); });
+  drawFiles('All');
+
+  /* TTS demo */
+  const ttsMsg = $('#ttsMsg'), sel = $('#ttsVoice');
+  const hasTTS = 'speechSynthesis' in window;
+  function loadVoices() {
+    if (!hasTTS) return;
+    const vs = speechSynthesis.getVoices(); if (!vs.length) return;
+    sel.innerHTML = '';
+    vs.forEach((v, i) => { const o = document.createElement('option'); o.value = i; o.textContent = v.name + ' (' + v.lang + ')'; sel.appendChild(o); });
+    const pref = vs.findIndex(v => /en-GB/i.test(v.lang)); if (pref >= 0) sel.value = pref;
+  }
+  if (hasTTS) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; } else { const o = document.createElement('option'); o.textContent = 'No voices available here'; sel.appendChild(o); }
+  $('#ttsGo').onclick = () => {
+    try {
+      if (!hasTTS) { ttsMsg.textContent = 'This browser has no speech synthesis, so the demo cannot play here.'; return; }
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance($('#ttsText').value);
+      const v = speechSynthesis.getVoices()[+sel.value]; if (v) u.voice = v;
+      u.rate = 1; u.onend = () => { ttsMsg.textContent = 'Finished. That was Path A: a voice already on your device.'; };
+      u.onerror = () => { ttsMsg.textContent = 'The voice could not play in this view. Try the deck in a normal browser tab.'; };
+      speechSynthesis.speak(u); ttsMsg.textContent = 'Speaking…';
+    } catch { ttsMsg.textContent = 'The voice could not play in this view.'; }
+  };
+  $('#ttsStop').onclick = () => { try { speechSynthesis.cancel(); } catch {} ttsMsg.textContent = 'Stopped.'; };
+
+  /* quiz */
+  const QUIZ = [
+    ['Which part decides whether an action is allowed?', ['The AI model', 'The Node.js server', 'The browser page', 'Windows Defender'], 1, 'The server checks the tool, arguments, permission tier and access zone. The AI can only propose.'],
+    ['What is the correct order of the command pipeline?', ['Classify → Normalize → Speak → Route', 'Normalize → Classify → Route → Act & verify → Speak', 'Route → Classify → Act → Normalize', 'Speak → Act → Route → Classify'], 1, 'Clean the text, find the intent, choose the path, do and check the work, then answer.'],
+    ['Why does "set volume to 30" not use the AI?', ['The AI is not allowed to change volume', 'A rule already understands it: instant, free and predictable', 'Volume is controlled by the browser', 'The AI is offline at night'], 1, 'Rules first, AI second. Clear commands never need a model.'],
+    ['How does the wake word work while you are in another browser tab?', ['The tab keeps full speech recognition running', 'A Windows System.Speech listener on the server hears "Jarvis" and sends an SSE event', 'The phone listens instead', 'It does not work in other tabs'], 1, 'Browsers pause background recognition, so a small offline Windows engine waits for the one word.'],
+    ['What does the neural voice service receive and return?', ['Audio in, text out', 'SSML text in, MP3 audio out', 'Your microphone stream', 'A PDF of the reply'], 1, 'The server sends SSML (text plus voice settings) over a WebSocket and gets MP3 chunks back.'],
+    ['You ask JARVIS to rename a file on your Desktop from your phone. What happens?', ['It renames it immediately', 'It shows ALLOW / CANCEL on the phone', 'It refuses: changes outside ~/jarvis need approval at the laptop', 'It deletes the file'], 2, 'Phone commands and routines can never approve changes. The approval card only appears at the laptop.'],
+  ];
+  const qz = $('#quiz'); let score = 0;
+  function drawQuiz() {
+    qz.innerHTML = ''; score = 0; $('#score').textContent = '0 / ' + QUIZ.length;
+    QUIZ.forEach(([q, opts, right, why], qi) => {
+      const box = document.createElement('div'); box.className = 'q';
+      box.innerHTML = '<p class="qq"></p><div class="opts"></div><div class="why" hidden></div>';
+      box.querySelector('.qq').textContent = (qi + 1) + '. ' + q;
+      const o = box.querySelector('.opts');
+      opts.forEach((t, i) => {
+        const b = document.createElement('button'); b.textContent = t;
+        b.onclick = () => {
+          o.querySelectorAll('button').forEach((x, k) => { x.disabled = true; if (k === right) x.classList.add('right'); });
+          if (i === right) { score++; $('#score').textContent = score + ' / ' + QUIZ.length; } else b.classList.add('wrong');
+          const w = box.querySelector('.why'); w.textContent = (i === right ? 'Correct. ' : 'Not quite. ') + why; w.hidden = false;
+        };
+        o.appendChild(b);
+      });
+      qz.appendChild(box);
+    });
+  }
+  $('#qReset').onclick = drawQuiz; drawQuiz();
+
+  const h = /^#s(\d+)$/.exec(location.hash);
+  go(h ? +h[1] - 1 : 0, false);
+})();
+</script>

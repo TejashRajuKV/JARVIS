@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JARVIS — Local AI Assistant</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23111213'/><path d='M11 9h10M16 9v11a4 4 0 0 1-8 0' fill='none' stroke='%23e9a23b' stroke-width='2.4' stroke-linecap='round'/></svg>">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5/500.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5/600.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5/500.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="themes.css">
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body data-state="boot">
+  <canvas id="bgCanvas"></canvas>
+  <div class="vignette"></div>
+  <div class="scanlines"></div>
+
+  <!-- BOOT -->
+  <div id="bootOverlay">
+    <div class="boot-box">
+      <div class="boot-title">JARVIS</div>
+      <div class="boot-sub">LOCAL AI ASSISTANT · SYSTEM CHECK</div>
+      <div id="bootLines"></div>
+      <div class="boot-bar"><i id="bootBarFill"></i></div>
+      <button id="bootSkip">[ CLICK TO SKIP ]</button>
+    </div>
+  </div>
+
+  <header>
+    <button class="icon-btn" id="leftToggle" title="Systems panel" aria-label="Toggle systems panel">
+      <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+    </button>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><rect x="14" y="14" width="12" height="12" rx="1.5" fill="var(--cyan)"/></svg>
+      <div>
+        <h1>JARVIS</h1>
+        <small>local assistant</small>
+      </div>
+    </div>
+    <div class="status-pills">
+      <span class="pill" id="pillCore" title="Node/Express backend"><i></i>BACKEND</span>
+      <span class="pill" id="pillLLM" title="Local LLM via Ollama"><i></i>AI BRAIN</span>
+      <span class="pill" id="pillNet" title="Online tools (weather, web answers)"><i></i>ONLINE</span>
+      <button class="pill warn" id="panicPill" title="Panic mode is ON — automation paused. Say “resume” to end it." hidden>⚠ PANIC</button>
+      <button class="pill" id="installPill" title="Install JARVIS as an app — works offline, opens in its own window" hidden>⤓ INSTALL</button>
+    </div>
+    <div class="hud-clock">
+      <b id="clockTime">--:--:--</b>
+      <span id="clockDate">— — —</span>
+    </div>
+    <button class="btn" id="settingsBtn">SETTINGS</button>
+  </header>
+
+  <main>
+    <!-- LEFT -->
+    <div class="left-col" id="leftCol">
+      <section class="panel">
+        <div class="ph">SYSTEMS<span class="aux" id="lastTool">idle</span></div>
+        <div id="engines">
+          <div class="eng boot" id="eng-core"><span class="dot"></span><div class="ei"><b>Agent Core</b><i id="engCoreSub">node · express</i></div><div class="eq"><span></span><span></span><span></span><span></span><span></span></div></div>
+          <div class="eng boot" id="eng-llm"><span class="dot"></span><div class="ei"><b>AI Brain</b><i id="engLlmSub">ollama · checking…</i></div><div class="eq"><span></span><span></span><span></span><span></span><span></span></div></div>
+          <div class="eng boot" id="eng-stt"><span class="dot"></span><div class="ei"><b>Speech Input</b><i id="engSttSub">web speech api</i></div><div class="eq"><span></span><span></span><span></span><span></span><span></span></div></div>
+          <div class="eng boot" id="eng-tts"><span class="dot"></span><div class="ei"><b>Voice Output</b><i id="engTtsSub">browser voice</i></div><div class="eq"><span></span><span></span><span></span><span></span><span></span></div></div>
+          <div class="eng boot" id="eng-mem"><span class="dot"></span><div class="ei"><b>Memory &amp; Tasks</b><i id="engMemSub">local storage</i></div><div class="eq"><span></span><span></span><span></span><span></span><span></span></div></div>
+        </div>
+        <div class="tele">
+          <div class="tstat"><label>CPU</label><div class="tbar"><i id="cpuBar"></i></div><output id="cpuVal">—</output></div>
+          <div class="tstat"><label>MEMORY</label><div class="tbar"><i id="ramBar"></i></div><output id="ramVal">—</output></div>
+          <div class="tstat"><label>DISK USED</label><div class="tbar"><i id="dskBar"></i></div><output id="dskVal">—</output></div>
+          <div class="tstat"><label>SYS UPTIME</label><div class="tbar"><i id="upBar" style="width:100%"></i></div><output id="upVal">—</output></div>
+        </div>
+      </section>
+      <section class="panel grow">
+        <div class="ph">ACTIVITY LOG<span class="aux" id="logCount"></span></div>
+        <div id="logStream"></div>
+      </section>
+    </div>
+
+    <!-- CENTER -->
+    <section class="center">
+      <div class="stage">
+        <div class="reticle"></div>
+        <div class="orb-wrap">
+          <svg id="orbSvg" viewBox="0 0 400 400">
+            <defs>
+              <radialGradient id="coreGrad" cx="50%" cy="45%" r="60%">
+                <stop offset="0%" style="stop-color:var(--core1)"/>
+                <stop offset="55%" style="stop-color:var(--core2)"/>
+                <stop offset="100%" stop-color="#03121c" stop-opacity=".1"/>
+              </radialGradient>
+            </defs>
+            <g id="ringA"><circle cx="200" cy="200" r="190" fill="none" stroke="var(--ring)" stroke-width="1.4" stroke-dasharray="3 9" opacity=".55"/><path d="M200,10 A190,190 0 0 1 334,65" fill="none" stroke="var(--ring)" stroke-width="2.5" opacity=".85"/><path d="M200,390 A190,190 0 0 1 66,335" fill="none" stroke="var(--ring)" stroke-width="2.5" opacity=".5"/></g>
+            <g id="ringB"><circle cx="200" cy="200" r="164" fill="none" stroke="var(--ring)" stroke-width="1" stroke-dasharray="70 16" opacity=".6"/><circle cx="200" cy="200" r="164" fill="none" stroke="#9df1ff" stroke-width=".5" stroke-dasharray="2 22" opacity=".5"/></g>
+            <g id="ringC"><circle cx="200" cy="200" r="136" fill="none" stroke="var(--ring)" stroke-width="1" stroke-dasharray="2 6" opacity=".65"/><circle cx="200" cy="200" r="118" fill="none" stroke="var(--ring)" stroke-width="6" stroke-dasharray="1.5 60" opacity=".35"/></g>
+            <g id="coilG"></g>
+            <g class="core-pulse">
+              <circle cx="200" cy="200" r="96" fill="url(#coreGrad)"/>
+              <circle cx="200" cy="200" r="96" fill="none" stroke="#c8f6ff" stroke-width="1" opacity=".55"/>
+              <polygon points="200,138 254,169 254,231 200,262 146,231 146,169" fill="none" stroke="#e6fbff" stroke-width="1.2" opacity=".5"/>
+              <polygon points="200,158 236,179 236,221 200,242 164,221 164,179" fill="none" stroke="#e6fbff" stroke-width=".8" opacity=".35"/>
+              <circle cx="200" cy="200" r="24" fill="#f2fdff" opacity=".95"/>
+              <circle cx="200" cy="200" r="34" fill="none" stroke="#e6fbff" stroke-width="1" opacity=".7"/>
+            </g>
+          </svg>
+        </div>
+        <div class="state-line">
+          <span id="stateChip">◈ BOOTING</span>
+          <span id="stateMsg">Running system checks…</span>
+        </div>
+        <div id="liveTranscript"></div>
+        <canvas id="waveCanvas"></canvas>
+      </div>
+
+      <div class="controls">
+        <button id="micBtn" title="Tap to speak (or press Space)" aria-label="Tap to speak">
+          <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+        </button>
+        <div class="input-row">
+          <button class="btn" id="attachBtn" type="button" title="Add a PDF or notes file (or drag it here)" aria-label="Attach a file">📎</button><input type="file" id="attachFile" accept=".pdf,.txt,.md,.csv,.json,.py,.js,.ts,.c,.cpp,.h,.java,.cs,.go,.rs,.html,.css,.sql,.ipynb" hidden>
+          <input id="chatInput" type="text" placeholder='Ask anything or give a command…  e.g. "remind me to submit the lab at 5pm"' autocomplete="off">
+          <button class="btn primary" id="sendBtn">SEND ▸</button>
+        </div>
+        <div class="lang-switch" role="group" aria-label="Speech language"><button class="lang-btn" data-lang="en" title="English">EN</button><button class="lang-btn" data-lang="te" lang="te" title="తెలుగు">తె</button><button class="lang-btn" data-lang="kn" lang="kn" title="ಕನ್ನಡ">ಕ</button></div>
+        <button id="wakeBtn" title="Toggle hands-free wake word"><span class="wd"></span>WAKE WORD</button>
+      </div>
+
+      <div class="cmd-deck">
+        <div class="cmd-tabs" id="cmdTabs" role="tablist"></div>
+        <div class="chips" id="chipsRow"></div>
+      </div>
+    </section>
+
+    <!-- RIGHT -->
+    <div class="right-col">
+      <section class="panel grow">
+        <div class="tabbar" role="tablist">
+          <button class="tab active" data-tab="chat" role="tab">CHAT <em id="msgCount">0</em></button>
+          <button class="tab" data-tab="tasks" role="tab">TASKS <em id="taskCount">0</em></button>
+          <button class="tab" data-tab="memory" role="tab">MEMORY <em id="memCount">0</em></button>
+        </div>
+
+        <div class="tabpane active" data-pane="chat">
+          <div id="messages"></div>
+          <div class="chat-foot"><button class="linkbtn" id="clearChatBtn">CLEAR CHAT</button><span id="brainLabel">rules + local AI</span></div>
+        </div>
+
+        <div class="tabpane" data-pane="tasks">
+          <div class="quick-add">
+            <input id="todoInput" type="text" placeholder="Quick add a to-do…" autocomplete="off" maxlength="140">
+            <button class="btn" id="todoAddBtn">ADD</button>
+          </div>
+          <div class="task-scroll">
+            <div class="tsec"><h4>PROGRESS</h4><div id="dashBox"></div></div>
+            <div class="tsec"><h4>TO-DO <span id="todoMeta"></span></h4><div id="todoList"></div></div>
+            <div class="tsec"><h4>DEADLINES</h4><div id="deadlineList"></div></div>
+            <div class="tsec"><h4>REMINDERS</h4><div id="reminderList"></div></div>
+            <div class="tsec"><h4>TIMETABLE</h4><div id="classList"></div></div>
+            <div class="tsec"><h4>ATTENDANCE <span id="attMeta"></span></h4><div id="attList"></div></div>
+            <div class="tsec"><h4>RESULTS <span id="marksMeta"></span></h4><div id="marksList"></div></div>
+            <div class="tsec"><h4>ROUTINES</h4><div id="routineList"></div></div>
+            <div class="tsec"><h4>TRIGGERS</h4><div id="triggerList"></div></div>
+          </div>
+        </div>
+
+        <div class="tabpane" data-pane="memory">
+          <div class="task-scroll">
+            <div class="tsec"><h4>FLASHCARDS <span id="flashMeta"></span></h4><div id="flashList"></div></div>
+            <div class="tsec"><h4>SNIPPETS <span id="snipMeta"></span></h4><div id="snippetList"></div></div>
+            <div class="tsec"><h4>WHAT I KNOW ABOUT YOU</h4><div id="memoryList"></div></div>
+          </div>
+          <div class="chat-foot"><button class="linkbtn" id="clearMemBtn">FORGET EVERYTHING</button><span>stored on this PC</span></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <span>UPTIME <b id="statUp">00:00</b></span>
+    <span class="hide-sm">LATENCY <b id="statLat">—</b></span>
+    <span class="hide-sm">TOOLS <b id="toolCount">—</b></span>
+    <span id="focusStat" class="focus-stat" hidden></span>
+    <div id="timerChips"></div>
+    <div class="right-foot">
+      <span class="hide-sm" id="sandboxPath">SANDBOX ~/jarvis</span>
+    </div>
+  </footer>
+
+  <div id="backdrop"></div>
+  <aside id="settingsDrawer" aria-label="Settings">
+    <div class="s-head"><h2>CONFIGURATION</h2><button id="closeSettings" aria-label="Close settings">✕</button></div>
+    <div class="s-sec">
+      <h3>AI BRAIN</h3>
+      <div class="s-row"><label>Use AI brain<small>LOCAL OLLAMA OR YOUR OWN API KEY</small></label><button class="switch on" id="llmToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Model</label><select id="modelSelect"><option value="">(checking…)</option></select></div>
+      <div class="s-note" id="llmNote">Checking Ollama…</div>
+      <div class="s-row"><label>Guided setup<small>STEP-BY-STEP · NO TECHNICAL KNOWLEDGE NEEDED</small></label><span><button class="btn" id="wizAiBtn" type="button">AI</button> <button class="btn" id="wizPhoneBtn" type="button">PHONE</button></span></div>
+      <h3 style="margin-top:14px">AI PROVIDERS <small style="letter-spacing:.1em;color:var(--faint)">· BRING YOUR OWN KEY</small></h3>
+      <div class="s-note" style="margin-bottom:8px">Add an API key to use cloud models (OpenAI, Claude, Gemini, Groq…) or point at any OpenAI-compatible server (LM Studio). Keys stay on this laptop in <em>~/jarvis/.config.json</em> and are never shown again in full.</div>
+      <div id="providerList"></div>
+      <div class="root-add" style="flex-wrap:wrap">
+        <select id="providerPreset" title="Provider" style="flex:1 1 100%;background:rgba(5,15,26,.9);border:1px solid var(--line);border-radius:6px;color:var(--ink);font-family:var(--mono);font-size:12px;padding:7px 9px"></select>
+        <input type="password" id="providerKey" placeholder="API key" autocomplete="off" spellcheck="false">
+        <input type="text" id="providerUrl" placeholder="Base URL, e.g. http://127.0.0.1:1234/v1" spellcheck="false" hidden style="flex:1 1 100%">
+        <input type="text" id="providerModel" placeholder="Model name (optional if the server lists models)" spellcheck="false" hidden style="flex:1 1 100%">
+        <button class="btn" id="providerAddBtn">ADD</button>
+      </div>
+      <div class="s-note" id="providerNote" style="margin-top:6px"></div>
+    </div>
+    <div class="s-sec">
+      <h3>VOICE</h3>
+      <div class="s-row"><label>Speak replies<small>BROWSER TEXT-TO-SPEECH</small></label><button class="switch on" id="ttsToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Assistant<small>JARVIS OR FRIDAY</small></label><select id="personaSelect"><option value="jarvis">J.A.R.V.I.S.</option><option value="friday">F.R.I.D.A.Y.</option></select></div>
+      <div class="s-row"><label>Speech language<small>WHAT THE MIC LISTENS FOR</small></label><select id="speechLangSelect"><option value="en">ENGLISH</option><option value="te" lang="te">తెలుగు</option><option value="kn" lang="kn">ಕನ್ನಡ</option></select></div>
+      <div class="s-row"><label>Pause before I answer<small>HOW LONG YOU CAN PAUSE MID-SENTENCE</small></label><select id="pauseSelect"><option value="1000">SHORT · 1 S</option><option value="1600">NORMAL · 1.6 S</option><option value="2500">LONG · 2.5 S</option></select></div>
+      <div class="s-row"><label>Mic sensitivity<small>HIGHER HEARS YOU FROM FARTHER AWAY</small></label><select id="micBoostSelect"><option value="normal">NORMAL</option><option value="high">HIGH</option><option value="max">MAX · ACROSS THE ROOM</option></select></div>
+      <div class="s-row"><label>Reply language</label><select id="replyLangSelect"><option value="auto">SAME AS I SPOKE</option><option value="en">ENGLISH</option><option value="te" lang="te">తెలుగు</option><option value="kn" lang="kn">ಕನ್ನಡ</option></select></div>
+      <div class="s-row"><label>Online translation<small>GOOGLE · BETTER TELUGU/KANNADA REPLIES · SENDS REPLY TEXT ONLINE</small></label><button class="switch on" id="translateOnlineToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Neural voice<small>FRIDAY · TELUGU · KANNADA · MICROSOFT · SENDS REPLY TEXT ONLINE</small></label><button class="switch on" id="neuralVoiceToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Voice check<small>WHAT THIS BROWSER SUPPORTS</small></label><button class="btn" id="voiceCheckBtn">CHECK</button></div>
+      <div class="s-note" id="voiceCheckOut" style="margin:-4px 0 12px"></div>
+      <div class="s-row"><label>Address me as</label><select id="addressSelect"><option value="sir">SIR</option><option value="ma'am">MA'AM</option><option value="boss">BOSS</option><option value="name">MY NAME</option></select></div>
+      <div class="s-row"><label>Voice</label><select id="voiceSelect"></select></div>
+      <div class="s-note" style="margin:-4px 0 12px">For the most film-like voice, open JARVIS in <em>Microsoft Edge</em> — it has a natural British voice ("Ryan").</div>
+      <div class="s-row"><label>Speech rate</label><input type="range" id="rateRange" min="0.6" max="1.6" step="0.1" value="1"><output id="rateVal">1.0×</output></div>
+      <div class="s-row"><label>Interface sounds</label><button class="switch on" id="soundToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Wake word</label><input type="text" id="wakeWordInput" maxlength="16"></div>
+    </div>
+    <div class="s-sec">
+      <h3>BEHAVIOUR</h3>
+      <div class="s-row"><label>HUD theme</label><select id="themeSelect"><option value="arc">ARC REACTOR</option><option value="gold">MARK 85 GOLD</option><option value="crimson">CRIMSON</option><option value="violet">VIOLET</option></select></div>
+      <div class="s-row"><label>Answer length</label><select id="lenSelect"><option value="concise">CONCISE</option><option value="balanced">BALANCED</option><option value="detailed">DETAILED</option></select></div>
+      <div class="s-row"><label>Online tools<small>WEATHER · WEB ANSWERS · NO API KEYS</small></label><button class="switch" id="onlineToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-row"><label>Home city<small>USED FOR WEATHER</small></label><input type="text" id="cityInput" maxlength="40" placeholder="e.g. Bengaluru"></div>
+      <div class="s-row"><label>Smart alerts<small>LOW BATTERY · HIGH RAM · DEADLINES SOON</small></label><button class="switch on" id="alertsToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Global hotkey<small>CTRL+SHIFT+J · SEND SELECTED TEXT FROM ANY APP</small></label><button class="switch" id="hotkeyToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-note" id="hotkeyNote" style="margin:-4px 0 12px"></div>
+      <div class="s-row"><label>Phone alerts<small>REMINDERS VIA THE FREE NTFY APP · SENDS REMINDER TEXT ONLINE</small></label><button class="switch" id="phonePushToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-note" id="phonePushNote" hidden></div>
+      <div class="s-row"><label>Phone access<small>FULL JARVIS ON YOUR PHONE · PRIVATE VIA TAILSCALE</small></label></div>
+      <div class="s-note" id="remoteNote">Checking…</div>
+      <div class="s-row"><label>Focus / break (min)</label><input type="number" id="focusMin" min="5" max="120" value="25"><input type="number" id="breakMin" min="1" max="60" value="5"></div>
+    </div>
+    <div class="s-sec">
+      <h3>BACKUP &amp; RESTORE</h3>
+      <div class="s-note" style="margin-bottom:10px">Save everything JARVIS knows (chat, to-dos, flashcards, routines, study plans, settings, project-folder list) to one file, or restore it on another laptop. API keys and the phone unlock key are left out unless you include them. JARVIS also keeps a daily snapshot for a week, and takes one before "Erase all" or an import.</div>
+      <div class="s-row"><label>Include my API keys<small>SEALED WITH A PASSWORD YOU CHOOSE</small></label><button class="switch" id="bkSecretsToggle" role="switch" aria-checked="false"></button></div>
+      <div class="root-add" id="bkPwRow" hidden><input type="password" id="bkPassword" placeholder="Password (8+ characters) — needed to restore the keys" autocomplete="new-password" spellcheck="false"></div>
+      <div class="root-add" style="margin-top:8px"><button class="btn" id="bkExport" type="button">EXPORT</button><button class="btn" id="bkImport" type="button">IMPORT…</button><input type="file" id="bkFile" accept=".jarvis-backup,.json,application/json" hidden></div>
+      <div class="s-note" id="bkNote" style="margin-top:6px"></div>
+      <div id="bkImportBox"></div>
+      <div class="s-note" style="margin:12px 0 4px"><b>Automatic snapshots</b> (no API keys)</div>
+      <div id="bkSnaps"></div>
+    </div>
+    <div class="s-sec">
+      <h3>PROJECT FOLDERS</h3>
+      <div class="s-note" style="margin-bottom:10px">Used for preparing environments, starting backends and frontends, git, and searching your notes. JARVIS can open files anywhere without adding them here — and asks before changing anything outside <em>~/jarvis</em>. Windows, Program Files and AppData stay off-limits.</div>
+      <div id="rootList"></div>
+      <div class="root-add"><input type="text" id="rootInput" placeholder="e.g. D:\projects\dsa" spellcheck="false"><button class="btn" id="rootAddBtn">ADD</button></div>
+    </div>
+    <div class="s-sec">
+      <h3>DATA</h3>
+      <div class="s-note" style="margin-bottom:12px">Chat, memory, tasks &amp; settings are saved on this PC (<em>~/jarvis/.jarvis-state.json</em>), shared by every browser you open JARVIS in. Files live in <em id="sandboxNote">~/jarvis</em>. Nothing is sent to the cloud unless Online tools, Online translation or Neural voice is on.</div>
+      <div class="s-row"><label>Require Windows Hello<small>FINGERPRINT · FACE · PIN FOR SHUTDOWN, RESTART, SLEEP &amp; DELETING</small></label><button class="switch" id="helloToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-note" id="helloNote" hidden></div>
+      <div class="s-row"><label>Start with Windows<small>JARVIS RUNS QUIETLY IN THE BACKGROUND AFTER EVERY REBOOT</small></label><button class="switch" id="autostartToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-note" id="autostartNote" style="margin:-4px 0 12px"></div>
+      <div class="s-row"><label>Stop JARVIS<small>ENDS THE BACKGROUND SERVER · THE DESKTOP ICON STARTS IT AGAIN</small></label><button class="btn danger" id="quitBtn">STOP</button></div>
+      <div class="s-row"><label>Erase all local data</label><button class="btn danger" id="wipeBtn">WIPE</button></div>
+      <div class="s-row"><label>Updates<small>ASKS GITHUB ONLY WHEN YOU CLICK · NEEDS ONLINE TOOLS</small></label><button class="btn" id="updateCheckBtn">CHECK</button></div>
+      <div class="s-note" id="updateNote" style="margin:-4px 0 12px"></div>
+    </div>
+    <div class="s-sec">
+      <h3>SHORTCUTS</h3>
+      <div class="s-note">
+        <em>/</em> focus the input · <em>Space</em> (input unfocused) tap to talk, or hold as push-to-talk<br>
+        <em>↑</em> recall last command · <em>Esc</em> stop speaking / close panels
+      </div>
+    </div>
+  </aside>
+
+  <div id="toasts"></div>
+
+  <script src="api/state.js"></script>
+  <script src="nlu.js"></script>
+  <script src="persona.js"></script>
+  <script src="lang.js"></script>
+  <script src="vendor/qrcode.js"></script>
+  <script src="study.js"></script>
+  <script src="voice.js"></script>
+  <script src="triggers.js"></script>
+  <script src="undo.js"></script>
+  <script src="skills-page.js"></script>
+  <script src="script.js"></script>
+  <script src="palette.js"></script>
+  <script src="wizard.js"></script>
+  <script src="routines.js"></script>
+  <script src="agent.js"></script>
+</body>
+</html>

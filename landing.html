@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS — an assistant that runs on your own laptop</title>
+<meta name="description" content="JARVIS is a voice and chat assistant that runs on your own Windows laptop. It controls apps and settings, plans your study, answers from your notes and PDFs, and checks that every action really happened.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23111213'/><path d='M11 9h10M16 9v11a4 4 0 0 1-8 0' fill='none' stroke='%23e9a23b' stroke-width='2.4' stroke-linecap='round'/></svg>">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5/600.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5/500.css">
+<style>
+/* One neutral dark ground, one warm accent, hairline rules, mono for anything you'd type. No glows, no gradients. */
+:root{
+  --bg:#101112; --panel:#16171a; --rule:#26282b; --rule2:#34363a;
+  --ink:#ebe8e2; --dim:#a19d95; --faint:#6f6b64;
+  --acc:#e9a23b; --ok:#8fb573; --bad:#d8685c; --run:#7fa8c9;
+  --sans:'IBM Plex Sans','Segoe UI',system-ui,sans-serif; --mono:'IBM Plex Mono',Consolas,monospace;
+  --w:1080px; --gut:clamp(16px,4vw,40px);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);font-size:16px;line-height:1.6;color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
+a{color:inherit}
+::selection{background:rgba(233,162,59,.3)}
+.wrap{max-width:var(--w);margin:0 auto;padding:0 var(--gut)}
+code,kbd,.mono{font-family:var(--mono);font-size:.92em}
+kbd{border:1px solid var(--rule2);border-bottom-width:2px;border-radius:4px;padding:1px 6px;font-size:.82em;color:var(--dim)}
+
+/* nav */
+nav{position:sticky;top:0;z-index:10;background:rgba(16,17,18,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--rule)}
+nav .wrap{display:flex;align-items:center;gap:28px;height:56px}
+.mark{font-family:var(--mono);font-weight:500;font-size:14px;letter-spacing:.14em;text-decoration:none;display:flex;align-items:center;gap:10px}
+.mark i{width:8px;height:8px;background:var(--acc);border-radius:1px}
+.links{display:flex;gap:24px;margin-left:auto;font-size:14px}
+.links a{color:var(--dim);text-decoration:none}
+.links a:hover{color:var(--ink)}
+.btn{display:inline-flex;align-items:center;gap:8px;font:500 14px var(--sans);text-decoration:none;border-radius:6px;padding:9px 16px;border:1px solid transparent;cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--acc);color:#1a1206}
+.btn.primary:hover{background:#f2b556}
+.btn.plain{border-color:var(--rule2);color:var(--ink)}
+.btn.plain:hover{border-color:var(--dim)}
+.btn:focus-visible,.links a:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+
+/* hero */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:56px;align-items:start;padding:88px 0 72px}
+.hero h1{font-size:clamp(34px,4.6vw,54px);line-height:1.08;font-weight:600;letter-spacing:-.02em}
+.hero p{margin-top:22px;font-size:18px;color:var(--dim);max-width:30em}
+.hero .cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:32px}
+.facts{margin-top:40px;display:grid;grid-template-columns:repeat(3,auto);justify-content:start;gap:4px 28px;font-size:13px;color:var(--faint)}
+.facts b{display:block;font:500 15px var(--mono);color:var(--ink)}
+
+/* run log: a real JARVIS multi-step run, replayed */
+.log{background:var(--panel);border:1px solid var(--rule);border-radius:8px;font:13.5px/1.7 var(--mono);overflow:hidden}
+.log header{display:flex;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--rule);color:var(--faint);font-size:12px}
+.log .body{padding:18px 16px 20px;min-height:330px}
+.log .you{color:var(--ink)}
+.log .you::before{content:'> ';color:var(--acc)}
+.log .line{display:grid;grid-template-columns:1.6em 1.4em minmax(0,1fr) auto;gap:0 6px;color:var(--dim)}
+.log .line .n{color:var(--faint)}
+.log .line .note{color:var(--faint);text-align:right}
+.log .ok{color:var(--ok)} .log .bad{color:var(--bad)} .log .wait{color:var(--run)}
+.log .sum{margin-top:12px;padding-top:10px;border-top:1px dashed var(--rule2);color:var(--dim)}
+.log .sum b{color:var(--ink);font-weight:500}
+.log .head{color:var(--ink);margin:14px 0 6px}
+.log .ask{margin:10px 0 4px;color:var(--dim)}
+.log .ask span{display:inline-block;margin-right:8px;padding:0 8px;border:1px solid var(--rule2);border-radius:4px;color:var(--ink)}
+.log .ask span.go{border-color:var(--acc);color:var(--acc)}
+.caret{display:inline-block;width:.55em;height:1.1em;background:var(--acc);vertical-align:-3px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* sections */
+section{border-top:1px solid var(--rule);padding:80px 0}
+.sec-head{display:grid;grid-template-columns:140px minmax(0,1fr);gap:24px;margin-bottom:44px}
+.num{font:500 13px var(--mono);color:var(--faint);padding-top:6px}
+h2{font-size:clamp(26px,3vw,34px);line-height:1.2;font-weight:600;letter-spacing:-.015em}
+.sec-head p{margin-top:12px;color:var(--dim);max-width:40em}
+.indent{margin-left:164px}
+
+/* pipeline */
+.pipe{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--rule);border-radius:8px}
+.pipe div{padding:20px 18px 22px;border-left:1px solid var(--rule)}
+.pipe div:first-child{border-left:0}
+.pipe h3{font-size:15px;font-weight:600;display:flex;gap:10px;align-items:baseline}
+.pipe h3 small{font:500 12px var(--mono);color:var(--acc)}
+.pipe p{margin-top:8px;font-size:14px;color:var(--dim);line-height:1.55}
+.pipe code{color:var(--ink)}
+
+/* what you can say */
+.says{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 48px}
+.group{padding:22px 0;border-bottom:1px solid var(--rule)}
+.group h3{font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:10px}
+.group ul{list-style:none}
+.group li{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;padding:6px 0;font-size:14.5px}
+.group li code{color:var(--ink);font-size:13.5px}
+.group li span{color:var(--dim)}
+
+/* safety */
+.rules{list-style:none;counter-reset:r;border-top:1px solid var(--rule)}
+.rules li{display:grid;grid-template-columns:48px minmax(0,1fr) minmax(0,1.1fr);gap:24px;padding:18px 0;border-bottom:1px solid var(--rule)}
+.rules li::before{counter-increment:r;content:counter(r,decimal-leading-zero);font:500 13px var(--mono);color:var(--faint);padding-top:2px}
+.rules b{font-weight:600}
+.rules span{color:var(--dim);font-size:15px}
+
+/* setup */
+.setup{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px}
+.setup h3{font-size:16px;font-weight:600;margin-bottom:8px}
+.setup h3 small{font:500 12px var(--mono);color:var(--acc);margin-right:10px}
+.setup p{font-size:15px;color:var(--dim)}
+.setup code{color:var(--ink)}
+.req{margin-top:40px;padding:16px 18px;border:1px solid var(--rule);border-radius:8px;font-size:14px;color:var(--dim)}
+.req b{color:var(--ink);font-weight:500}
+
+.end{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:24px}
+.end h2{max-width:18em}
+footer{border-top:1px solid var(--rule);padding:28px 0 40px;font-size:13px;color:var(--faint)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:8px 24px}
+footer .sp{margin-left:auto}
+
+@media (max-width:920px){
+  .hero{grid-template-columns:minmax(0,1fr);gap:40px;padding-top:56px}
+  .pipe{grid-template-columns:minmax(0,1fr)}
+  .pipe div{border-left:0;border-top:1px solid var(--rule)}
+  .pipe div:first-child{border-top:0}
+  .says,.setup{grid-template-columns:minmax(0,1fr)}
+  .sec-head{grid-template-columns:minmax(0,1fr);gap:6px}
+  .indent{margin-left:0}
+  .links{display:none}
+  nav .btn{margin-left:auto}
+}
+@media (max-width:560px){
+  .facts{grid-template-columns:repeat(2,auto)}
+  .group li{grid-template-columns:minmax(0,1fr);gap:0}
+  .rules li{grid-template-columns:32px minmax(0,1fr);gap:4px 12px}
+  .rules li span{grid-column:2}
+  .log{font-size:12.5px}
+  .log .line{grid-template-columns:1.4em 1.2em minmax(0,1fr)}
+  .log .line .note{grid-column:3;text-align:left}
+  section{padding:56px 0}
+}
+@media (prefers-reduced-motion:reduce){.caret{animation:none}}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="mark" href="#top" aria-label="JARVIS home"><i></i>JARVIS</a>
+    <div class="links"><a href="#how">How it works</a><a href="#say">What you can say</a><a href="#safety">Safety</a><a href="#setup">Setup</a></div>
+    <a class="btn primary" href="/">Launch JARVIS</a>
+  </div>
+</nav>
+
+<main id="top" class="wrap">
+  <header class="hero">
+    <div>
+      <h1>An assistant that runs on your own laptop.</h1>
+      <p>Talk or type. JARVIS opens your apps, plans your study, answers from your notes and PDFs, and fixes your code. It then checks that each thing actually happened.</p>
+      <div class="cta">
+        <a class="btn primary" href="/">Launch JARVIS</a>
+        <a class="btn plain" href="#how">How a request runs</a>
+      </div>
+      <div class="facts">
+        <span><b>Windows 10/11</b>laptop controls</span>
+        <span><b>Offline</b>with a local model</span>
+        <span><b>EN · తెలుగు · ಕನ್ನಡ</b>voice</span>
+      </div>
+    </div>
+
+    <div class="log" aria-label="Example: one request run as a checked plan">
+      <header><span>jarvis · agent</span><span id="runId">AGT-20260930-004</span></header>
+      <div class="body" id="log"></div>
+    </div>
+  </header>
+
+  <section id="how">
+    <div class="sec-head">
+      <span class="num">01</span>
+      <div>
+        <h2>How a request runs</h2>
+        <p>Every request goes through the same five stages, whether it is one command or a whole routine. You see the plan before anything changes.</p>
+      </div>
+    </div>
+    <div class="pipe">
+      <div><h3><small>1</small>Understand</h3><p>Known commands are matched instantly, with no AI needed. Anything unfamiliar goes to the local AI, and its guess is shown to you first.</p></div>
+      <div><h3><small>2</small>Plan</h3><p>Overlapping steps are merged and put in order, and dependencies are tracked. Two focus sessions become one, and the frontend waits for the backend.</p></div>
+      <div><h3><small>3</small>Ask</h3><p>Steps that change things are marked <code>⚠</code>. One approval covers the plan. Shutdown and delete need Windows Hello.</p></div>
+      <div><h3><small>4</small>Run</h3><p>Steps run one by one against the current state. An app that is already closed is skipped instead of failing.</p></div>
+      <div><h3><small>5</small>Check</h3><p>Results are read back: the volume level, whether the app is still running, whether the file exists. If a step can't be checked, it says <code>○ not checked</code>.</p></div>
+    </div>
+  </section>
+
+  <section id="say">
+    <div class="sec-head">
+      <span class="num">02</span>
+      <div>
+        <h2>What you can say</h2>
+        <p>Say it however you like: casual, Indian English, or chained with “and” or “then”. These are real commands, not marketing copy.</p>
+      </div>
+    </div>
+    <div class="says">
+      <div class="group"><h3>Laptop</h3><ul>
+        <li><code>volume 30 and dark mode</code><span>sets both, reads them back</span></li>
+        <li><code>close distracting apps</code><span>Discord, Spotify, WhatsApp, Steam</span></li>
+        <li><code>system status</code><span>apps, radios, battery, CPU in one view</span></li>
+        <li><code>what’s on my screen?</code><span>reads it with OCR</span></li>
+      </ul></div>
+      <div class="group"><h3>Study</h3><ul>
+        <li><code>plan my GATE prep, exam on 12 Feb</code><span>day-by-day plan with review days</span></li>
+        <li><code>take my DBMS viva</code><span>spoken questions, scored answers</span></li>
+        <li><code>can I bunk tomorrow?</code><span>checks the 75% line</span></li>
+        <li><code>what gpa do I need for an 8.5 cgpa?</code><span>from your saved semesters</span></li>
+      </ul></div>
+      <div class="group"><h3>Notes &amp; files</h3><ul>
+        <li><code>what does unit2.pdf say about 3NF?</code><span>answer with page numbers</span></li>
+        <li><code>open my DBMS notes</code><span>finds “DBMS Notes.md”</span></li>
+        <li><code>make flashcards from lecture3.pdf</code><span>spaced repetition</span></li>
+      </ul></div>
+      <div class="group"><h3>Code</h3><ul>
+        <li><code>create a C++ project called bst</code><span>compiles, repairs errors up to twice</span></li>
+        <li><code>prepare my environment for AgriLoop</code><span>editor, backend, frontend, browser</span></li>
+        <li><code>tell copilot to add tests</code><span>hands off to your coding AI</span></li>
+      </ul></div>
+      <div class="group"><h3>Automation</h3><ul>
+        <li><code>when I plug in my charger, start study mode</code><span>trigger, once per 10 min at most</span></li>
+        <li><code>remind me every month on the 5th at 9am</code><span>fires even with the tab closed</span></li>
+        <li><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>J</kbd><span>explain any selected text</span></li>
+      </ul></div>
+      <div class="group"><h3>When it gets it wrong</h3><ul>
+        <li><code>no, that’s wrong</code><span>remembers the miss</span></li>
+        <li><code>what didn’t you understand?</code><span>teach it the phrase</span></li>
+        <li><code>undo that</code><span>reverses the last change</span></li>
+      </ul></div>
+    </div>
+  </section>
+
+  <section id="safety">
+    <div class="sec-head">
+      <span class="num">03</span>
+      <div>
+        <h2>What it won’t do</h2>
+        <p>An assistant that controls your laptop should be predictable. These rules are enforced by the server, not left to the AI’s judgement.</p>
+      </div>
+    </div>
+    <ol class="rules">
+      <li><b>Act on a guess without showing you</b><span>If the AI planned a step, you see the plan and approve it first.</span></li>
+      <li><b>Shut down, restart or delete on its own</b><span>These need Windows Hello, and deleted files go to a trash folder first.</span></li>
+      <li><b>Change your files without asking</b><span>It can open and read files anywhere, but any edit, rename, move or delete outside <code>~/jarvis</code> waits for your OK. Windows and system folders are off-limits.</span></li>
+      <li><b>Listen to the internet</b><span>The server only accepts connections from your own computer. Phone commands need an authenticator code.</span></li>
+      <li><b>Claim success it didn’t check</b><span>A step that can’t be verified is marked <code>○ not checked</code>, never a fake <code>✓</code>.</span></li>
+    </ol>
+  </section>
+
+  <section id="setup">
+    <div class="sec-head">
+      <span class="num">04</span>
+      <div><h2>Setup</h2><p>No account and no subscription.</p></div>
+    </div>
+    <div class="setup">
+      <div><h3><small>1</small>Start it</h3><p>Double-click <code>Start JARVIS.bat</code>. The first run installs what it needs and adds a desktop shortcut.</p></div>
+      <div><h3><small>2</small>Pick a brain</h3><p>Choose Ollama for free, offline use, or paste an OpenAI, Claude, Gemini or Groq key. Guided setup checks it works.</p></div>
+      <div><h3><small>3</small>Talk to it</h3><p>Try <code>what can you do?</code> or <code>plan my day</code>. Connect your phone later from Settings.</p></div>
+    </div>
+    <p class="req"><b>Needs:</b> Windows 10 or 11, Node.js 18+, and Chrome or Edge for voice. <b>Optional:</b> an NVIDIA GPU for the local model (a 6 GB RTX 3050 runs a 4B model comfortably), plus Python, g++ and VS Code for the coding tools.</p>
+  </section>
+
+  <section class="end">
+    <h2>It’s already running on this computer.</h2>
+    <a class="btn primary" href="/">Launch JARVIS</a>
+  </section>
+</main>
+
+<footer><div class="wrap"><span>JARVIS · local assistant</span><span>Your data stays on this laptop unless you choose a cloud model.</span><span class="sp">MIT licence</span></div></footer>
+
+<script>
+/* Replays a real JARVIS run (the same statuses and notes the app prints). Plain text only; stops when off-screen. */
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const log = document.getElementById('log');
+  const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const RUNS = [
+    { cmd: "I'm going to study. Volume 30, close distracting apps, open my DBMS notes and start a 45-minute session",
+      goal: 'Study', ask: true,
+      steps: [['Set the volume to 30', 'volume is 30%'], ['Close distracting apps', 'closed Discord, Spotify'], ['Open my DBMS notes', 'exists: DBMS Notes.md'], ['Start a 45-minute session', 'running · 45:00']],
+      note: 'Plan: “focus mode” is covered by the 45-minute session.', sum: '4 of 4 verified' },
+    { cmd: 'prepare my environment for AgriLoop', goal: 'Prepare AgriLoop', ask: false,
+      steps: [['Locate AgriLoop', 'found: D:\\projects\\AgriLoop'], ['Open in VS Code', 'already open → reuse'], ['Start the backend', 'port 5055 in use', 'bad'], ['Start the frontend', 'skipped: needs step 3', 'skip'], ['Open in the browser', 'skipped: needs step 4', 'skip']],
+      note: 'Port 5055 is held by another program, so JARVIS left it alone.', sum: '2 of 5 verified · 1 failed · 2 not run' },
+  ];
+  const sleep = ms => new Promise(r => setTimeout(r, reduce ? 0 : ms));
+  let visible = true;
+  new IntersectionObserver(es => { visible = es[0].isIntersecting; }).observe(log);
+  const until = async () => { while (!visible) await new Promise(r => setTimeout(r, 400)); };
+  const add = html => { const d = document.createElement('div'); d.innerHTML = html; log.appendChild(d); return d; };
+  async function play(run) {
+    log.innerHTML = '';
+    const you = add('<span class="you"></span><span class="caret"></span>');
+    const y = you.firstChild;
+    for (let i = 1; i <= run.cmd.length; i++) { y.textContent = run.cmd.slice(0, i); if (!reduce) await sleep(18 + Math.random() * 22); }
+    you.lastChild.remove();
+    await sleep(500);
+    add('<div class="head">' + esc(run.goal) + '</div>');
+    const rows = run.steps.map((s, i) => add('<div class="line"><span class="n">' + (i + 1) + '</span><span class="wait">·</span><span>' + esc(s[0]) + '</span><span class="note"></span></div>').firstChild);
+    if (run.ask) {
+      const a = add('<div class="ask">Needs permission to close apps: <span class="go">EXECUTE</span><span>CANCEL</span></div>');
+      await sleep(1400); a.firstChild.lastChild.previousSibling.textContent = 'EXECUTE ✓'; await sleep(500); a.remove();
+    }
+    for (let i = 0; i < rows.length; i++) {
+      const [, note, kind] = run.steps[i], r = rows[i];
+      if (kind === 'skip') { r.children[1].textContent = '·'; r.children[3].textContent = note; continue; }
+      r.children[1].textContent = '…'; await sleep(520);
+      r.children[1].textContent = kind === 'bad' ? '✗' : '✓'; r.children[1].className = kind === 'bad' ? 'bad' : 'ok';
+      r.children[3].textContent = note;
+      await sleep(260);
+    }
+    add('<div class="sum"><b>' + esc(run.sum) + '</b><br>' + esc(run.note) + '</div>');
+  }
+  (async () => { for (let k = 0; ; k = (k + 1) % RUNS.length) { await until(); await play(RUNS[k]); if (reduce) return; await sleep(5200); } })();
+})();
+</script>
+</body>
+</html>

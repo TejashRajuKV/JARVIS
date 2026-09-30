@@ -1,0 +1,29 @@
+{
+  "name": "jarvis-backend",
+  "version": "1.0.0",
+  "description": "JARVIS — a local voice & chat AI assistant for your laptop",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node tests/run-all.js",
+    "test:live": "node tests/live.test.js",
+    "test:report": "node tests/report.js"
+  },
+  "keywords": [
+    "jarvis",
+    "ai",
+    "voice",
+    "agent",
+    "local"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "unpdf": "^1.8.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

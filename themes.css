@@ -1,0 +1,42 @@
+/* HUD colour themes. Set on <html> so every colour derived from --rgb is recomputed. */
+html[data-theme="gold"] {
+  --rgb: 255,196,77; --cyan: #ffc44d; --cyan-hi: #ffe5aa; --cyan-lo: #9c6a12;
+  --ring: #ffc44d; --core1: #fff1cf; --core2: #c98a1a;
+}
+html[data-theme="crimson"] {
+  --rgb: 255,77,94; --cyan: #ff4d5e; --cyan-hi: #ffb2ba; --cyan-lo: #8d1f2a;
+  --ring: #ff4d5e; --core1: #ffd9dd; --core2: #c23341;
+}
+html[data-theme="violet"] {
+  --rgb: 170,128,255; --cyan: #aa80ff; --cyan-hi: #d8c6ff; --cyan-lo: #5b3aa6;
+  --ring: #aa80ff; --core1: #efe6ff; --core2: #7a4fe0;
+}
+html[data-theme="gold"] body { background-image: radial-gradient(1100px 560px at 50% -12%, rgba(200,140,30,.20), transparent 62%), radial-gradient(900px 600px at 110% 115%, rgba(255,184,77,.05), transparent 55%); }
+html[data-theme="crimson"] body { background-image: radial-gradient(1100px 560px at 50% -12%, rgba(190,30,50,.22), transparent 62%); }
+html[data-theme="violet"] body { background-image: radial-gradient(1100px 560px at 50% -12%, rgba(110,70,210,.22), transparent 62%); }
+/* red alert: slow pulsing edge */
+html[data-theme="crimson"] .vignette { animation: alertPulse 2.4s ease-in-out infinite; }
+@keyframes alertPulse { 0%,100% { box-shadow: inset 0 0 60px rgba(255,40,60,.10); } 50% { box-shadow: inset 0 0 140px rgba(255,40,60,.28); } }
+@media (prefers-reduced-motion: reduce) { html[data-theme="crimson"] .vignette { animation: none; } }
+
+/* language switch beside the mic */
+.lang-switch { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; flex: none; }
+.lang-btn { font-family: var(--mono); font-size: 12px; color: var(--dim); padding: 10px 9px; min-width: 34px; transition: .2s; }
+.lang-btn + .lang-btn { border-left: 1px solid var(--line); }
+.lang-btn:hover { color: var(--cyan-hi); }
+.lang-btn.active { color: var(--bg0); background: var(--cyan); }
+
+/* routines panel */
+.titem.routine .tx b { display: block; font-weight: 600; }
+.titem.routine .sb { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; color: var(--cyan); padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line); flex: none; }
+.titem.routine .sb:hover { background: rgba(var(--rgb),.12); }
+
+/* Telugu / Kannada: HUD letter-spacing splits joined letters, so turn it off and use a font that has the glyphs */
+[lang="te"], [lang="kn"], [lang="te"] *, [lang="kn"] * { letter-spacing: 0 !important; font-family: 'Nirmala UI', 'Noto Sans Telugu', 'Noto Sans Kannada', 'Segoe UI', sans-serif !important; }
+.mbody[lang="te"], .mbody[lang="kn"] { line-height: 1.75; font-size: 15px; }
+.mbody[lang] pre, .mbody[lang] code { font-family: var(--code) !important; }
+
+@media (max-width: 560px) { .lang-btn { padding: 8px 7px; min-width: 30px; } }
+
+/* selects can show Telugu/Kannada option names */
+.s-row select { letter-spacing: 0; font-family: var(--mono), 'Nirmala UI', sans-serif; }

@@ -1,0 +1,13 @@
+# Dependencies — restore with `npm install`
+node_modules/
+
+# Launcher / server runtime state
+.launcher.log
+.launcher.log.err
+.jarvis.pid
+.jarvis-port
+.autostart.json
+
+# OS junk
+Thumbs.db
+Desktop.ini
