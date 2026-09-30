@@ -93,13 +93,25 @@ const Skills = (() => {
       const file = dsaFolder() + '/' + slug(S.coach.problem).replace(/-/g, '_').slice(0, 30) + (EXT[S.coach.lang] || '.py');
       return saveToFile(file, m[1].replace(/\s+$/, '') + '\n', { what: S.coach.lang + ' solution' });
     }
-    if (/^(?:my (?:approach|idea|plan|solution|logic)|check(?: my (?:approach|idea|code|logic))?|is (?:this|it|my (?:approach|idea)) (?:right|correct|ok|fine|good|efficient)|here'?s my (?:idea|approach|plan)|i (?:think|would|will|can|could)|what if|can i|should i|how about|we can|use a|using)\b/i.test(t) || t.split(/\s+/).length >= 8) {
+    // An attempt at the problem: said as one ("my approach is …"), or phrased loosely but about solving it. A long
+    // message on another subject ("what is the price of bitcoin right now", "remember that my exam is on 12 december")
+    // or a command JARVIS knows is NOT an attempt: it falls through to normal handling and the session stays open.
+    const explicit = /^(?:my (?:approach|idea|plan|solution|logic)|check(?: my (?:approach|idea|code|logic))?|is (?:this|it|my (?:approach|idea)) (?:right|correct|ok|fine|good|efficient)|here'?s my (?:idea|approach|plan))\b/i.test(t);
+    const loose = /^(?:i (?:think|would|will|can|could)|what if|can i|should i|how about|we can|use a|using)\b/i.test(t) || t.split(/\s+/).length >= 8;
+    if (explicit || (loose && looksLikeAttempt(t) && !isCommand(t))) {
       const r = await coachCall('check', { approach: t });
       return r.error ? say('Couldn’t check it: ' + r.error) : say(r.text, { intent: 'DSA_COACH', speak: r.text.split(/(?<=[.!?])\s/)[0] });
     }
     return null; // anything else ("open chrome", "what time is it") works as normal during a session
   }
   const dsaFolder = () => (typeof projectRoots !== 'undefined' && projectRoots.find(r => /dsa/i.test(r))) || 'Code';
+  // Words people use when describing how they'd solve a problem.
+  const ATTEMPT_WORDS = /\b(hash|hashmap|map|dict(?:ionary)?|set|loop|loops|iterate|iterating|index|indices|pointer|pointers|complement|target|brute|nested|traverse|visited|memo(?:ize|ization)?|recurs\w*|sum|left and right|mid(?:point)?|prefix|sorted|swap|o\s*\(|n\s*\^?\s*2|n log n|time complexity|space complexity)\b/i;
+  const looksLikeAttempt = t => DSA_WORDS.test(t) || ATTEMPT_WORDS.test(t);
+  // A sentence the rule engine confidently maps to a command ("remind me …", "set a timer …") is that command.
+  const isCommand = t => {
+    try { const c = NLU.classify(NLU.normalize(t, settings.wakeWord), ctx); return c.intent !== 'CONVERSATION' && c.confidence >= 0.85; } catch (e) { return false; }
+  };
 
   /* ================= viva / interview practice ================= */
   const VIVA_START = [

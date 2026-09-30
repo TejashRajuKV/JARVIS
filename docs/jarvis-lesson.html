@@ -743,11 +743,11 @@ Start a focus session — a 25-minute session is running → keep it</div>
     <thead><tr><th>Suite</th><th>What it checks</th><th class="num">Checks</th></tr></thead>
     <tbody>
       <tr><td>coverage</td><td>Every command understood from its test phrases</td><td class="num">373</td></tr>
-      <tr><td>nlu</td><td>Intents, typos, dates, languages</td><td class="num">262</td></tr>
+      <tr><td>nlu</td><td>Intents, typos, dates, languages</td><td class="num">266</td></tr>
       <tr><td>paraphrase</td><td>Same request said many ways (97% correct, 8 sent to the AI)</td><td class="num">259</td></tr>
-      <tr><td>e2e (page)</td><td>Real page in headless Edge, laptop faked</td><td class="num">265</td></tr>
+      <tr><td>e2e (page)</td><td>Real page in headless Edge, laptop faked</td><td class="num">271</td></tr>
       <tr><td>agent</td><td>Multi-step routing (72) and safety (132)</td><td class="num">204</td></tr>
-      <tr><td>api</td><td>Every server route on an isolated server, including a real crash on missing dependencies</td><td class="num">174</td></tr>
+      <tr><td>api</td><td>Every server route on an isolated server, including a real crash on missing dependencies, a server answering on its port, and weather parsing</td><td class="num">185</td></tr>
       <tr><td>plan</td><td>Goal plans, state awareness, failure recovery (install → restart → verify), RETRY / CONTINUE / ROLLBACK</td><td class="num">53</td></tr>
       <tr><td>llm</td><td>Providers, streaming, retries, keys</td><td class="num">66</td></tr>
       <tr><td>student</td><td>Attendance and GPA maths</td><td class="num">60</td></tr>
@@ -1155,7 +1155,7 @@ Start a focus session — a 25-minute session is running → keep it</div>
     ['What if the AI makes a mistake or a dangerous suggestion?', ['The AI only proposes a tool. The server checks the tool name, arguments and permission tier, and refuses anything outside the registry. Risky actions show a preview and wait for approval. Steps that cannot be verified are labelled "not checked".']],
     ['Why use rules first instead of only AI?', ['Rules are instant, free, work offline and behave the same every time. A small local model is slow on a laptop GPU and can be wrong. Rules handle the common 178 commands; the AI handles the unusual ones.']],
     ['How do you protect privacy?', ['The server listens only on 127.0.0.1 and accepts only its own page. Keys stay server-side. Audio is never recorded. With Ollama and neural voice off, only the browser\'s speech recognition uses the internet.']],
-    ['How did you test it?', ['30 automated suites: 373 command-coverage checks, 262 language checks, 259 paraphrase checks (0 confidently wrong), 265 end-to-end checks in a real headless browser, 174 API checks, 53 plan and recovery checks, and more. Tests run on an isolated copy so real data is never touched.']],
+    ['How did you test it?', ['30 automated suites: 373 command-coverage checks, 266 language checks, 259 paraphrase checks (0 confidently wrong), 271 end-to-end checks in a real headless browser, 185 API checks, 53 plan and recovery checks, and more. Tests run on an isolated copy so real data is never touched.']],
     ['What was the hardest problem?', ['The wake word. Browsers pause speech recognition in background tabs and two recognisers fight for the microphone. It was solved with a Windows background listener and a generation counter that retires late recognisers.']],
     ['Who is it for?', ['Students and developers who want one private assistant for study planning, notes, coding help and laptop control, in English, Telugu and Kannada.']],
     ['What happens when a step fails?', ['JARVIS reads the real error output and works out why. Missing dependencies, a stale port held by its own earlier run, and compile errors in code it generated are fixed after you approve (one attempt; two for generated code), then the server is restarted and checked on its port. Other crashes get a one-line cause. Steps that depended on the failed one are skipped, and the card offers RETRY, CONTINUE and ROLLBACK.']],

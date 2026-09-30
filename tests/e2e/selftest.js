@@ -26,12 +26,12 @@
     '/sys/displayOff': () => ({ success: true }), '/sys/window': () => ({ success: true, done: 1 }),
     '/sys/screenRead': () => ({ success: true, text: 'TypeError: cannot read properties of undefined (reading "map")' }),
     '/sys/clipHistory': () => ({ success: true, items: [PC.clip, 'older copied text'] }),
-    '/tool/readClipboard': () => ({ success: true, text: PC.clip }),
+    '/tool/readClipboard': () => ({ success: true, content: PC.clip }),   // same shape as server.js
     '/tool/writeClipboard': b => { PC.clip = String(b.text || ''); return { success: true }; },
     '/tool/pasteKeys': () => ({ success: true }), '/tool/mediaKey': () => ({ success: true }), '/tool/showDesktop': () => ({ success: true }),
     '/tool/lockSystem': () => ({ success: true }), '/tool/sleepSystem': () => ({ success: true }), '/tool/shutdownSystem': () => ({ success: true }),
     '/tool/restartSystem': () => ({ success: true }), '/tool/cancelShutdown': () => ({ success: true }),
-    '/tool/screenshot': () => ({ success: true, name: 'Screenshots/shot.png', file: 'shot.png' }),
+    '/tool/screenshot': () => ({ success: true, file: 'shot.png', path: 'C:/Users/you/Desktop/shot.png' }),   // same shape as server.js
     '/tool/openUrl': b => ({ success: true, url: b.url }), '/tool/openFile': b => ({ success: true, name: b.name }),
     '/tool/openFolder': b => ({ success: true, name: b.name || '~/jarvis' }), '/tool/openKnownFolder': b => ({ success: true, name: b.name }),
     // Like the real server: a name found in several places on the laptop ("agriloop") comes back as choices; a full path opens.
@@ -42,6 +42,11 @@
       ? [{ title: 'Website Builder - Create a Free Website | Wix.com', url: 'https://www.wix.com/' }, { title: 'Website Builder | Canva', url: 'https://www.canva.com/website-builder/' }]
       : [{ title: b.q, url: 'https://example.com/' + encodeURIComponent(b.q) }] }),
     '/tool/youtubeTop': b => ({ success: true, url: 'https://www.youtube.com/watch?v=test', title: b.query }),
+    // Weather service (same shape as /api/tool/weather): "nowhereville" is a place it doesn't know; no city → only the country.
+    '/tool/weather': b => /nowhereville/i.test(b.city) ? { error: 'Weather service unreachable: HTTP 404' }
+      : !b.city ? { success: true, approximate: true, place: 'India' }
+      : { success: true, place: b.city.replace(/\b[a-z]/g, x => x.toUpperCase()) + ', Karnataka', approximate: false, tempC: 28, feelsC: 31, desc: 'Partly cloudy', humidity: 70, windKmph: 12, minC: 21, maxC: 29, rainChance: 70, tomorrow: { minC: 20, maxC: 27, desc: 'Light rain' } },
+    '/tool/research': b => ({ success: true, results: [{ title: 'Weather: ' + b.q, url: 'https://example.com/weather', snippet: '24°C, sunny' }], pages: [] }),
     '/tool/findFolderAnywhere': b => ({ success: true, paths: /agriloop/i.test(b.name) ? ['C:\\Users\\you\\Downloads\\Documents - Copy\\AGRILOOP-1', 'C:\\Users\\you\\Downloads\\Documents - Copy\\AGRILOOP61'] : [] }),
     '/wake/native': b => ({ supported: true, on: !!b.on, listening: !!b.on }), '/wake/front': () => ({ result: 'front' }), '/notify/test': () => ({ success: true }), '/phone/reply': () => ({ success: true }),
   };
@@ -127,6 +132,24 @@
   check('Focus', 'a running session is not silently restarted (asks first)', has(r, /already running/i) && focus && focus.min === 45, r.text);
   r = await say('stop the focus session');
   check('Focus', 'stop the session', !focus, r.text);
+  // ---- weather (service faked): answered from the weather service, never by the AI
+  {
+    const was = { online: settings.online, city: settings.city };
+    settings.online = true; settings.city = '';
+    try {
+      r = await say('weather in bengaluru');
+      check('Weather', 'weather comes from the weather service', called('/tool/weather', d => /bengaluru/i.test(d.city)) && has(r, /Bengaluru, Karnataka.*28°C and partly cloudy.*feels like 31°C/i), r.text);
+      check('Weather', 'a high chance of rain suggests an umbrella', has(r, /70% .*umbrella/i), r.text);
+      r = await say('will it rain tomorrow in bengaluru');
+      check('Weather', 'tomorrow’s forecast', has(r, /Tomorrow in .*Bengaluru.*light rain, 20–27°C/i), r.text);
+      r = await say('how is the climate in mysore today');
+      check('Weather', '"climate in <city>" is a weather request, not a chat question', called('/tool/weather', d => /mysore/i.test(d.city)) && has(r, /Mysore/i), r.text);
+      r = await say('weather in nowhereville');
+      check('Weather', 'a place the service doesn’t know falls back to a web search, never a guess', called('/tool/research', d => /current weather in nowhereville/i.test(d.q)) && has(r, /nowhereville/i), r.text);
+      r = await say("what's the weather");
+      check('Weather', 'no city and only the country known → asks for your city instead of guessing', has(r, /my city is/i), r.text);
+    } finally { settings.online = was.online; settings.city = was.city; }
+  }
   // ---- laptop controls (faked)
   r = await say('set volume to 30');
   check('Laptop', 'set volume (sent 30, read back)', called('/sys/volume', d => +d.level === 30) && has(r, /30/), r.text);

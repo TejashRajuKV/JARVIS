@@ -14,3 +14,6 @@ Microsoft/
 # OS junk
 Thumbs.db
 Desktop.ini
+
+# Answer-quality runs (node tests/quality-eval.js) — regenerated each run
+tests/quality-report*.json

@@ -274,10 +274,17 @@ const isCloudModel = m => String(m || '').includes('::');
 const modelInfo = m => llm.groups.find(g => g.id === m) || { id: m, label: m, providerLabel: isCloudModel(m) ? m.split('::')[0] : 'Local (Ollama)' };
 const llmReady = () => settings.llm && llm.online && !!llm.model;
 
-async function checkBackend() {
+// A server that was online and misses one check is asked again with more time before the page calls it offline:
+// on a laptop busy running the local AI, one slow answer is not an outage (and the offline screen interrupts you).
+async function checkBackend(patient = backend.online) {
   try {
-    const r = await fetch(API + '/health', { signal: AbortSignal.timeout(2500) });
+    let r;
+    try { r = await fetch(API + '/health', { signal: AbortSignal.timeout(2500) }); }
+    catch (e) { if (!patient) throw e; await new Promise(res => setTimeout(res, 1000)); r = await fetch(API + '/health', { signal: AbortSignal.timeout(8000) }); }
     const d = await r.json();
+    // A different pid means the server really restarted (the page reloads for that); the same pid was just slow.
+    backend.restarted = !!(backend.pid && d.pid && d.pid !== backend.pid);
+    if (d.pid) backend.pid = d.pid;
     backend.online = true; backend.sandbox = d.sandbox || backend.sandbox;
     setEngine('core', 'on', 'node · express · ' + d.platform);
     setPill('pillCore', 'ok', 'Backend online');
@@ -309,7 +316,13 @@ function offlineUI() {
   }
   box.classList.add('open');
   if (!offlineTimer) offlineTimer = setInterval(async () => {
-    if (await checkBackend()) { clearInterval(offlineTimer); offlineTimer = null; if (!offlineReloading) { offlineReloading = true; toast('JARVIS is back — reconnecting'); setTimeout(() => location.reload(), 600); } }
+    const seen = !!backend.pid;   // the page has talked to this server before (it didn't open while it was down)
+    if (await checkBackend(false)) {
+      clearInterval(offlineTimer); offlineTimer = null;
+      // Same server as before (it was only slow or briefly unreachable): carry on without losing what's on screen.
+      if (seen && !backend.restarted) { onlineUI(); toast('JARVIS is back'); return; }
+      if (!offlineReloading) { offlineReloading = true; toast('JARVIS is back — reconnecting'); setTimeout(() => location.reload(), 600); }
+    }
   }, 3000);
 }
 function onlineUI() { const box = $('#offlineBox'); if (box) box.classList.remove('open'); }
@@ -1495,7 +1508,14 @@ function extractFileName(original) {
   const s = String(original || '').replace(/\s+(and|then)\s+(run|open|execute|compile)\b.*$/i, '');
   let m = s.match(/((?:[a-z]:)?[\w\-.\/\\]*[\w\-]\.[a-z0-9+]{1,6})(?=["'\s,.!?]*$|["'\s,]+(?:and|then|in|to|please)\b)/i)
     || s.match(/((?:[a-z]:)?[\w\-.\/\\]*[\w\-]\.[a-z0-9+]{1,6})\b/i);
-  if (m && !/^(e\.g|i\.e|etc)\.?$/i.test(m[1])) return m[1];
+  if (m && !/^(e\.g|i\.e|etc)\.?$/i.test(m[1])) {
+    // A name with spaces ("summarise dbms notes.md", "flashcards from os unit 2.pdf"): the words between the command
+    // word and the file are part of its name. Only after a clear command word, so "what does unit2.pdf say" is unchanged.
+    const before = s.slice(0, s.indexOf(m[1]));
+    const lead = before.match(/\b(?:summari[sz]e|summary of|read|open|show|show me|edit|from|of|file|called|named)\s+((?:[\w\-]+\s+){1,4})$/i);
+    const extra = lead ? lead[1].trim().split(/\s+/).filter(w => !/^(my|the|a|an|file|this|that)$/i.test(w)).join(' ') : '';
+    return extra ? extra + ' ' + m[1] : m[1];
+  }
   m = s.match(/\b(?:as|called|named|titled|into|to|in)\s+(?:a\s+)?(?:new\s+)?(?:file\s+)?(?:called\s+|named\s+)?["']?([\w\-]{2,40})["']?\s*$/i);
   if (m && !/^(file|it|that|this|clipboard|editor|code|vs|the|my)$/i.test(m[1])) return m[1];
   return '';
@@ -1658,7 +1678,17 @@ async function doResearch(q, extraSuggestions) {
   const sources = '\n\n**Sources**\n' + r.results.slice(0, 4).map((x, i) => (i + 1) + '. [' + x.title + '](' + x.url + ')').join('\n');
   if (!llmReady()) return { text: 'Top results for **' + q + '**:\n' + r.results.slice(0, 5).map((x, i) => (i + 1) + '. [' + x.title + '](' + x.url + ') — ' + x.snippet).join('\n'), suggestions: extraSuggestions };
   const pages = r.pages.map((x, i) => '[' + (i + 1) + '] ' + x.title + ' (' + x.url + ')\n' + ((x.text || '').length > 200 ? x.text : x.snippet).slice(0, 3000)).join('\n\n');
-  return { askLLM: 'Question: ' + q + '\nToday is ' + new Date().toDateString() + '.\n\nAnswer using ONLY these web sources I just fetched. Cite them inline like [1] or [2]. If they do not contain the answer, say so plainly and suggest what to search instead. Be concise; use bullets for lists.' + (Lang.aiInEnglish() ? '' : { te: ' Write the answer in Telugu (keep technical terms, names and numbers in English).', kn: ' Write the answer in Kannada (keep technical terms, names and numbers in English).' }[Lang.replyLang()] || '') + '\n\n' + pages,
+  // Something that changes (a winner, a price, news): a small model will happily "remember" a years-old answer, so the
+  // code decides. Results that don't even mention the question's key words are reported as such, without the AI.
+  const changing = TIME_SENSITIVE.test(q.toLowerCase()) || /\b(last|recent|now|right now|score|standings)\b/i.test(q);
+  const keys = q.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 2 && !/^(who|what|when|where|which|how|the|won|last|latest|news|about|price|current|currently|today|right|now|and|for|with|from|this|that|recent)$/.test(w));
+  const hay = r.results.slice(0, 4).map(x => (x.title + ' ' + x.snippet + ' ' + x.url).toLowerCase()).join(' ');
+  if (changing && keys.length && !keys.some(k => hay.includes(k)))
+    return { text: 'I couldn’t find current results for **' + q + '** — the search returned unrelated pages, and I won’t answer something that changes from memory.', suggestions: ['Search Google for ' + q].concat(extraSuggestions || []) };
+  const fallback = changing
+    ? 'If they do not contain the answer, say plainly that the sources didn’t have it and suggest a better search. Never answer from your own memory: this changes over time, and your memory is out of date.'
+    : 'If they do not contain the answer and it is a settled fact that does not change (history, science, who invented or wrote something, definitions), answer from your own knowledge in one or two sentences and start with "The search didn’t cover this, but from general knowledge:".';
+  return { askLLM: 'Question: ' + q + '\nToday is ' + new Date().toDateString() + '.\n\nAnswer using ONLY these web sources I just fetched. Cite them inline like [1] or [2]. ' + fallback + ' Be concise; use bullets for lists.' + (Lang.aiInEnglish() ? '' : { te: ' Write the answer in Telugu (keep technical terms, names and numbers in English).', kn: ' Write the answer in Kannada (keep technical terms, names and numbers in English).' }[Lang.replyLang()] || '') + '\n\n' + pages,
     after: { sources, suggestions: extraSuggestions } };
 }
 
@@ -2049,6 +2079,11 @@ async function executeTool(p, raw) {
       const what = s.replace(/^(open|launch|start|run|fire up|boot up|boot|pull up|bring up|load|show me)\s+(up\s+)?(the\s+|my\s+)?/, '');
       return { text: 'I couldn’t find an app called "' + what + '" on this laptop. I can open anything in your Start menu by its name — or any website.', suggestions: ['Open ' + what + '.com', 'Search Google for ' + what] };
     }
+    case 'ASK_WHAT': {
+      const v = a.verb || 'open';
+      const recent = ctx.lastApp ? [cap(v) + ' ' + ((NLU.appByKey(ctx.lastApp) || {}).n || ctx.lastApp)] : [];
+      return { text: cap(v) + ' what? Name an app, a website or a file — e.g. "' + v + ' chrome", "' + v + ' leetcode".', suggestions: recent.concat([cap(v) + ' Chrome', cap(v) + ' VS Code']), tool: null };
+    }
     case 'CONTEXT_REOPEN':
     case 'CONTEXT_CLOSE':
     case 'CLOSE_APPLICATION': {
@@ -2386,7 +2421,13 @@ async function executeTool(p, raw) {
 
     /* ---- attendance & marks ---- */
     case 'ATTENDANCE_MARK': {
-      const subject = cap(String(a.subject || s.replace(/^.*?(mark|record|log)\s+(me\s+)?(as\s+)?(present|absent)\s*(for|in)?\s*/i, '').replace(/\s+(present|absent)\b.*$/i, '').trim())) || 'Class';
+      // The subject is what's left after the attendance words ("mark dbms present", "i was absent for os today",
+      // "i missed the dbms class"); an existing subject is reused whatever its case, and short names are acronyms (DBMS).
+      const said = String(a.subject || s).toLowerCase()
+        .replace(/\b(?:today|yesterday|tonight|this morning|this afternoon|this evening)\b/g, ' ')
+        .replace(/\b(?:please|mark|marked|record|log|me|as|i|was|am|were|have|had|present|absent|missed|skipped|bunked|bunk|attended|for|in|at|the|my|class|classes|lecture|period)\b/g, ' ')
+        .replace(/[^\w\s+#&-]/g, ' ').replace(/\s+/g, ' ').trim();
+      const subject = Object.keys(attendance).find(k => k.toLowerCase() === said) || (said.length <= 4 ? said.toUpperCase() : cap(said)) || 'Class';
       const present = a.status ? a.status === 'present' : !/\babsent|missed|skipped|bunk(ed)?\b/i.test(s);
       const e = attendance[subject] || (attendance[subject] = { held: 0, attended: 0, log: [] });
       const ymd = Study.ymd(new Date());
@@ -2410,7 +2451,15 @@ async function executeTool(p, raw) {
       return { text: (danger.length ? '⚠️ **' + danger[0].n + '** is below 75% (' + danger[0].pct + '%).\n\n' : '') + 'Attendance:\n' + rows.map(line).join('\n'), tool: 'attendance' };
     }
     case 'BUNK_CHECK': {
-      const name = String(a.subject || s.replace(/^.*?\b(can i (miss|skip|bunk)|should i (go to|attend))\b\s*(the\s+|my\s+|tomorrow'?s?\s+|next\s+)?/i, '').replace(/\s+\b(class|classes|tomorrow|today|lecture)\b.*$/i, '').trim());
+      // "I attended 30 of 36 classes, how many can I bunk": the numbers are given, so answer from them directly.
+      const given = s.match(/(\d+)\s*(?:of|out of|\/)\s*(\d+)/);
+      if (given && +given[1] <= +given[2] && +given[2] > 0) {
+        const att = +given[1], held = +given[2], pct = Study.attendancePct(held, att);
+        return pct >= 75
+          ? { text: 'You’re at **' + pct + '%** (' + att + '/' + held + '). You can miss **' + plural(Study.bunkable(held, att, 75), 'class') + '** in a row and stay at 75% or above.', tool: 'attendance' }
+          : { text: 'You’re at **' + pct + '%** (' + att + '/' + held + ') — below 75%, so no bunks. Attend **' + plural(Study.neededToReach(held, att, 75), 'class') + '** in a row to get back to 75%.', tool: 'attendance' };
+      }
+      const name =String(a.subject || s.replace(/^.*?\b(can i (miss|skip|bunk)|should i (go to|attend))\b\s*(the\s+|my\s+|tomorrow'?s?\s+|next\s+)?/i, '').replace(/\s+\b(class|classes|tomorrow|today|lecture)\b.*$/i, '').trim());
       const key = Object.keys(attendance).find(k => k.toLowerCase() === name.toLowerCase()) || (!name || name.length < 2 ? null : Object.keys(attendance).find(k => NLU.lev(k.toLowerCase(), name.toLowerCase()) <= 2));
       if (!key) return attendance && Object.keys(attendance).length ? { text: 'Which subject? You track: ' + Object.keys(attendance).join(', ') + '.' } : { text: 'No attendance recorded yet — try "mark DBMS present" after a class.' };
       const e = attendance[key];
@@ -2486,6 +2535,13 @@ async function executeTool(p, raw) {
     case 'LIST_DEADLINES': {
       const ds = deadlines.filter(d => !d.done && d.due > Date.now() - 864e5).sort((x, y) => x.due - y.due);
       switchTab('tasks');
+      // "When is my exam?" asks about one thing. With no deadline for it, what you told me to remember
+      // ("remember that my exam is on 12 december") answers it.
+      const about = (s.match(/\b(exams?|tests?|quiz(?:zes)?|viva|interview|assignments?|projects?|submissions?|presentations?|labs?|internals?|mid-?sems?|end-?sems?|practicals?|hackathon|contest)\b/g) || []).map(w => w.replace(/s$/, ''));
+      if (about.length && !ds.some(d => about.some(w => d.title.toLowerCase().includes(w)))) {
+        const facts = memory.filter(m => about.some(w => (m.key + ' ' + m.value).toLowerCase().includes(w)));
+        if (facts.length) return { text: 'You told me: ' + facts.slice(-3).map(m => '“' + String(m.value || m.key).replace(/^my /i, 'your ') + '”').join(', ') + '.' + (ds.length ? '' : ' It isn’t on your deadlines list — say "add ' + about[0] + ' due …" to get a reminder before it.'), tool: 'memory' };
+      }
       if (!ds.length) return { text: 'Nothing due. Enjoy it while it lasts.' };
       const week = /\bweek\b/.test(s) ? ds.filter(d => d.due - Date.now() < 7 * 864e5) : ds;
       if (!week.length) return { text: 'Nothing due this week. Next up: **' + ds[0].title + '** ' + fmtDay(ds[0].due) + '.' };
@@ -2722,8 +2778,12 @@ async function executeTool(p, raw) {
     case 'CODE_ASK': {
       const parsed = NLU.parseCodeAsk(p.original) || {};
       const tool = a.tool || parsed.tool;
-      const prompt = (a.prompt || parsed.prompt || '').trim();
+      let prompt = (a.prompt || parsed.prompt || '').trim();
       let folder = (a.folder || parsed.folder || '').trim();
+      // "ask claude code to add unit tests in demoshop": a trailing "in <project>" names the folder — only when such a
+      // project exists, so "fix the bug in the login page" keeps its words.
+      const tail = !folder && prompt.match(/^(.+?)\s+(?:in|for|inside)\s+(?:the\s+|my\s+)?([\w .-]{2,40}?)(?:\s+(?:project|folder|repo))?[.!?]?$/i);
+      if (tail && !(await callTool('/tool/locateProject', { name: tail[2] })).error) { folder = tail[2].trim(); prompt = tail[1].trim(); }
       if (!tool) return { text: 'Which coding tool — VS Code/Copilot, Kiro, Trae, Antigravity, Devin, OpenCode, Claude, Gemini, Codex, Qwen or Codebuff?' };
       if (!prompt) return { text: 'What should I ask it to do?' };
       if (!folder) folder = ctx.lastProject || '';
@@ -3385,7 +3445,7 @@ async function executeTool(p, raw) {
     case 'FLASH_MAKE': {
       if (!llmReady()) return { text: 'I need my AI brain (Ollama) to write flashcards.' };
       // Only treat it as a file when it looks like one ("x.md") or follows "from" ("from os-notes").
-      const fname = a.name || (p.original.match(/([\w\-.\/\\:]+\.[a-z0-9]{1,5})\b/i) || [])[1]
+      const fname = a.name || (/\.[a-z0-9]{1,5}\b/i.test(p.original) ? extractFileName(p.original) : '')
         || ((p.original.match(/\bfrom\s+(?:my\s+|the\s+)?["']?([\w\-]+)["']?\s*$/i) || [])[1] || '').replace(/^(that|this|it|answer)$/i, '');
       let source = '', deck = '';
       if (fname && !/^(that|this|it|flashcards?)$/i.test(fname)) {
@@ -4158,6 +4218,11 @@ async function handleUser(text, source) {
         const flow = Agent.GUIDED_FLOWS[gf.id];
         const answers = {}; let step = 0;
         if (gf.seed) { answers[flow.steps[0].key] = gf.seed; step = 1; }
+        // "a study plan for my os exam in 5 days": the date is already there — keep it, don't ask "When is it?".
+        const dm = gf.id === 'STUDY_PLAN' && gf.seed && gf.seed.match(/^(.+?)\s+((?:in|within)\s+\d+\s+(?:days?|weeks?)|on\s+.+|by\s+.+|next\s+\w+|this\s+\w+|tomorrow|day after tomorrow)$/i);
+        if (dm && NLU.parseDate(dm[2].toLowerCase().replace(/^(?:by|on|within)\s+/, m => /within/.test(m) ? 'in ' : ''))) {
+          answers.title = dm[1].trim(); answers.due = dm[2].replace(/^within\s+/i, 'in ').replace(/^by\s+/i, ''); step = 2;
+        }
         await askOrFinishGuidedFlow(gf.id, step, answers);
         return;
       }
@@ -4177,6 +4242,11 @@ async function handleUser(text, source) {
     log('ok', 'intent: ' + p.intent + ' · conf ' + p.confidence.toFixed(2) + (norm.text !== text.toLowerCase() ? ' · heard "' + norm.text + '"' : '') + (p.corrected ? ' · typo-corrected to "' + p.corrected + '"' : ''));
     if (p.corrected) p.text = p.corrected;
 
+    // "cancel" / "never mind" with nothing waiting for an answer: say so, instead of asking the AI to plan it (it once
+    // planned "close the app jarvis").
+    if ((p.intent === 'CONVERSATION' || p.confidence < 0.85) && /^(?:cancel|cancel (?:it|that)|never ?mind|forget it|stop|stop it|abort)[.!]?$/i.test(norm.text.trim())) {
+      await deliver({ text: 'There’s nothing to cancel right now.', intent: 'CANCELLED', noPersona: true }, { intent: 'CANCELLED', confidence: 1 }); return;
+    }
     const wantsLLM = p.intent === 'CONVERSATION' || p.confidence < 0.85;
     let result = null;
     const tUnderstood = performance.now();

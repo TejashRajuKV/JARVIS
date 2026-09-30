@@ -697,7 +697,7 @@ const NLU = (() => {
     ['READ_CLIPBOARD', /\b(what'?s|what is|read|show)( me)?( in| on)? (my |the )?clipboard\b|^clipboard$/, .95, 'readClipboard'],
 
     // weather / web
-    ['WEATHER', /\b(weather|forecast|temperature (outside|today|in)|is it (going to )?(rain|snow|hot|cold|sunny)|will it rain|how (hot|cold) is it|need an umbrella|humidity)\b/, .96, 'weather'],
+    ['WEATHER', /\b(weather|forecast|temperature (outside|today|in)|is it (going to )?(rain|snow|hot|cold|sunny)|will it rain|how (hot|cold) is it|need an umbrella|humidity|climate (like )?(in|at|here|outside|today|now|right now)|how('?s| is) it outside)\b/, .96, 'weather'],
     // distance / directions (checked before the generic OPEN_* rules; DIRECTIONS_OPEN before the plainer DIRECTIONS)
     ['DIRECTIONS_OPEN', /\bopen\b.*\bdirections?\b.*\b(to|for)\b|\bshow\b.*\bdirections?\b.*\bon\b.*\bmaps\b|\bopen\b.*\bmaps?\b.*\bdirections?\b/, .95, 'directionsOpen'],
     // "go to leetcode" / "take me to github" / "visit gfg": only when the rest is a known site (never "go to sleep").
@@ -862,6 +862,11 @@ const NLU = (() => {
       && !/^why (?:did|do|would) you\b|^why (?:was|is) (?:that|this|it) (?:needed|required|necessary|confirmation|permission)\b/.test(s)) {
       return { intent: 'CONVERSATION', confidence: .5, tool: null, args: {}, text: s };
     }
+    // Weather somewhere no forecast service covers ("the weather on mars", "temperature of the sun") is a science question.
+    if (/\b(weather|temperature|climate|rain|forecast|hot|cold)\b/.test(s) && /\b(?:on|of|in|at)\s+(?:the\s+)?(?:mars|venus|jupiter|saturn|mercury|neptune|uranus|pluto|moon|sun|titan|europa|space|other planets?)\b/.test(s))
+      return { intent: 'CONVERSATION', confidence: .5, tool: null, args: {}, text: s };
+    // Just the verb ("open", "launch") names nothing to open — ask, instead of searching the web for the word "open".
+    if (/^(?:open|launch|start|run|load|close|quit)(?: it up| up)?$/.test(s)) return { intent: 'ASK_WHAT', confidence: .95, tool: null, args: { verb: s.split(' ')[0] }, text: s };
     for (const [intent, test, conf, tool] of R) {
       const ok = typeof test === 'function' ? test(s) : test.test(s);
       if (ok) {

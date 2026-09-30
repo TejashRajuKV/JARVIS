@@ -454,6 +454,8 @@ Run everything (never touches your laptop or your data — the server-backed sui
 npm test
 ```
 
+A suite that can’t run on this machine (the browser suite without Edge/Chrome) is listed as **NOT RUN**, not as passed. Set `JARVIS_REQUIRE_ALL=1` to make that a failure (e.g. before a release).
+
 Which features work, as a report (`tests/report.md`: one row per command, plus a checklist for what only you can check — mic, voice, Windows Hello, phone):
 
 ```bash
@@ -471,10 +473,10 @@ npm run test:live
 | Suite | Checks | What it covers |
 |---|---|---|
 | `coverage.test.js` | 373 | Every command JARVIS has (178) is understood from its test phrases; fails if a new command has none |
-| `api.test.js` | 174 | Every server route (138) on a real, isolated server: files and access zones, projects (including recognising a crash on missing dependencies vs. a code bug), git, backup, reminders firing, phone codes, security; routes that would act on the laptop are listed with the reason instead |
-| `e2e.test.js` | 265 | The real page in headless Edge/Chrome: ~40 end-to-end flows (to-dos, reminders, focus, attendance, marks, routines, triggers, multi-step plans…) plus every command run through the chat, with laptop actions faked. Skipped without Edge/Chrome or on Node < 22 |
+| `api.test.js` | 185 | Every server route (138) on a real, isolated server: files and access zones, projects (including recognising a crash on missing dependencies vs. a code bug, and whether a started server really answers on its port), weather parsing against a fake wttr.in, git, backup, reminders firing, phone codes, security; routes that would act on the laptop are listed with the reason instead |
+| `e2e.test.js` | 271 | The real page in headless Edge/Chrome: ~40 end-to-end flows (to-dos, reminders, focus, weather replies and their web-search fallback, attendance, marks, routines, triggers, multi-step plans…) plus every command run through the chat, with laptop actions faked. Without Edge/Chrome or on Node < 22 it is shown as **NOT RUN** (never as ✓) |
 | `live.test.js` | 11 | Opt-in (`npm run test:live`) reversible checks on the real laptop |
-| `nlu.test.js` | 262 | Understanding commands (intents, typos, dates, languages) |
+| `nlu.test.js` | 266 | Understanding commands (intents, typos, dates, languages) |
 | `agent.test.js` | 72 + 132 | Multi-step routing and safety (validator, refusals), the execution inspector card, undo tagging of plan runs |
 | `llm.test.js` | 66 | AI providers, streaming, retries, key handling (with a fake server) |
 | `student.test.js` | 60 | Attendance & bunk maths, marks → SGPA/CGPA, monthly/yearly repeats |

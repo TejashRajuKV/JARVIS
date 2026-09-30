@@ -17,6 +17,8 @@ if (lock.running) {
 const app = express();
 const HOST = '127.0.0.1';
 const OLLAMA = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
+// The weather service (tests point it at a local fake, like OLLAMA_URL above).
+const WTTR = (process.env.JARVIS_WTTR_URL || 'https://wttr.in').replace(/\/+$/, '');
 const DEFAULT_MODEL = process.env.JARVIS_MODEL || 'qwen3.5:4b';
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -558,7 +560,7 @@ app.post('/api/tool/weather', async (req, res) => {
   if (!req.body.online) return res.status(403).json({ error: 'offline' });
   const city = String(req.body.city || '').trim().slice(0, 60);
   try {
-    const d = await getJSON(`https://wttr.in/${encodeURIComponent(city)}?format=j1`);
+    const d = await getJSON(`${WTTR}/${encodeURIComponent(city)}?format=j1`);
     const c = d.current_condition[0];
     const today = d.weather[0];
     const tomorrow = d.weather[1];
@@ -607,11 +609,6 @@ app.post('/api/tool/webAnswer', async (req, res) => {
 
 /* ---------------- distance / directions (Nominatim geocoding + OSRM's public demo router, both keyless) ----------------
    Best-effort public services, same spirit as the wttr.in weather lookup above — no guarantees, no API key. */
-async function geocode(place) {
-  const j = await getJSON('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=' + encodeURIComponent(place));
-  if (!Array.isArray(j) || !j.length) return null;
-  return { name: j[0].display_name.split(',')[0], lat: +j[0].lat, lon: +j[0].lon };
-}
 // Builds a plain-English line from an OSRM maneuver — OSRM itself only returns structured turn data, not text.
 // Returns null for maneuvers that aren't an actionable turn (a mid-road name change, or entering a roundabout —
 // the following "exit roundabout" step already says what to do), which the caller filters out.
@@ -628,8 +625,30 @@ function stepText(step) {
   const kind = (m.type || 'continue').replace(/_/g, ' ');
   return kind.charAt(0).toUpperCase() + kind.slice(1) + onto + '.';
 }
+// Up to 5 matches for a place; with `near`, only matches within about 110 km of that point.
+async function geocodeAll(place, near) {
+  const box = near ? `&bounded=1&viewbox=${near.lon - 1},${near.lat + 1},${near.lon + 1},${near.lat - 1}` : '';
+  const j = await getJSON('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=' + encodeURIComponent(place) + box);
+  return Array.isArray(j) ? j.map(x => ({ name: x.display_name.split(',')[0], lat: +x.lat, lon: +x.lon })) : [];
+}
+const kmBetween = (p, q) => { const R = 6371, r = d => d * Math.PI / 180, dLat = r(q.lat - p.lat), dLon = r(q.lon - p.lon);
+  return 2 * R * Math.asin(Math.sqrt(Math.sin(dLat / 2) ** 2 + Math.cos(r(p.lat)) * Math.cos(r(q.lat)) * Math.sin(dLon / 2) ** 2)); };
+// A trip is between places near each other far more often than across the world: "majestic to bangalore airport" is
+// Majestic in Bengaluru, not Majestic in Kentucky or Portugal. Pick the closest pair of matches, and if the two ends are
+// still continents apart, look the vaguer name up again near the other end.
+async function placePair(from, to) {
+  const [A, B] = await Promise.all([geocodeAll(from), geocodeAll(to)]);
+  if (!A.length || !B.length) return { a: A[0], b: B[0] };
+  let best = { a: A[0], b: B[0], km: kmBetween(A[0], B[0]) };
+  for (const a of A) for (const b of B) { const km = kmBetween(a, b); if (km < best.km) best = { a, b, km }; }
+  if (best.km > 1500) {
+    const An = await geocodeAll(from, B[0]).catch(() => []), Bn = await geocodeAll(to, A[0]).catch(() => []);
+    for (const [a, b] of [[An[0], B[0]], [A[0], Bn[0]]]) if (a && b && kmBetween(a, b) < best.km) best = { a, b, km: kmBetween(a, b) };
+  }
+  return best;
+}
 async function routeBetween(from, to, steps) {
-  const [a, b] = await Promise.all([geocode(from), geocode(to)]);
+  const { a, b } = await placePair(from, to);
   if (!a) return { error: `I couldn't find "${from}" — try being more specific` };
   if (!b) return { error: `I couldn't find "${to}" — try being more specific` };
   const r = await getJSON(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false${steps ? '&steps=true' : ''}`);
@@ -1485,13 +1504,17 @@ const SEARCH_STOP = new Set(['the', 'a', 'an', 'of', 'for', 'in', 'on', 'to', 'a
 // Words every page about anything contains ("website", "official"): they must not make an unrelated page look
 // relevant — "smart india hackathon website" once scored website-builder pages above the real site.
 const GENERIC_WORDS = new Set(['website', 'websites', 'site', 'sites', 'web', 'page', 'pages', 'webpage', 'homepage', 'home', 'official', 'portal', 'online', 'link', 'login', 'open']);
+// Everyday words that make a poor first search word (Bing latches onto the first word of a weak query).
+const COMMON_WORDS = new Set(['won', 'win', 'wins', 'winner', 'last', 'latest', 'new', 'newest', 'news', 'best', 'first', 'top', 'price', 'today', 'now', 'current',
+  'invented', 'invent', 'created', 'made', 'happened', 'happening', 'year', 'time', 'about', 'right', 'live', 'score', 'result', 'results', 'recent', 'update', 'updates']);
 const keywords = q => [...new Set(q.toLowerCase().replace(/[^a-z0-9+#. ]/g, ' ').split(/\s+/).filter(w => w.length >= 2 && !SEARCH_STOP.has(w) && !GENERIC_WORDS.has(w)))];
 // Share of query keywords found in the top results; acronyms (IPL, SIH) and numbers (2026) count double.
 function relevance(results, q) {
   const kw = keywords(q);
   if (!kw.length || !results.length) return 0;
   const acr = new Set((q.match(/\b[A-Z]{2,6}\b/g) || []).map(w => w.toLowerCase()));
-  const weight = k => (acr.has(k) || /\d/.test(k) ? 2 : 1);
+  // Everyday words count half: pages about "won" (the currency) must not tie with pages about "ipl".
+  const weight = k => (acr.has(k) || /\d/.test(k) ? 2 : COMMON_WORDS.has(k) ? 0.5 : 1);
   const total = kw.reduce((s, k) => s + weight(k), 0);
   const top = results.slice(0, 3);
   return top.reduce((s, r) => { const hay = (r.title + ' ' + r.url + ' ' + r.snippet).toLowerCase(); return s + kw.filter(k => hay.includes(k)).reduce((a, k) => a + weight(k), 0) / total; }, 0) / top.length;
@@ -1503,11 +1526,24 @@ async function webSearch(q) {
   const hit = searchCache.get(key);
   if (hit && Date.now() - hit.t < 10 * 60e3) return hit.results;
   let best = await searchOnce(q), bestScore = relevance(best, q);
+  // DuckDuckGo reads natural questions better ("who won the last ipl" → IPL winners, where Bing returned the
+  // South Korean won), so it is the first retry.
+  if (bestScore < 0.55) {
+    const d = await searchDDG(q).catch(() => []);
+    const sc = relevance(d, q);
+    if (sc > bestScore) { best = d; bestScore = sc; }
+  }
   if (bestScore < 0.55) {
     const words = q.split(/\s+/).filter(Boolean);
-    const lead = words.find(w => /^[A-Z]{2,6}$/.test(w)) || keywords(q).filter(w => !/^\d+$/.test(w)).sort((a, b) => b.length - a.length)[0];
+    // The word to lead with is the specific one: an acronym in capitals, else the longest word that isn't an everyday
+    // one ("who won the last ipl" → "ipl", not "last", which Bing reads as Last.fm).
+    const kw = keywords(q).filter(w => !/^\d+$/.test(w));
+    const lead = words.find(w => /^[A-Z]{2,6}$/.test(w)) || kw.filter(w => !COMMON_WORDS.has(w)).sort((a, b) => b.length - a.length)[0] || kw.sort((a, b) => b.length - a.length)[0];
     const variants = [words.filter(w => !SEARCH_STOP.has(w.toLowerCase())).join(' ')];
     if (lead) variants.push([lead, ...words.filter(w => w.toLowerCase() !== lead.toLowerCase() && !SEARCH_STOP.has(w.toLowerCase()))].join(' '));
+    // Specific words first, everyday words after ("artificial intelligence news", not "latest news about …").
+    const specific = kw.filter(w => !COMMON_WORDS.has(w)), everyday = kw.filter(w => COMMON_WORDS.has(w) && !/^(latest|last|about|now|today|current)$/.test(w));
+    if (specific.length) variants.push(specific.concat(everyday).join(' '));
     variants.push(words.filter(w => !SEARCH_STOP.has(w.toLowerCase())).reverse().join(' '));
     for (const v of [...new Set(variants)].filter(v => v && v.toLowerCase() !== key)) {
       const r = await searchOnce(v).catch(() => []);
@@ -1532,6 +1568,28 @@ async function searchOnce(q) {
     if (!url || !/^https?:\/\//.test(url) || /bing\.com|microsoft\.com\/.*bing/.test(url)) continue;
     const snip = chunk.match(/<p[^>]*class="[^"]*b_lineclamp[^"]*"[^>]*>([\s\S]*?)<\/p>/) || chunk.match(/<div class="b_caption[^"]*"[^>]*>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/);
     results.push({ title: stripTags(a[2]), url, snippet: snip ? stripTags(snip[1]).replace(/^[\w\s,]+\d{4}\s*·\s*/, '') : '' });
+    if (results.length >= 8) break;
+  }
+  return results;
+}
+// DuckDuckGo's plain-HTML results (no key). Links come wrapped as //duckduckgo.com/l/?uddg=<real url>.
+async function searchDDG(q) {
+  const r = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q), {
+    headers: { 'User-Agent': BROWSER_UA, 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(8000),
+  });
+  if (r.status !== 200) return [];   // 202 = DuckDuckGo wants a check it can't get here
+  const html = await r.text();
+  const results = [];
+  for (const chunk of html.split('class="result__body"').slice(1)) {
+    const a = chunk.match(/class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/);
+    if (!a) continue;
+    let url = a[1].replace(/&amp;/g, '&');
+    const u = url.match(/[?&]uddg=([^&]+)/);
+    if (u) url = decodeURIComponent(u[1]);
+    if (url.startsWith('//')) url = 'https:' + url;
+    if (!/^https?:\/\//.test(url) || /duckduckgo\.com/.test(url)) continue;
+    const snip = chunk.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
+    results.push({ title: stripTags(a[2]), url, snippet: snip ? stripTags(snip[1]) : '' });
     if (results.length >= 8) break;
   }
   return results;
@@ -1794,10 +1852,19 @@ app.post('/api/tool/checkPort', (req, res) => {
   const port = Number(req.body.port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) return res.status(400).json({ error: 'Port must be 1-65535' });
   const net = require('net');
-  const srv = net.createServer();
-  srv.once('error', () => res.json({ success: true, inUse: true }));
-  srv.once('listening', () => srv.close(() => res.json({ success: true, inUse: false })));
-  srv.listen(port, '0.0.0.0');
+  // Something already answering on 127.0.0.1 or ::1 is "in use" — Vite and other dev servers often listen only on
+  // IPv6 localhost, where binding 0.0.0.0 still succeeds and would wrongly report the port free.
+  const answers = host => new Promise(done => {
+    const c = net.connect({ host, port, timeout: 800 }, () => { c.destroy(); done(true); });
+    c.on('error', () => done(false)); c.on('timeout', () => { c.destroy(); done(false); });
+  });
+  Promise.all([answers('127.0.0.1'), answers('::1')]).then(([v4, v6]) => {
+    if (v4 || v6) return res.json({ success: true, inUse: true });
+    const srv = net.createServer();
+    srv.once('error', () => res.json({ success: true, inUse: true }));
+    srv.once('listening', () => srv.close(() => res.json({ success: true, inUse: false })));
+    srv.listen(port, '0.0.0.0');
+  });
 });
 
 /* ---------------- health ---------------- */

@@ -5,7 +5,7 @@
 // A gate at the end fails if any route exists that is neither tested nor listed. Run: node tests/api.test.js
 'use strict';
 const fs = require('fs'), path = require('path'), { execFileSync } = require('child_process');
-const { startServer, suite, ROOT } = require('./lib/server');
+const { startServer, suite, freePort, ROOT } = require('./lib/server');
 const { check, done } = suite('api');
 
 // Routes never called by this suite, and why. Each is exercised with a faked callTool in tests/e2e/selftest.js.
@@ -46,11 +46,34 @@ for (const f of ROUTE_FILES) {
     for (const p of paths) if (p.startsWith('/api/')) ROUTES.push(m[1].toUpperCase() + ' ' + p);
   }
 }
+// wttr.in's j1 shape, trimmed to what server.js reads. "/Bengaluru" → a normal city; "/" (no city) → an IP lookup that
+// only found the country (whole-degree coordinates); anything else → 404, like a place wttr.in doesn't know.
+function fakeWttr() {
+  const hour = rain => ({ chanceofrain: String(rain), weatherDesc: [{ value: 'Light rain ' }] });
+  const day = (min, max, rains) => ({ mintempC: String(min), maxtempC: String(max), hourly: rains.map(hour) });
+  const body = (query, area) => ({
+    current_condition: [{ temp_C: '28', FeelsLikeC: '31', weatherDesc: [{ value: 'Partly cloudy ' }], humidity: '70', windspeedKmph: '12' }],
+    weather: [day(21, 29, [10, 40, 70, 20, 0]), day(20, 27, [5, 5, 5, 5, 5])],
+    nearest_area: [{ areaName: [{ value: area }], region: [{ value: 'Karnataka' }], country: [{ value: 'India' }] }],
+    request: [{ query }],
+  });
+  const srv = require('http').createServer((q, res) => {
+    const city = decodeURIComponent(q.url.split('?')[0].slice(1));
+    const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    if (/^bengaluru$/i.test(city)) return send(200, body('Bengaluru, India', 'Yesvantpur'));
+    if (!city) return send(200, body('Lat 22.00 and Lon 79.00', 'Somewhere'));
+    send(404, { error: 'Unknown location' });
+  });
+  return new Promise(r => srv.listen(0, '127.0.0.1', () => r({ url: 'http://127.0.0.1:' + srv.address().port, close: () => srv.close() })));
+}
 const hit = new Set();
 const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); return m === method && new RegExp('^' + rp.replace(/:[^/]+/g, '[^/]+') + '$', 'i').test(p.split('?')[0]); });
 
 (async () => {
-  const S = await startServer({ env: { GIT_AUTHOR_NAME: 'JARVIS test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'JARVIS test', GIT_COMMITTER_EMAIL: 'test@example.invalid' } });
+  // A fake wttr.in (JARVIS_WTTR_URL), so the weather route's parsing is tested on a real response shape without the internet.
+  const wttr = await fakeWttr();
+  const S = await startServer({ env: { GIT_AUTHOR_NAME: 'JARVIS test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'JARVIS test', GIT_COMMITTER_EMAIL: 'test@example.invalid',
+    JARVIS_WTTR_URL: wttr.url } });
   const rec = (method, p) => { const r = routeOf(method, p); if (r) hit.add(r); };
   const post = (p, b, x) => { rec('POST', p); return S.post(p, b, x); };
   const get = (p, x) => { rec('GET', p); return S.get(p, x); };
@@ -200,6 +223,22 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     }
     check('Projects', 'installDeps refuses an invalid "which"', (await post('/api/tool/installDeps', { name: 'DepsGone', which: 'x; rm' })).status === 400);
     check('Projects', 'installDeps needs a known project', (await post('/api/tool/installDeps', { name: 'NoSuchProject', which: 'backend' })).status === 404);
+    // A started server counts as verified only when it really answers on its port; one that claims a port but never
+    // listens is "not answering" (the agent then shows ○ not checked, never ✓).
+    for (const [nm, listens] of [['Answering', true], ['Silent', false]]) {
+      const port = await freePort();
+      fs.mkdirSync(path.join(S.home, 'projects', nm, 'backend'), { recursive: true });
+      fs.writeFileSync(path.join(S.home, 'projects', nm, 'backend', 'package.json'), JSON.stringify({ name: 'b', scripts: { start: 'node app.js' } }));
+      fs.writeFileSync(path.join(S.home, 'projects', nm, 'backend', 'app.js'), listens
+        ? `require('http').createServer((q, s) => s.end('ok')).listen(${port}, () => console.log('listening on port ${port}'));`
+        : `console.log('listening on port ${port}'); setInterval(() => {}, 1e6);`);
+      r = await post('/api/tool/startProcess', { name: nm, which: 'backend' });
+      check('Projects', nm + ' backend starts and its port is read from its output', r.json.success && r.json.port === port, r.json);
+      const st = await post('/api/tool/processStatus', { name: nm, which: 'backend' });
+      check('Projects', listens ? 'a running server that answers on its port is reported as answering' : 'a server that claims a port but never listens is reported as not answering',
+        st.json.found && st.json.alive && st.json.responding === listens, st.json);
+      await post('/api/tool/stopProcess', { name: nm, which: 'backend' });
+    }
     check('Projects', 'processStatus of a project with nothing running says so', (await post('/api/tool/processStatus', { name: 'DepsGone', which: 'backend' })).json.found === false);
     check('Projects', 'checkPort validates the number', (await post('/api/tool/checkPort', { port: 99999 })).status === 400);
     check('Projects', 'checkPort answers for a real port', (await post('/api/tool/checkPort', { port: S.port })).status === 200);
@@ -269,6 +308,19 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     for (const p of ['/api/tool/weather', '/api/tool/contests', '/api/tool/webAnswer', '/api/tool/research', '/api/tool/fetchPage', '/api/tool/directions', '/api/tool/distance'])
       check('Online', p.replace('/api/tool/', '') + ' refuses when Online tools is off', (await post(p, { query: 'x', city: 'x', url: 'https://example.com', from: 'a', to: 'b' })).status === 403);
 
+    /* ---------- weather (against the fake wttr.in) ---------- */
+    r = await post('/api/tool/weather', { city: 'bengaluru', online: true });
+    const w = r.json;
+    check('Weather', 'current weather is read from the service', w.success && w.tempC === 28 && w.feelsC === 31 && w.desc === 'Partly cloudy' && w.humidity === 70 && w.windKmph === 12, w);
+    check('Weather', 'the place is the city you named (not the station suburb), with its state', w.place === 'Bengaluru, Karnataka', w.place);
+    check('Weather', 'today’s range and the highest hourly chance of rain', w.minC === 21 && w.maxC === 29 && w.rainChance === 70, w);
+    check('Weather', 'tomorrow’s forecast', w.tomorrow && w.tomorrow.minC === 20 && w.tomorrow.maxC === 27 && w.tomorrow.desc === 'Light rain', w.tomorrow);
+    check('Weather', 'a named city is never "approximate"', w.approximate === false, w);
+    r = await post('/api/tool/weather', { city: '', online: true });
+    check('Weather', 'no city and an IP lookup that only found the country → approximate (JARVIS asks for your city)', r.json.success && r.json.approximate === true, r.json);
+    r = await post('/api/tool/weather', { city: 'Nowhereville', online: true });
+    check('Weather', 'a place the service doesn’t know is an error (the page then searches the web), never a guess', r.status === 502 && /unreachable/i.test(r.json.error || ''), r.json);
+
     /* ---------- backup ---------- */
     r = await post('/api/backup/export', {});
     check('Backup', 'export a backup', r.json.success && /revise dbms/.test(r.json.content), r.json.error);
@@ -284,7 +336,8 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     /* ---------- reminders fire on the server (tab closed) ---------- */
     await post('/api/state', { set: { 'jarvis.reminders': [{ id: 'rm1', text: 'drink water', at: Date.now() - 1000 }] } });
     let fired = false;
-    for (let i = 0; i < 16 && !fired; i++) { await new Promise(x => setTimeout(x, 500)); fired = /"id":"rm1"[^}]*"fired":true/.test((await S.get('/api/state.js')).text); }
+    // The scheduler checks every 15 s (scheduler.js), so allow one full cycle plus a margin.
+    for (let i = 0; i < 36 && !fired; i++) { await new Promise(x => setTimeout(x, 500)); fired = /"id":"rm1"[^}]*"fired":true/.test((await S.get('/api/state.js')).text); }
     check('Reminders', 'a due reminder fires on the server, even with no page open', fired);
 
     /* ---------- phone ---------- */
@@ -391,6 +444,7 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     check('Harness', 'suite ran to the end', false, e.stack + '\n--- server log (last lines) ---\n' + S.log().split('\n').slice(-15).join('\n'));
   } finally {
     await S.stop();
+    wttr.close();
   }
 
   // Route gate: every declared route is tested here or listed (with a reason) in NOT_TESTABLE.
