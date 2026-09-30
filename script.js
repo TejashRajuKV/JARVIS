@@ -11,7 +11,7 @@ const rid = () => Math.random().toString(36).slice(2, 9);
 const cap = s => s ? s[0].toUpperCase() + s.slice(1) : '';
 const escapeReg = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const escHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : /(?:s|sh|ch|x)$/.test(w) ? 'es' : 's');   // class → classes
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const ts = () => { const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
 // Recover the user's original capitalisation for a phrase pulled from normalized (lower-case) text.

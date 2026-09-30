@@ -279,7 +279,12 @@ function probeSource() {
     console.log('Wrote ' + path.relative(process.cwd(), out));
   } finally {
     if (browser) { try { require('child_process').execFileSync('taskkill', ['/PID', String(browser.pid), '/T', '/F'], { stdio: 'ignore' }); } catch {} }
+    // Edge's launcher exits once the real browser is up, so also end every process using this run's profile.
+    if (process.platform === 'win32') try {
+      require('child_process').execFileSync('powershell.exe', ['-NoProfile', '-Command', "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe' or Name='chrome.exe'\" | Where-Object { $_.CommandLine -match '" + path.basename(profile) + "' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"], { stdio: 'ignore', timeout: 20000 });
+    } catch {}
     await S.stop();
     try { fs.rmSync(profile, { recursive: true, force: true }); } catch {}
   }
+  process.exit(0);   // the DevTools socket would otherwise keep Node alive after the report is written
 })();
