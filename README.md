@@ -13,7 +13,7 @@ Voice & chat · English / తెలుగు / ಕನ್ನಡ · Local AI (Olla
 ## Contents
 
 1. [What is JARVIS?](#1-what-is-jarvis)
-2. [Highlights](#2-highlights)
+2. [Highlights](#2-highlights) — and [the full list of what JARVIS can do](#what-jarvis-can-do--the-full-list)
 3. [Requirements](#3-requirements)
 4. [Install & run](#4-install--run)
 5. [First-time setup (choose an AI)](#5-first-time-setup-choose-an-ai)
@@ -22,10 +22,10 @@ Voice & chat · English / తెలుగు / ಕನ್ನಡ · Local AI (Olla
 8. [Command cheat sheet](#8-command-cheat-sheet)
 9. [Settings reference](#9-settings-reference)
 10. [Privacy & security](#10-privacy--security)
-11. [How it works (architecture)](#11-how-it-works-architecture)
+11. [How it works (architecture)](#11-how-it-works-architecture) — the pipeline, every subsystem, how to extend it
 12. [Project structure](#12-project-structure)
 13. [Testing](#13-testing)
-14. [Troubleshooting & FAQ](#14-troubleshooting--faq)
+14. [Troubleshooting & FAQ](#14-troubleshooting--faq) — including the [debugging guide](#debugging-guide)
 15. [Known limitations](#15-known-limitations)
 16. [License](#16-license)
 
@@ -42,6 +42,8 @@ JARVIS is a **voice and text AI assistant that runs on your own Windows laptop**
 - **JARVIS Code** — its own coding chat: describe an app, pick a folder, and JARVIS's AI **writes the files itself** (no copy-pasting).
 - It is built for **students and developers**: study planner, flashcards, viva practice, DSA coach, answers from your own notes and PDFs, and a one-click "explain & fix" for crashing programs.
 - **Safety first:** a server-side permission list decides what's allowed (never the AI), risky actions ask first, the most dangerous ones can require **Windows Hello**, and **"undo"** reverses almost everything.
+
+👉 **The complete list of what JARVIS can do** is in [Highlights](#what-jarvis-can-do--the-full-list); **how it works inside** (and how to debug it) is in [How it works](#11-how-it-works-architecture).
 
 There is also a **cinematic landing page** that introduces JARVIS: open `http://localhost:PORT/welcome` (or `/landing.html`) — PORT is the address JARVIS prints (3002 on the author's laptop) while JARVIS is running.
 
@@ -61,6 +63,76 @@ There is also a **cinematic landing page** that introduces JARVIS: open `http://
 | ⚡ **Automation** | Multi-step commands, **routines**, **triggers** ("when I plug in my charger…"), a **global hotkey** for any selected text, reminders that fire even with the tab closed. |
 | 📱 **Phone** | Reminders on your phone (ntfy), and phone commands locked behind a 6-digit **authenticator code**. |
 | 🔐 **Safe & private** | Local-only server, permission tiers, Windows Hello approvals, **undo**, encrypted backups, keys that never leave the laptop. |
+
+
+### What JARVIS can do — the full list
+
+Everything below works today. The phrases are examples you can type or say; the details, options and edge cases are in [Features](#7-features), and how each part works inside is in [How it works](#11-how-it-works-architecture).
+
+**🗣 Talk to it**
+- **Type or speak.** Hold the mic or `Space`, or say the wake word ("Jarvis") hands-free — even while you're in another tab or app. Replies are shown, streamed and spoken (browser voices or neural voices).
+- **Three languages.** English, Telugu and Kannada — in their own script or typed in English letters ("volume penchu", "timer pettu"). Replies come back in your language.
+- **Two personalities.** JARVIS (calm, dry British wit) and FRIDAY (brisk, warm). It calls you sir / ma'am / boss / your name.
+- **It copes with messy input.** Typos ("opn crome"), filler ("umm can you please… for me"), number words ("brightness to fifty"), mixed languages, and **misheard speech** ("front and" → frontend; "ugly loop folder" → your `AGRILOOP` folder; "b drive" → D drive).
+- **It asks instead of guessing.** A half-heard command gets **"Did you mean…?"**; a half-remembered folder name gets the closest real folders to choose from.
+- **It remembers.** Your name and facts ("remember that my exam is on Friday"), the whole conversation (rolling summary), and **what you were just doing** — "create a folder *there*", "open *it*", "open *the second one*", "in *the same project*", "and then list the files".
+- **You can teach it.** "What didn't you understand?" lists missed phrases; **TEACH** maps a phrase to a command. "No, that's wrong" logs a mistake.
+- **You can see how it thought.** Settings → *Show how I understood you* (or "how did you understand that?") shows what it heard, the intent, confidence, details, context, decision and permission tier.
+
+**💻 Control your laptop**
+- **Apps:** open or close any installed app by name ("fire up VS Code", "open canva", "close it"), bare names ("chrome"), follow-ups ("and firefox too").
+- **System:** volume, mute, media keys, brightness, dark mode, Wi-Fi / Bluetooth (asks before turning off), power plan, display off, lock, battery, system health, top processes, "is port 3000 free?", network / IP, run diagnostics.
+- **Windows & screen:** snap windows, minimise everything except one app, show desktop, screenshots, **read my screen** (OCR), **describe my screen** (the AI sees it), **"analyze my second tab"** (switches the tab itself).
+- **Clipboard:** paste into files, format JSON, fix code and copy it back, count words, summarise a link; optional clipboard history.
+- **This laptop's own facts:** "what version of node am I running", "check git version", "what's the latest file in my project", charger plugged / unplugged alerts.
+
+**📁 Files & folders — anywhere on the laptop**
+- **Find anything by name** across every drive ("where is pythonProject", "find conifer"), with a background index of all file and folder names.
+- **Open, read, list, count:** "open the agriloop folder", "read notes.txt", "list folders in D drive", "how many folders are on my laptop" (per drive), "open calculator.html" (opens the file, not the Calculator app).
+- **Create & change:** "create a folder called css there / on my desktop / in D drive", "create a python file for calculator operations" (name inferred), save code JARVIS wrote, rename, copy, move, delete (to a restorable trash). **Anything outside `~/jarvis` asks ALLOW / CANCEL first.**
+- **Documents:** PDFs, `.docx`, `.pptx`, `.xlsx`, notes, code — ask questions with **page-numbered sources**, summarise, make flashcards ("what does lecture3.pdf say about paging?").
+
+**🌐 Web & the world**
+- **Fresh facts:** it searches the web and the local AI answers **only from the pages it fetched**, with sources ("what's the latest Node.js version", "today's AI news", "price of RTX 5060 in India").
+- **Places:** "nearest restaurants to Kodigehalli, Bengaluru" → Google Maps with the category, location and sort worked out.
+- **Open or search:** "search google for…", "find react documentation" (opens the page), sites it knows, YouTube, weather, directions and distance, units and conversions, CS calculators (binary, hex, xor, complexity).
+- **Study-related web:** upcoming contests (Codeforces / LeetCode / CodeChef), hackathons, "research…" with sources.
+- **Honest when offline:** if the answer needs the web and Online tools is off, it says so and offers to turn it on — it never passes off old memory as current news.
+
+**📚 Study & everyday life**
+- **Tasks:** to-dos, deadlines (alerts 3 h before), timetable, reminders (one-off and recurring — fired by the **server**, so they work with the tab closed), timers, "plan my day".
+- **Focus:** focus sessions and pomodoro per subject, **block distractions**, productivity reports, a 7-day dashboard and streak.
+- **Planner:** multi-day study plans from an exam date and topics, with review days and a mock test.
+- **Practice:** flashcards with spaced repetition, **viva / mock interview** by voice with scores and model answers, **DSA coach** (hints before solutions).
+- **Student maths:** attendance with a 75% **bunk-o-meter**, marks → SGPA / CGPA.
+- **Writing helpers:** commit messages, bug reports, resume bullets, stand-up updates, LinkedIn drafts, leave emails, and a **TCREI UI-design prompt** for v0 / Lovable / Claude.
+
+**⌨ Code**
+- **JARVIS Code:** its own coding chat — pick a folder, choose *Build / Plan / Ask* and a model; the AI returns files and **JARVIS writes them itself**, opens the page, and **undo** restores everything.
+- **Write → save → run:** `.py`, `.js`, `.c`, `.cpp` with a 10 s limit; **EXPLAIN & FIX** for crashes; save any code block ("save this file by creating a new folder called X").
+- **Website generator:** "create a website / frontend for…" → asks where to save → writes real files; project frontends go to `<project>/frontend/`; change it by talking ("make the header bigger").
+- **Hand work to a coding AI:** "open vs code in dsa_sprint and tell copilot to…" (Copilot, Kiro, Trae, Antigravity, Devin, OpenCode, Claude Code, Codex, Gemini, Qwen, Codebuff).
+- **Dev projects:** "prepare my development environment for AgriLoop" — locate, open, start backend + frontend, **recover from missing dependencies** (ask → install → restart → verify).
+- **Git & tooling:** status, log, diff, commit message, clone; check a compiler or VS Code extension is installed; "I want to learn Python" creates and runs a real Hello-World.
+
+**⚡ Automate**
+- **Multi-step commands:** "open VS Code, create a folder DSA and start a 25 minute focus" — previewed, validated by the server, executed with **RETRY / CONTINUE / ROLLBACK**, each step verified for real, and inspectable afterwards.
+- **Routines:** built-in (study mode, morning, bedtime, leaving), your own, and scheduled ("run my morning routine every day at 7am").
+- **Triggers:** "when I plug in my charger, start study mode", "when the battery drops below 20%…".
+- **Global hotkey:** select text in any app → explain / summarise / rewrite / translate / fix code.
+- **Smart alerts & panic mode:** low battery, high RAM, deadlines; say "panic" to pause all automation, "resume" to continue.
+- **Undo:** "undo" reverses almost anything (last 40 actions within 30 minutes), including a whole multi-step plan.
+
+**📱 Phone**
+- Reminders and alerts on your phone (**ntfy**), and phone commands that unlock with a 6-digit **authenticator code**; the full page over **Tailscale**.
+
+**🔐 Safe, private, yours**
+- A **server-side permission list** (never the AI) decides what runs; risky things ask first; the most dangerous can require **Windows Hello**; Windows, Program Files and AppData are never touched.
+- Runs on `127.0.0.1` only. With a local model nothing leaves the laptop; cloud models, online translation and neural voices are opt-in.
+- Encrypted backups, daily snapshots, a restorable trash, and one shared copy of your data in `~/jarvis`.
+
+**🚫 What JARVIS will not do** (on purpose)
+- Install, update or uninstall software (it explains the steps instead) · download files on its own · run shell commands · send emails or messages for you · change passwords, accounts, firewall, registry or environment settings · delete "everything" in one go · change anything outside `~/jarvis` without your ALLOW · touch Windows / Program Files / AppData · claim it did something it didn't.
 
 ---
 
@@ -432,38 +504,274 @@ Open **SETTINGS** (top right).
 
 ## 11. How it works (architecture)
 
+This section explains JARVIS from the outside in: the big picture, what happens to one request, then each subsystem — what it's for, which files hold it, how data flows through it, and **where to look when it misbehaves**. (A symptom-by-symptom checklist is in [Debugging guide](#debugging-guide).)
+
+### 11.1 The big picture
+
 ```
- Browser page (index.html + script.js)                 Node.js server (server.js, 127.0.0.1)
- ─────────────────────────────────────                 ─────────────────────────────────────
- mic / text ─► normalize & classify (nlu.js)            /api/tool/*     validated tools (apps, files, system…)
-             ├─ known command ─► run tool ───────────►  /api/chat       ─► llm.js ─► Ollama or cloud provider
-             ├─ several commands ─► agent.js plan ───►  /api/agent/*    permission tiers & plan validation
-             └─ question / unclear ─► AI (streamed) ─►  scheduler.js    reminders, triggers, phone (ntfy), SSE
- skills (viva, coach, website), wizard, undo ◄────────  rag.js · skills.js · codetools.js · backup.js · hello.js
+                         YOU   (voice · text · phone · hotkey)
+                                         │
+   ┌─────────────────────────────────────▼──────────────────────────────────────┐
+   │                        BROWSER PAGE   (index.html)                          │
+   │                                                                             │
+   │   INPUT       speechfix.js · voice.js · lang.js          mic, repair, language│
+   │      ▼                                                                      │
+   │   UNDERSTAND  skills-page.js · routines.js · agent.js (router)              │
+   │               nlu.js  normalize ─► classify  (rule engine)                  │
+   │      ▼                                                                      │
+   │   DECIDE      decider.js (+ places.js)   ◄── context: ctx.focus, ctx.pending │
+   │      ▼                                                                      │
+   │   ACT         script.js  executeTool ──► callTool() ──► /api/…              │
+   │   OUTPUT      deliver ► renderReply ► typeMD + speak       inspector (trace) │
+   └──────────────────────┬───────────────────────────────────────▲──────────────┘
+                          │  HTTP · 127.0.0.1 only                 │  SSE  /api/events
+   ┌──────────────────────▼───────────────────────────────────────┴──────────────┐
+   │                        NODE SERVER   (server.js)                             │
+   │   /api/tool/*    files · apps · system · web · code · git       (validated)   │
+   │   /api/agent/*   tool registry · permission tiers · AI planner               │
+   │   /api/chat      llm.js ───► Ollama (local)  or  a cloud provider            │
+   │   /api/code/*    JARVIS Code          /api/skill/*   website · coach · viva  │
+   │   /api/state     shared data          scheduler.js   reminders · triggers    │
+   │   access zones · approvals · Windows Hello · laptop file index · RAG         │
+   └──────────────────────┬───────────────────────────────────────────────────────┘
+                          ▼
+              your laptop: apps · files · Windows · network
 ```
 
-1. **Normalize** — strip the wake word and filler, fix typos, turn number words into numbers.
-2. **Classify** — a rule engine with ~95 intent families and fuzzy app/site matching; follow-ups use context ("close it", "and firefox too").
-3. **Route** — single commands run instantly; multi-step requests go through the agent; questions and unclear input go to the AI, which may answer or pick a tool (the server validates it first).
-4. **Act & verify** — tools run on the server; results are checked for real where possible.
-5. **Speak** — the reply is shown (Markdown), spoken, and translated if needed.
+**The one rule that explains most of the design: the page proposes, the server disposes.** Every action is a request to `/api/*`. The server checks the arguments against a schema, checks the **access zone** and **permission tier**, and only then touches the laptop. The AI never has direct access either: it can only emit *text*; JARVIS parses that text, validates it like any other request, and refuses anything it doesn't recognise.
 
-### How JARVIS decides: tool, local AI or web
+Three "brains", in order of cost: **rules** (`nlu.js`, instant, offline) → **the decision engine** (`decider.js`, instant, offline) → **the AI** (`llm.js`, seconds, local or cloud). Anything a rule or the decider can settle never reaches the AI.
 
-Every request goes through a small **decision engine** (`decider.js`) — plain rules, no AI call, so it is fast and predictable. It looks at a few signals and picks one route:
+### 11.2 One request, step by step
+
+Everything starts in `handleUser(text, source)` in `script.js`. `source` is `text`, `voice`, `wake` (spoken after "Jarvis") or `chip` (a suggestion button). The stages run in this order, and **any stage can end the turn** by delivering a reply:
+
+| # | Stage | Where | What happens | Debug hint |
+|---|---|---|---|---|
+| 0 | **Capture** | `sendInput`, `finishDictation`, wake path | text / spoken sentence arrives; a *turn trace* is started | — |
+| 1 | **Speech repair** *(voice only, English)* | `SpeechFix.fix` → `fixDrives` → `fixNames` | misheard words fixed; your folder names matched by sound | log: `heard "…" → understood "…"` · inspector row *Mic heard* |
+| 2 | **Gates** | top of `handleUser` | busy → queued; a permission card on screen → typed *yes / no* presses it | toast "Queued: …" |
+| 3 | **Language** | `Lang.switchRequest`, `Lang.toEnglish`, `NLU.fromRoman` | "switch to Telugu"; Telugu/Kannada (script or English letters) → English for the rules | log: `understood as: "…"` |
+| 4 | **Early pending answers** | `ctx.pending` | answers to TEACH ("what should I do when you say…"), create-a-project and design-prompt questions — consumed before anything else sees the text | `ctx.pending` in the console |
+| 5 | **Meta commands** | `handleUser` | "how did you understand that", "no, that's wrong" | — |
+| 6 | **Continuations** | `handleUser` | leading *and / also / then / now* removed; context kept | inspector note *continuation* |
+| 7 | **Skills** | `Skills.intercept` (`skills-page.js`) | active website / UI-prompt / DSA-coach / viva sessions and their trigger phrases | route: *skill* |
+| 8 | **Routines** | `Routines.match` | a routine called by name | — |
+| 9 | **Fixed agent goals** | `Agent.*Goal` helpers | taught phrases, dev-environment, learn/create-project, design-prompt, guided templates | — |
+| 10 | **Multi-step router** | `Agent.route` → `Agent.handleMulti` | 2+ actions in one sentence → plan, validate, preview, **EXECUTE** | route: *multi-step agent* |
+| 11 | **Classify** | `NLU.normalize` → `resolvePending` → `NLU.classify` | `resolvePending` first turns answers to *JARVIS's own questions* ("Did you mean…?" → yes / 2, a file name, a place, "yes" to a confirmation) into the command they complete; otherwise text → `{ intent, confidence, args, tool }` (first matching rule wins) | log: `intent: X · conf 0.94` |
+| 12 | **Decide** | `Decider.signals` + `Decider.decide` | picks the route, the reason, the payload, a confidence; may *override* a weak rule match | inspector rows *Decision* / *Signals* |
+| 13 | **Medium-confidence check** | `CONFIRM_INTENT` | a *spoken* command at 0.60–0.85 → "Did you mean …?" (Yes / No) | route: *medium confidence → asked first* |
+| 14 | **Execute** | `executeTool(p)` → `callTool('/tool/…')` | the command runs (confidence ≥ 0.85) | ☰ log `tool` lines · browser Network tab |
+| 15 | **No-rule fallbacks** | `Agent.plan`, `MAPS`, `GUIDE`, `WEB_OPEN`, `doResearch`, `OFFER_ONLINE` | what the decider chose when no command matched | route row |
+| 16 | **AI chat** | `askLLM` → `/api/chat` | streamed answer; may contain one `<<tool {json}>>` call → `/agent/validate` → tier gate → run | model shown in the reply header |
+| 17 | **Deliver** | `deliver` → `renderReply` | persona voice, translation, Markdown, typing effect, speech, chips, **inspector block** | — |
+| 18 | **After** | handlers | `Undo.push`, `Agent.watchSingle` (verify), `ctx.lastIntent`, `ctx.focus` updated | `ctx` in the console |
+
+A few properties worth knowing when debugging:
+- **Order is meaning.** Skills run before routines, before the multi-step router, before the classifier. A phrase that "does the wrong thing" is often being taken by an earlier stage — check the inspector's *Route* row first.
+- **The classifier is first-match.** `nlu.js` tries its rule table (`R`, ~180 intents) top to bottom and returns the first rule that matches, then applies a few *sanity checks* that can change or downgrade the result (e.g. a device word inside a question drops to 0.6). Rule **order** therefore matters.
+- **0.85 is the line.** At or above it a command runs directly; below it the request goes to the decider's fallbacks / the AI. The decider sits *on top of* the classifier and may overrule a weak match (for example "open the nearest ATM" is caught by the generic "open a web page" rule, but the decider sends it to Maps).
+
+### 11.3 Understanding layer
+
+#### Speech input — `voice.js`, `script.js`, `wakeword.js`
+- **What it does:** turns your voice into one clean sentence.
+- **Flow:** the mic button / `Space` / wake word calls `startDictation` → `makeRec` creates a browser `SpeechRecognition` (language from **Speech language**: en-IN / te-IN / kn-IN, continuous, interim results, 3 alternatives). `piecesOf` turns each result into `{text, isFinal}`, choosing the best alternative with `SpeechFix.pickAlternative`. `Voice.createUtterance` (voice.js) collects the pieces across pauses and recogniser restarts, **waits for the final version of the last words**, and commits after *Pause before I answer* of silence (1 / 1.6 / 2.5 s) or when you tap again. `finishDictation` → `handleUser(text, 'voice')`.
+- **Wake word:** `wakeword.js` runs Windows' offline `System.Speech` recogniser so "Jarvis" works while you're in another tab or app; on a hit the page starts dictation with `source: 'wake'`.
+- **Privacy note:** Chrome/Edge send the audio to their speech service — this part needs the internet even with a local AI.
+- **Debug:** *Settings → Test my mic* (14 words, raw vs repaired, scored); the live transcript line above the box; the ☰ log line `heard "…" → understood "…"`.
+
+#### Speech repair — `speechfix.js`
+- **What it does:** repairs what the recogniser gets wrong, for spoken English only, before any rule sees it.
+- **Three layers:** (1) a guarded phrase map ("front and" / "front end" → frontend, "v s code" → vs code, "fold her" → folder…) — each rule checks its neighbours, so "front and back of the page" is untouched; (2) **your own names matched by sound** — `sound()` reduces a word to its consonant skeleton, so "ugly loop", "agree look" and "agri Roop" all match `AGRILOOP-1`; (3) drive letters that don't exist ("b drive" → D drive).
+- **Where the names come from:** `GET /api/voice/vocab` (folder names from your project folders, home, Desktop, Documents, Downloads and drive roots; names only), refreshed every 10 minutes into `voiceVocab`.
+- **Safety:** it only rewrites the slot where a name belongs (just before *folder / project / backend* or *in vs code*), requires a clear winner, and leaves ambiguous cases for the "Did you mean…?" step.
+- **Debug:** `SpeechFix.fix("…")` / `SpeechFix.fixNames("…", voiceVocab.names)` in the browser console; `tests/reliability.test.js`.
+
+#### Language — `lang.js`
+- **What it does:** English / Telugu / Kannada in and out.
+- **Flow:** script detection (`Lang.detect`); Telugu/Kannada text is translated to English by the AI (`Lang.toEnglish`) so one rule engine serves all three; English-letter Telugu/Kannada ("volume penchu") is mapped by `NLU.fromRoman`; replies are translated back (`Lang.localize`, optional online translation) while code, lists and numbers stay in English.
+- **Debug:** log lines `understood as: "…"`; `Lang.replyLang()` in the console.
+
+#### Rule engine — `nlu.js`
+- **What it does:** understands clear commands instantly, offline.
+- **`normalize(raw, wakeWord)`:** strips the wake word and leading filler (`LEAD_FILLER`: "umm", "hey") and politeness (`LEAD_POLITE`: "can you please", "i want you to"), trailing politeness (`TRAIL`), fixes known abbreviations (`TYPOS`: plz → please), converts number words ("fifty" → 50). Returns `{ text, original, … }`.
+- **`classify(norm, ctx)`:** walks the rule table `R` — entries like `['CREATE_FOLDER', /…/, 0.96, 'createFolder']` where the test is a regex or a function — and returns the first match with its **fixed confidence**, then applies sanity checks (questions about devices, "open <unknown>" → best web page, file names → READ_FILE, `node.js` is not a file, …). A typo pass (`corrected`) retries with fuzzy-fixed text and keeps the result only if it reaches ≥ 0.85. No match → `CONVERSATION 0.50`. Follow-ups ("and firefox too", "close it") use `ctx.lastIntent` / `ctx.lastApp`.
+- **Helpers:** `parseWhen` / `parseDate` / `parseRepeat` (times and repeats), `findApp` / `findSite` (apps and sites), `parseCodeAsk` (coding-AI phrases), `inferFileNames` (a file name from what it's for), `suggest` ("did you mean one of these" examples).
+- **Debug:** `NLU.classify(NLU.normalize('…','jarvis'), {})` in the console, or in plain Node: `node -e "eval(require('fs').readFileSync('nlu.js','utf8')+';global.NLU=NLU;'); console.log(NLU.classify(NLU.normalize('open chrome','jarvis'),{}))"`. `tests/nlu.test.js`, `coverage.test.js`, `paraphrase.test.js`.
+
+#### Context engine — `script.js` (`ctx`, `setFocus`, `scopeFrom`, `resolveProject`)
+- **What it does:** makes "there", "it", "the second one", "the same project" mean something.
+- **State:** `ctx.focus = { folder, file, created, project, results[], lastAction }`, each with a timestamp and a **15-minute** life. It is filled by every handler that shows, finds, lists, creates or opens something (`setFocus`, `setResults`), and by `deliver` (`lastAction`).
+- **Resolution:** `scopeFrom(original)` turns "…in that directory", "…there", "…in it", "…in D drive", "…on my desktop", "…in C:\x" into a place; `REF_RE` recognises the reference words (including "the same / this / my current project"); `resolveProject` finds "the calculator project" (focus → laptop search → "did you mean…?"); `openFocusTarget` handles "open it" / "open the second one" / "open number 3". If a reference can't be resolved, JARVIS **asks** — it never guesses.
+- **Continuations:** a leading "and / also / then / now" is stripped so "and create a python file there" keeps the context.
+- **The AI sees it too:** `focusSummary()` (current project, folder, file, last action) is sent with every chat and planner request.
+- **Debug:** `ctx.focus` and `ctx.pending` in the console; the inspector's *Context* row.
+
+#### "Did you mean…?" — `server.js` (`nameSimilarity`, `similarNames`), `script.js` (`didYouMeanReply`)
+- **What it does:** a name that isn't found exactly gets the closest real ones, ranked.
+- **How names are compared:** `squashName` ignores case, spaces, `_` and `-`; version endings (`-1`, `61`, `(2)`, `copy`) are ignored; Jaro-Winkler plus edit distance catches typos; "contains" and "starts with" catch short forms; a two-typo match is capped below a name that clearly contains what you said; matches inside library / icon folders (`site-packages`, `venv`…) rank lower. Over the **laptop file index**, via `POST /api/tool/similar`.
+- **The question:** `didYouMeanReply` stores `ctx.pending = { intent: 'DID_YOU_MEAN', paths, then }`; your *yes / 2 / the second one / no* is resolved in `resolvePending`. It never acts on a guess.
+- **Debug:** `curl -X POST localhost:PORT/api/tool/similar -H "Content-Type: application/json" -d '{"name":"calculater","kind":"folder"}'`; `tests/reliability.test.js` ("Did you mean").
+
+#### Skills & routines — `skills-page.js`, `skills.js`, `routines.js`
+- **What they do:** multi-turn features that own the conversation until they finish: website generator (asks what / where), UI-design prompt (TCREI), DSA coach, viva practice.
+- **Flow:** `Skills.intercept(text)` runs early in `handleUser`; while a session is active it answers every message; otherwise it matches a start phrase (`SITE_START`, `VIVA_START`, …) or returns `null`. Heavy lifting is on the server (`/api/skill/site`, `/siteEdit`, `/siteRevert`, `/coach`, `/viva/*`) so the AI call and the file writes are validated there.
+- **Debug:** `Skills.state` in the console.
+
+#### Multi-step agent — `agent.js`, `agent-tools.js`
+- **What it does:** several actions in one sentence, planned, validated, previewed and verified.
+- **Flow:** `Agent.route` splits the sentence (`parts`, `splitAnd`, goal sentences like "I'm going to study…") → known parts are classified by the rules, unknown parts go to the **AI planner** (`POST /api/agent/plan`: JSON, ≤ 5 steps, temperature 0, pre-filtered by `refuse()` for things no tool can do) → the server **validates every step** (`validatePlan`: tool exists, arguments fit the schema, tier) → the page shows a **preview** ("No changes have been made yet — EXECUTE / CANCEL") → `Agent.execute` runs the steps in order, **verifying each for real** (`check:` kinds such as `app_started`, `todo`, `volume`, `file`) → a tally ("4 of 4 verified"). Failures offer **RETRY / CONTINUE / ROLLBACK**; every run gets an id (`AGT-…`) and an **execution inspector** card.
+- **Debug:** `Agent.lastRuns()`, "inspect the last run", `GET /api/agent/tools` (every tool, its tier and check), `tests/agent.test.js`, `plan.test.js`.
+
+### 11.4 Decision engine — `decider.js`, `places.js`
+
+Every request goes through a small **decision engine** — plain rules, no AI call, so it is fast and predictable. It looks at a few *signals* and picks one *route*:
 
 | Route | When | Example |
 |---|---|---|
 | **Direct tool** | a command JARVIS knows | "open chrome", "set volume to 50", "create a folder called test" |
-| **Local** (your files + tools) | it's about *your* things — files, folders, projects, what you were just working on | "fix the previous python file", "where is pythonProject", "what does my notes.md say" |
+| **Local** (your files + tools) | it's about *your* things — files, folders, projects, this laptop, what you were just working on | "fix the previous python file", "where is pythonProject", "what does my notes.md say" |
 | **Local AI** | understanding or reasoning that doesn't need fresh facts | "explain binary search simply", "why is quicksort faster" |
 | **Web + local AI** | it needs current or outside information — the web is searched, then the local AI answers **only from those pages**, with sources | "what's the latest Node.js version", "today's AI news", "find the latest React docs and explain hooks" |
 | **Web search (browser)** | you asked to search | "search google for binary search visualizer" |
+| **Open the page** | you want the page itself, not an answer about it | "find react documentation", "open the latest node.js documentation" |
+| **Google Maps** | a kind of place + near / in / to somewhere (category, location and sort worked out: *restaurants · Kodigehalli, Bengaluru · nearest*) | "nearest restaurants to bengaluru(kodigehalli)", "open the nearest atm" |
+| **How-to (local AI)** | installing or updating software — JARVIS never does that itself, so it explains the steps | "update my node.js", "install python" |
+| **Offer online** | the web is needed but **Online tools is off** → ask | "latest python version" while offline |
 
-- **Signals:** *fresh* (latest, today, version, price, news, driver, update, who won…), *source* (search for, look up, official documentation, according to…), *local* (my/this file, folder, project; there, it, previous; a file name), *reasoning* (explain, why, compare…), *question*.
-- "binary **search**" or "**node.js**" don't fool it: the noun "search" isn't a request to search, and node.js isn't one of your files. "my **latest** file" is local, not news.
-- **Online tools off** and the question needs the web: JARVIS says so and offers **ENABLE ONLINE TOOLS & SEARCH** or **ANSWER FROM MEMORY** (marked "may be out of date") — it never answers something that changes from stale memory silently.
-- Turn on **Settings → Show how I understood you** to see the decision, its reason and the signals under each reply (or ask "how did you understand that?").
+**Signals** (`Decider.signals(text, { intent, confidence, implicitSearch })`):
+
+| Signal | Means | Triggered by |
+|---|---|---|
+| `action` | a known command matched (≥ 0.85) | the rule engine's result |
+| `fresh` | the answer changes over time | latest, today, now, recent, version, update, price, news, weather, driver, who won, CEO, population, a year like 2026… |
+| `source` | you asked for outside sources | search for, look up, google, official documentation, according to, on the internet… |
+| `local` | it's about your own things | my / this / that / previous + file, folder, project, code, notes; *there*, *it*, *continue*; a file name like `main.py` |
+| `machine` | it's about *this laptop* | "am I running", "installed on my", "my node / python / gpu" |
+| `place` | looking for somewhere | a kind of place (`places.js`) + near / nearest / in / to <somewhere> (or phrased as a request) |
+| `reasoning` | needs explaining | explain, why, how does, compare, summarise, should I… |
+| `question`, `links`, `install`, `showPage`, `implicitSearch` | question form; "search google for…"; "update/install X"; "find/show the docs"; a bare "find X" | — |
+
+**Decision order** (`Decider.decide`, first match wins): explicit search → places → known command → install/update (how-to) → "show me the page" → bare "find X" (laptop search) → your own things → fresh / source (web + AI) → local AI. If a web route is chosen but Online tools is off, it becomes **Offer online**.
+
+**Conflicts.** When signals disagree the order decides, and the **confidence drops to ≤ 0.75** (visible in the inspector): a place beats the generic "open the best web page" ("open the nearest atm" → Maps) but never a real command ("open chrome"); your own files beat place words ("open my restaurant folder"); "latest" / "version" about **this laptop** is local ("what version of node am I running" → the installed version, "the latest file in my project" → the newest files) while about the world it's the web ("the latest python version").
+
+**What it returns:** `{ route, reason, confidence, payload, override? }`. The `payload` is what the route needs, already worked out — for Maps `{ category, location, sort, query }` (`Decider.placeQuery`: *"what are the nearest restaurants to bengaluru(kodigehalli)"* → `restaurants · Kodigehalli, Bengaluru · nearest`), for web routes the search text — so the code that follows never re-reads the sentence.
+
+**Traps it avoids:** the noun "binary **search**" isn't a request to search; `node.js` isn't one of your files; "my **latest** file" is local, not news; "I am at the park" isn't a places search.
+
+**Online tools off:** JARVIS says so and offers **ENABLE ONLINE TOOLS & SEARCH** or **ANSWER FROM MEMORY** (flagged "may be out of date") — it never answers something that changes from stale memory silently.
+
+- **Debug:** turn on *Show how I understood you*; or `Decider.decide(Decider.signals('…', {}), { online: true })` in the console; in plain Node `const D = require('./decider.js')`. `tests/decider.test.js` (96 checks, ~30 of them conflicts).
+- **Extending:** a new kind of place → add the word to a group in `places.js` (data only). A new route → `decide()` branch + `LABEL` + a branch in `handleUser` + tests.
+
+### 11.5 Acting on your laptop — execution, permissions, undo
+
+- **`executeTool(p)`** (`script.js`) is one large `switch` on the intent. Each `case` parses its details from the text/`args`, calls the server with `callTool('/tool/…')`, records focus and an undo step, and returns `{ text, speak, suggestions, actions, … }`.
+- **`callTool` / `callToolRaw`** post JSON to `/api/…`. When the server answers `409 { needsApproval }` the page shows an **ALLOW / CANCEL** card (`askApproval`) and, if you allow, repeats the call with `approved: true`. For the most dangerous actions, when Windows Hello is enabled, the page also attaches a freshly signed Hello token (`X-Hello-Token`) that the server verifies itself.
+- **Server-side checks** (`server.js`), in this order for any file operation: argument validation → **path resolution** (`safePath` for plain names in `~/jarvis` and your project folders, `anyPath` for full paths, `scopeDir` / `whereDir` for "D drive" / "desktop") → **access zone** (`blockedPath` / `zoneOf`: *home* free, *laptop* needs approval, *blocked* refused) → `approvedChange` → the actual operation. Overwrites keep the old version in `~/jarvis/.trash`.
+- **Permission tiers** (`agent-tools.js`): *safe* (runs), *confirm* (asks with the reason), *explicit* (its own confirmation every time, never in routines), unlisted = refused. `INTENT_TIERS` covers rule-engine intents; `TOOLS` carries argument schemas for the AI/planner. Invented tools, `../` paths, "volume 999" and shell commands are rejected here.
+- **Verification** (`check:` in `agent-tools.js`, `Agent.watchSingle`): after an action the page re-checks reality where it can (app really started, to-do exists, volume reads back); steps that can't be checked show *○ not checked*, never a fake ✓.
+- **Undo** (`undo.js`): a stack of `{ label, fn }` (last **40** actions, **30 minutes**). Handlers push a function that reverses what they did (restore a backup, move back from the trash, reopen an app…). "Undo that task" reverses a whole plan run, newest first.
+- **Debug:** ☰ log `tool` lines show each call; the browser Network tab shows the request/response (`403` = off-limits, `409` = approval, `400` = invalid argument); `GET /api/agent/tools`; `tests/api.test.js` (every route on an isolated server), `tests/undo.test.js`.
+
+### 11.6 The AI layer — `llm.js`, `server.js`, `script.js`
+
+- **Providers (`llm.js`):** Ollama (local), OpenAI-compatible endpoints (OpenAI, Gemini, Groq, custom URLs) and Anthropic. A model id like `gemini::gemini-2.5-flash` selects the provider; no `::` means Ollama. `llm.complete` (one answer) and `llm.openStream` (streaming) hide the differences; replies are re-emitted as NDJSON `{ message: { content } }` so the page reads them one way.
+- **Chat (`POST /api/chat`):** the page sends the last ~12 messages, a **rolling summary** of earlier ones, and `llmContext()` (your name, remembered facts, tasks, persona, language, `focusSummary()`). The server builds the **system prompt** (`buildSystemPrompt`): personality, behaviour rules, the **tool catalogue**, length rules.
+- **Honesty rules in the prompt:** it can't create, save, open or run anything by writing a reply — it must never claim it did; for "build me an app" it points to the website builder / JARVIS Code; for current facts it must say it doesn't know rather than invent. Code requests get a larger token budget so a whole page isn't cut off.
+- **Tool calls:** if an action fits, the model replies with exactly one line `<<tool_name {"arg":"value"}>>`. The page maps it (`LLM_TOOLS`), the server **validates** it (`POST /api/agent/validate`: known tool, argument schema, tier), and only then does it run — through the same `executeTool` as a typed command. A **refused** call (e.g. a missing argument) runs nothing; JARVIS asks the model again for a plain answer without tools instead of giving up.
+- **The planner** (`POST /api/agent/plan`) is a separate, stricter call: temperature 0, JSON only, ≤ 5 steps, a `Context:` line carrying `focusSummary()`.
+- **Web answers:** the model is asked to answer **only from the fetched pages** and cite `[1] [2]`; for things that change it is told never to answer from memory.
+- **Debug:** `GET /api/llm/status` (providers, models, errors); the model name in each reply header; ☰ log `AI tool call rejected: …`; `tests/llm.test.js`.
+
+### 11.7 Web, places and Online tools — `script.js` (`doResearch`), `server.js`
+
+- **Gate:** anything JARVIS itself fetches needs **Online tools**. Opening a page or Maps in *your* browser doesn't.
+- **`doResearch(query)`:** `POST /api/tool/research` → `webSearch` (Bing's no-JavaScript results first; if they look irrelevant — scored by how many of the question's key words appear — it retries with DuckDuckGo, then with reworded variants; results cached for 10 minutes) → fetches the top pages (`pageText`, 6 s, capped) → if the AI is available, `askLLM` answers only from them with a **Sources** list; if the results don't even mention the question's key words for something that changes, it says so instead of answering from memory; with the AI off it lists the top links.
+- **Maps:** the decider's `MAPS` route opens `https://www.google.com/maps/search/<query>` through `/api/tool/openUrl`; the reply shows PLACE / WHERE / SORT. ("Nearest" goes into the search words — Maps doesn't allow forcing a sort order by link.)
+- **Other online tools:** weather (`wttr.in`), directions & distance (OpenStreetMap), contests (Codeforces / LeetCode / CodeChef), translation and neural voices — each says what it sends.
+- **Debug:** the inspector's *Route* (*web search → local AI answers from the pages*); `POST /api/tool/research` in Network; `tests/websearch.test.js`.
+
+### 11.8 Your files — the laptop index, search and RAG
+
+- **Laptop file index** (`server.js`: `buildFileIndex`, `fileIndex`): a background list of every file and folder **name** on your home folder and every drive (never contents; Windows, Program Files, AppData, hidden / `$` entries and build folders like `node_modules` and `.git` skipped). Built ~15 s after start, rebuilt every 30 minutes, held in memory as parallel arrays (`paths`, `low`, `sq` (squashed), `dirs`). Status: `GET /api/fileIndex/status`.
+- **Finding by name** (`laptopSearch`, `findAnywhere`): a quick bounded scan of Desktop / Documents / Downloads / OneDrive / home / drives first, then the index; results cached 30 s; several matches → numbered **OPEN 1 / OPEN 2** choices.
+- **Counting & listing** (`POST /api/tool/folderStats`, `/listFiles`): "laptop" and drives come from the index; a single folder is counted live from disk. `scopeDir` understands "my laptop", "D drive", "d:", "desktop", full paths.
+- **Newest files** (`/api/tool/recentFiles`): a bounded walk sorted by modified time.
+- **RAG — asking your files** (`rag.js`, `pdftext.js`, `doctext.js`): a local **hybrid index** of text, code, PDF (Mozilla pdf.js) and Office files: keyword ranking fused with optional semantic search (an Ollama embedding model). A file watcher + 30-second scan keep it current. `ASK_FILES` retrieves the best excerpts and the AI answers only from them, with file + page / line sources.
+- **Debug:** `GET /api/fileIndex/status` (`ready`, `count`, `perRoot`); `tests/rag.test.js`; "reindex my files".
+
+### 11.9 JARVIS Code — `jarviscode.js` (server), `codepanel.js` (page)
+
+```
+ you ─► JARVIS CODE tab ─► [Build | Plan | Ask] + folder (＋ → Windows folder picker) + model
+                │
+                ├─ POST /api/code/generate   server reads the project (file tree + small text files),
+                │                            keeps the last ~8 messages, asks the model, and PARSES the answer
+                │                            === FILE: path === … === END ===   (fallback: plain ```html/css/js blocks;
+                │                            then one retry that spells out the format)
+                │                            → returns files WITHOUT writing anything
+                └─ POST /api/code/apply      cleanRelPath() on every path (no .., drives, node_modules) →
+                                             anyPath(forWrite) → approvedChange (ALLOW card outside ~/jarvis) →
+                                             backups of changed files → writes → Undo entry → opens index.html
+```
+- **Own conversation:** its own tab, saved separately (`jarvis.codeChat`), so coding never mixes with normal chat. "yes / proceed / okay build it" right after a **Plan** builds that plan (switching to Build); the page strips JARVIS's own labels before sending history so the model doesn't copy them.
+- **Why it's safe:** the model only returns *text*; every path is re-checked server-side; nothing is written until the file list is applied (and approved if outside `~/jarvis`).
+- **Debug:** the reply shows each file and its line count; `tests/jarviscode.test.js` (parsing, fallback, path safety); `POST /api/code/generate` with `mode: "plan"` is a harmless dry run.
+
+### 11.10 Automation in the background — `scheduler.js`, `triggers.js`, `routines.js`
+
+- **Server-side jobs** (`scheduler.js`, run by the server, **work with no tab open**): reminders and deadline alerts (`fireDue`, `nextOccurrence` for repeats), the **triggers watcher** (samples sensors — power / battery, Wi-Fi, running apps — and fires on *changes*, at most once per 10 minutes), built-in **charger plugged / unplugged** announcements, the weekly digest, ntfy phone alerts and phone-command intake.
+- **Live events:** the server pushes events to every open tab over **Server-Sent Events** (`GET /api/events`: reminder fired, trigger fired, charger event…, with a heartbeat every 25 s); triggers that fired while no tab was open (less than 10 minutes ago) run as soon as a tab connects.
+- **Page-side:** routines and phone *commands* are executed by the page (they use the same `executeTool` pipeline), which is why they need a tab open. Routines and triggers run **unattended**, so only steps that need no permission run.
+- **Panic mode:** pauses deadline alerts, the digest, reminder alerts and triggers; alerts that fire while paused are remembered.
+- **Debug:** ☰ log; the Tasks tab (reminders, triggers); `tests/scheduler.test.js`, `triggers.test.js`.
+
+### 11.11 State, sync and the offline shell
+
+- **Your data** lives in `~/jarvis/.jarvis-state.json` — chat, memory, tasks, reminders, flashcards, routines, triggers, settings and more, as `jarvis.*` keys (e.g. `jarvis.settings`, `jarvis.chat`, `jarvis.codeChat`, `jarvis.code`, `jarvis.flashcards`).
+- **Flow:** the server injects the current state into the page (`/api/state.js` → `window.JARVIS_STATE`); the page's `store` wrapper reads from that cache, writes are **batched** and posted to `POST /api/state`, and other tabs pick changes up — so every browser and port shows the same data. Without the server it falls back to `localStorage`.
+- **One copy:** `instance.js` keeps a lock (`~/jarvis/.jarvis.lock`, pid + port) so starting JARVIS twice reuses the running copy.
+- **Service worker** (`sw.js`): caches the page shell (`SHELL` list) under a `VERSION` name. **After changing any front-end file, bump `VERSION`** (and add new files to `SHELL`) or browsers keep the old copy.
+- **Debug:** `GET /api/health`; `~/jarvis/.launcher.log`; DevTools → Application → Service Workers → *Unregister* (or **Ctrl+Shift+R**).
+
+### 11.12 Output — `deliver`, `renderReply`, `tts.js`, `persona.js`
+
+- `deliver(result, p)` is the single exit: it adds JARVIS's voice to rule-based replies (`Persona.jarvisify`, skipped with `noPersona`), translates for Telugu / Kannada, and queues the reply. `pump` → `renderReply` shows it with a typing effect (`typeMD`), speaks it (`speak` → browser voice, or `tts.js` neural voices), and adds cards, ALLOW/CANCEL rows, action buttons and suggestion chips.
+- The reply header (`INTENT · tool() · confidence`, or `LOCAL AI · model · seconds`) tells you which path produced it.
+- Every reply is saved to the chat log (`logChat`), which is what survives a reload.
+
+### 11.13 The inspector — seeing a decision
+
+When **Settings → Show how I understood you** is on (or you ask "how did you understand that?"), a **🔍 How I understood this** block appears under the reply. It is built from `turnTrace`, which `handleUser` fills as it goes (`noteTrace`, `traceRoute`):
+
+| Row | Meaning |
+|---|---|
+| You typed / said · Mic heard | the input, and what the recogniser gave before repair |
+| Read as | the normalized text the rules saw |
+| Intent · confidence | which rule matched and how sure it is (`CONVERSATION 0.50` = no rule matched) |
+| Details | arguments the rule pulled out |
+| Place / Location / Sort / File name / Project … | what a handler worked out (`noteTrace`) |
+| Context | what `ctx.focus` held at that moment |
+| **Decision · Signals** | the route, its confidence and reason; fresh / source / local / reasoning / question ✓✗ |
+| Route | which path actually produced the answer |
+| Permission | the tier and why |
+| Time | total milliseconds |
+
+### 11.14 Adding to JARVIS — a checklist
+
+**A new command** ("what time is sunset"):
+1. `nlu.js` — add a rule to `R`: `['SUNSET', /regex/, 0.93, 'sunset']` (mind the order — first match wins; keep it above any broader rule that would catch it).
+2. `script.js` — add `case 'SUNSET':` in `executeTool`; call the server with `callTool`, record `setFocus` / `Undo.push` if it changes something, return `{ text, speak, … }`.
+3. `server.js` (or a module) — add the route; validate every argument; use `approvedChange` for anything that writes outside `~/jarvis`.
+4. `agent-tools.js` — add the intent to `INTENT_TIERS` if it isn't *safe*; add a `TOOLS` entry (+ `LLM_TOOLS` in `script.js`) if the AI and planner should be able to use it.
+5. Tests — phrases in `tests/coverage.test.js` (it fails if an intent has none), the route in `tests/api.test.js`, edge cases in `reliability.test.js` / `decider.test.js`.
+6. Docs & shell — a line in this README, and bump `VERSION` in `sw.js`.
+
+**A new kind of place:** add the word to a group in `places.js`. **A new decision route:** `Decider.decide` branch + `LABEL` + a branch in `handleUser` + `decider.test.js`.
 
 ---
 
@@ -492,7 +800,7 @@ Every request goes through a small **decision engine** (`decider.js`) — plain 
 | `phoneauth.js` | Authenticator codes (TOTP) for phone commands |
 | `hotkey.js` | Global Ctrl+Shift+J helper |
 | `palette.js` | Ctrl+K command palette and the "/" skills menu |
-| `decider.js` | The decision engine: direct tool, your local things, the local AI, or the web — from plain signals, with a reason |
+| `decider.js`, `places.js` | The decision engine: direct tool, your local things, Maps, opening a page, the local AI, or the web — from plain signals, with a reason, payload and confidence · the kinds of places it recognises (data) |
 | `manifest.webmanifest`, `sw.js` | PWA install: own window, Start-menu icon, offline app shell |
 | `tts.js` | Neural voices |
 | `voice.js` | Utterance collector: waits until you have finished speaking (and for the recogniser's final words) before sending your sentence |
@@ -549,7 +857,7 @@ npm run test:live
 | `codeask.test.js` | 58 | Coding-AI phrases, safe command building |
 | `skills-page.test.js` | 51 | Website / coach / viva conversations |
 | `reliability.test.js` | 84 | The presentation review: many wordings → one intent (create/count/list folders, frontends, saving code), misheard speech repaired (and ordinary sentences left alone), "did you mean" ranking, the frontend-for-a-project flow |
-| `decider.test.js` | 42 | The decision engine: ~35 requests → direct tool / local / local AI / web + AI / browser search, Online-tools-off offers, every decision has a reason |
+| `decider.test.js` | 96 | The decision engine: ~45 requests → each route, ~30 **conflicts** (action + place, local + fresh, this-laptop + version, show vs explain, statements), place reading (category / location / sort), Online-tools-off offers, payloads, confidence, a reason for every decision |
 | `jarviscode.test.js` | 20 | JARVIS Code: the AI's answer → files, the plain-code-block fallback, paths that must never leave the project |
 | `backup.test.js` | 44 | Export/import, encryption, hostile files, snapshots |
 | `skills.test.js` | 38 | Page generation safety, coach, viva grading, code fixer |
@@ -578,6 +886,79 @@ npm run test:live
 ---
 
 ## 14. Troubleshooting & FAQ
+
+### Debugging guide
+
+Start here when something misbehaves. Every part of JARVIS can be inspected without special tools.
+
+**Your four instruments**
+
+| Instrument | How | Shows |
+|---|---|---|
+| **Inspector** | Settings → *Show how I understood you* (or ask "how did you understand that?") | what was heard, the intent and confidence, extracted details, context, the **decision** and its reason, the route taken, the permission tier, timing |
+| **Activity log** | the **☰** panel (top left) | one line per step: `input (voice): "…"`, `heard "…" → understood "…"`, `intent: X · conf 0.94`, `tool` calls, warnings (`AI tool call rejected: …`), errors, `turn complete in 812ms` |
+| **Browser console / Network tab** | `F12` on the JARVIS page | the live objects (below) and every request to `/api/*` with its status and JSON |
+| **Server** | `GET /api/health`, `~/jarvis/.launcher.log`, or run `npm start` in a terminal | whether the server is up, and its output |
+
+**Live objects you can poke at** (type these in the browser console on the JARVIS page):
+
+```js
+NLU.classify(NLU.normalize('open the agri look folder', 'jarvis'), {})     // what the rules make of a sentence
+Decider.decide(Decider.signals('what is the latest node version', {}), { online: true })   // which route, and why
+SpeechFix.fix('create a front and for calculator')                         // what the mic-repair does
+ctx.focus                      // what "there", "it", "the second one", "same project" mean right now
+ctx.pending                    // a question JARVIS is waiting for you to answer
+settings                       // every setting (settings.online, settings.inspect …)
+llm.model                      // which AI model is answering
+```
+
+The same checks work without a browser (this is how the tests load the code):
+
+```bash
+node -e "eval(require('fs').readFileSync('nlu.js','utf8')+';global.NLU=NLU;'); console.log(NLU.classify(NLU.normalize('open chrome','jarvis'),{}))"
+node -e "const D=require('./decider.js'); console.log(D.decide(D.signals('nearest atm',{}),{online:true}))"
+```
+
+**Symptom → likely cause → where to look**
+
+| Symptom | Likely cause | Look at |
+|---|---|---|
+| It answers like a chatbot instead of doing the thing | no rule matched: inspector shows `CONVERSATION · confidence 0.50` | add a rule in `nlu.js` + phrases in `coverage.test.js` (see [11.14](#1114-adding-to-jarvis--a-checklist)); try the phrase in the console with `NLU.classify` |
+| It does the **wrong** thing confidently | an earlier or broader rule matched first (rules are first-match); or a stage before the classifier took it | inspector *Intent* and *Route*; find the earlier rule in `nlu.js` `R`; check skills / routines / agent goals (stages 7–10 in [11.2](#112-one-request-step-by-step)) |
+| It searched the web (or didn't) when it shouldn't (should) | the decision engine read the signals differently | inspector *Decision* + *Signals*; `Decider.signals('…', {})` in the console; `decider.js`; add a case to `tests/decider.test.js` |
+| "Opening Google Maps / a web page" for something local (or vice-versa) | a conflict between signals (place vs local, action vs place) | inspector confidence ≤ 0.75 = a conflict; the order in `Decider.decide` |
+| It says the web is needed but nothing happens | **Online tools** is off | Settings → Online tools; the reply offers **ENABLE ONLINE TOOLS & SEARCH** |
+| A spoken command comes out wrong, typed works | the recogniser misheard | inspector *Mic heard*; Settings → **Test my mic**; `speechfix.js`; for your own names check `GET /api/voice/vocab` |
+| "I can't find …" for a folder that exists | it's new (index rebuilds every 30 min), in a skipped place (hidden, `node_modules`, Windows, AppData), or spelled differently | `GET /api/fileIndex/status` (`ready`, `count`); the *Did you mean…?* list; for a brand-new folder open it by full path |
+| "There" / "it" / "the second one" doesn't work | nothing in focus, or it expired (15 min), or two candidates | `ctx.focus`; JARVIS asks which folder when unsure |
+| An action says it can't / asks ALLOW | outside `~/jarvis` (needs approval), or a blocked place | Network tab: `409` = approval card, `403` = off-limits; `blockedPath` in `server.js` |
+| `AGENT_FAILED` / "The AI suggested an action I can't run safely" | the AI emitted a malformed tool call (e.g. a missing argument) | ☰ log `AI tool call rejected: …`; JARVIS now retries without tools, so you'll see a plain answer plus an inspector note; `agent-tools.js` schema |
+| The AI is slow, empty or "offline" | Ollama not running / model still loading / no key for a cloud model | `GET /api/llm/status`; start Ollama; Settings → Guided setup → AI; the first local reply takes about a minute |
+| A reply claims it did something it didn't | the AI wrote it (small models sometimes do) — rule-based replies report what a tool actually returned | the reply header: `LOCAL AI · model` means the AI wrote it with no tool; real actions show `INTENT · tool()`; the system prompt forbids such claims |
+| JARVIS Code says "didn't return any files" | the model ignored the file format | it already retries once and accepts plain code blocks; try a stronger model or a simpler request |
+| A reminder / trigger didn't fire | panic mode on; Online-only trigger; server not running | the ⚠ PANIC pill; `GET /api/health`; Tasks tab; `scheduler.js` |
+| The page looks old after an update | service-worker cache | **Ctrl+Shift+R**; DevTools → Application → Service Workers → Unregister; developers: bump `VERSION` in `sw.js` |
+| "Backend offline" | the server isn't running | Start JARVIS; `GET /api/health`; `~/jarvis/.launcher.log` |
+
+**Which test covers what** (run one suite with `node tests/<name>.test.js`; everything with `npm test`):
+
+| Area | Suite |
+|---|---|
+| a phrase isn't understood / is misread | `nlu`, `coverage`, `paraphrase`, `reliability` |
+| web vs local vs tool, places, conflicts | `decider` |
+| a server route, file zones, approvals | `api` |
+| a whole conversation in the real page | `e2e` |
+| multi-step plans, permissions, planner | `agent`, `plan` |
+| voice collection, wake word | `voice`, `wakeword` |
+| JARVIS Code parsing and path safety | `jarviscode` |
+| undo, scheduler, triggers | `undo`, `scheduler`, `triggers` |
+| the AI layer (fake provider) | `llm` |
+
+`npm run test:report` writes `tests/report.md` (one row per command, plus a checklist for what only you can check: mic, voice, Windows Hello, phone).
+
+**When you find a bug:** reproduce it with the inspector on, copy the *How I understood this* block, write the failing phrase into the matching test **first**, then fix the stage the inspector points at. The pipeline is layered on purpose, so a wrong answer almost always has one culprit.
+
+### Common problems
 
 **The page says "Backend offline".** Start JARVIS (`Start JARVIS.bat` or `npm start`) and open `http://localhost:PORT` — not the `index.html` file.
 

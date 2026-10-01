@@ -1398,6 +1398,49 @@ app.post('/api/tool/checkCompiler', (req, res) => {
     res.json({ success: true, found: !err, label: t.label, path: err ? null : stdout.split(/\r?\n/)[0].trim() });
   });
 });
+// "what version of node am I running": the version installed on THIS laptop (not the latest release on the web).
+// A fixed list — the name you say only picks an entry; it never reaches a command line.
+const VERSION_TOOLS = {
+  node: { label: 'Node.js', run: null }, nodejs: { label: 'Node.js', run: null }, npm: { label: 'npm', cmd: 'npm', args: ['--version'], shell: true },
+  python: { label: 'Python', cmd: IS_WIN ? 'python' : 'python3', args: ['--version'] }, pip: { label: 'pip', cmd: IS_WIN ? 'pip' : 'pip3', args: ['--version'] },
+  git: { label: 'Git', cmd: 'git', args: ['--version'] }, java: { label: 'Java', cmd: 'java', args: ['-version'] }, javac: { label: 'javac', cmd: 'javac', args: ['-version'] },
+  gcc: { label: 'gcc', cmd: 'gcc', args: ['--version'] }, 'g++': { label: 'g++', cmd: 'g++', args: ['--version'] }, ollama: { label: 'Ollama', cmd: 'ollama', args: ['--version'] },
+  docker: { label: 'Docker', cmd: 'docker', args: ['--version'] }, vscode: { label: 'VS Code', cmd: 'code', args: ['--version'], shell: true },
+};
+app.post('/api/tool/toolVersion', (req, res) => {
+  const key = String(req.body.tool || '').toLowerCase().replace(/[\s.]+/g, '').replace(/^vscode|^visualstudiocode/, 'vscode').replace(/^python3$/, 'python').replace(/^cpp$|^c\+\+$/, 'g++');
+  const t = VERSION_TOOLS[key];
+  if (!t) return res.status(400).json({ error: 'I can check: ' + [...new Set(Object.values(VERSION_TOOLS).map(x => x.label))].join(', ') });
+  if (t.run === null) return res.json({ success: true, label: t.label, found: true, version: process.version.replace(/^v/, '') });
+  execFile(t.cmd, t.args, { windowsHide: true, timeout: 8000, shell: !!t.shell }, (err, stdout, stderr) => {
+    const out = String(stdout || '') + String(stderr || '');
+    const v = (out.match(/\d+\.\d+(?:\.\d+)?(?:[-+_.\w]*)?/) || [])[0];
+    if (err && !v) return res.json({ success: true, label: t.label, found: false });
+    res.json({ success: true, label: t.label, found: true, version: v || out.trim().split(/\r?\n/)[0].slice(0, 80) });
+  });
+});
+// "what's the latest file in my project": the newest-modified files in a folder (your files; names and times only).
+app.post('/api/tool/recentFiles', (req, res) => {
+  const raw = String(req.body.dir || '').trim();
+  const sc = raw ? scopeDir(raw) : null;
+  if (sc && sc.error) return res.status(404).json({ error: sc.error });
+  const f = sc && sc.path ? { path: sc.path } : raw ? findAnywhere(raw, { kind: 'folder' }) : { path: SANDBOX };
+  if (!f || !f.path) return notFoundOrChoices(res, f, raw);
+  const out = [], t0 = Date.now();
+  const walk = (dir, depth) => {
+    if (depth > 6 || out.length > 20000 || Date.now() - t0 > 3000) return;
+    let items; try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const it of items) {
+      if (it.name.startsWith('.') || it.name.startsWith('$') || SKIP_DIRS.has(it.name)) continue;
+      const full = path.join(dir, it.name);
+      if (it.isDirectory()) { if (!blockedPath(full)) walk(full, depth + 1); continue; }
+      try { out.push({ full, m: fs.statSync(full).mtimeMs }); } catch {}
+    }
+  };
+  walk(f.path, 0);
+  out.sort((a, b) => b.m - a.m);
+  res.json({ success: true, dir: f.path, files: out.slice(0, Math.min(10, +req.body.n || 5)).map(x => ({ path: x.full, name: path.relative(f.path, x.full), modified: x.m })) });
+});
 const RECOMMENDED_EXT = { cpp: 'ms-vscode.cpptools', c: 'ms-vscode.cpptools', python: 'ms-python.python', javascript: null };
 app.post('/api/tool/checkExtension', (req, res) => {
   const lang = String(req.body.language || '').toLowerCase();

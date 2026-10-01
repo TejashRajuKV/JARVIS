@@ -626,7 +626,12 @@ const NLU = (() => {
     ['RUN_FILE', /^(run|execute|compile|test|compile and run)( it| that| this| the (file|code|program|script)| my (code|program|file)| [\w\-./\\]+\.(py|js|mjs|c|cpp|cc))( again| now)?( (with|using) input .+)?$|\b(run|execute) (that|the|this) (code|program|script|file)\b/, .95, 'runFile'],
 
     // dev projects: locate a project folder, start/stop its backend or frontend dev server
-    ['LOCATE_PROJECT', /^(?:locate|find|where'?s|where is)\s+(?:my\s+|the\s+)?.+?\s+(?:project|folder)\b/, .93, 'locateProject'],
+    // "find the login code in my project" / "find where we handle payments in the codebase": a search INSIDE your project's
+    // files — not a project called "login code in my".
+    ['ASK_FILES', /^(?:find|search for|look for|locate|where(?:'s| is| are)|show me)\s+(.{3,}?)\s+(?:in|inside|within|across|from)\s+(?:my|the|this|our|that)\s+(?:\w+\s+)?(?:projects?|code ?base|repo(?:sitory)?|source code)\b/, .93, 'askFiles'],
+    // "find my calculator project" / "where is dsa_sprint folder": the name sits between "find" and "project/folder" — a
+    // short name. A longer phrase with in / of / about / for … in it is a question about what's inside, not a name.
+    ['LOCATE_PROJECT', s => { const m = /^(?:locate|find|where'?s|where is)\s+(?:my\s+|the\s+)?(.+?)\s+(?:project|folder)\b/.exec(s); return !!m && m[1].split(' ').length <= 3 && !/\b(?:in|of|about|for|with|from|that|which|inside|within|containing|regarding|related|on|at)\b/.test(m[1]); }, .93, 'locateProject'],
     ['START_PROCESS', /^start\s+(?:the\s+|my\s+)?.+?(?:'s)?\s+(?:backend|frontend|server|app)\b/, .95, 'startProcess'],
     ['STOP_PROCESS', /^stop\s+(?:the\s+|my\s+)?.+?(?:'s)?\s+(?:backend|frontend|server|app)\b/, .95, 'stopProcess'],
 
@@ -751,6 +756,12 @@ const NLU = (() => {
     ['DELETE_ITEM', /\b(delete|remove|trash|bin)\b (the |my |that )?(folder|file|note|directory)\b|^(delete|remove|trash) [\w\- ]+\.\w+$/, .93, 'deleteItem'],
     ['NOTE_APPEND', /^(take|make|write|jot|add) (a )?note(?! (called|named|titled)\b):? (.+)|^note( down)?:? (.+)/, .93, 'writeFile'],
     ['WRITE_FILE', /\b(create|make|write|save|new)( a| an)?( new)? (?:\w+ )?(file|note|document)\b/, .94, 'writeFile'],
+    // "what version of node am I running" / "my python version" / "check git version": what's installed HERE —
+    // never "what's the latest python version" (that's a fresh fact for the web)
+    ['TOOL_VERSION', s => /\b(?:what|which)\s+(?:node(?:\.?js)?|python3?|npm|pip|git|java|gcc|g\+\+|ollama|docker|vs ?code)\s+version\s+(?:do i have|have i got|am i (?:running|using|on)|is installed|is on (?:my|this))|\b(?:what|which)\s+version\s+of\s+(?:node(?:\.?js)?|python3?|npm|pip|git|java|javac|gcc|g\+\+|c\+\+|ollama|docker|vs ?code|visual studio code)\b|\b(?:my|installed|local)\s+(?:node(?:\.?js)?|python3?|npm|pip|git|java|gcc|g\+\+|ollama|docker|vs ?code)\s+version\b|\b(?:check|show|tell me|get)\s+(?:my\s+|the\s+)?(?:node(?:\.?js)?|python3?|npm|pip|git|java|gcc|g\+\+|ollama|docker|vs ?code)\s+version\b|^(?:node(?:\.?js)?|python3?|npm|pip|git|java|gcc|g\+\+|ollama|docker)\s+(?:--)?version$/.test(s)
+      && !/\b(?:latest|newest|new|released?|upcoming|stable|lts|current release)\b/.test(s), .95, 'toolVersion'],
+    // "what's the latest file in my project" / "newest files in D:\x" / "which files did I change recently"
+    ['RECENT_FILES', /\b(?:latest|newest|most recent(?:ly)?|recent(?:ly)?|last (?:modified|edited|changed|saved))\s+(?:\w+\s+)?files?\b|\bfiles? (?:i|that i) (?:changed|edited|modified|saved) (?:recently|last|today)\b|\bwhich files? (?:did i|have i) (?:change|edit|modif\w*|save)/, .93, 'recentFiles'],
     // "list number of folders in my laptop" / "how many folders are in D drive" / "count my directories"
     ['COUNT_FOLDERS', /\b(?:how many|number of|no\.? of|count(?: of)?|total(?: number of)?|amount of)\s+(?:all\s+)?(?:the\s+|my\s+)?(?:folders?|director(?:y|ies)|dirs|files)\b|\bcount\s+(?:all\s+)?(?:the\s+|my\s+)?(?:folders?|director(?:y|ies)|files)\b/, .95, 'countFolders'],
     ['CREATE_FOLDER', /\b(create|make|new|add|build|generate)( me)?( a| an| one| the)?( new)? (?:\w+ )?(folder|directory|dir)\b/, .96, 'createFolder'],
@@ -882,8 +893,15 @@ const NLU = (() => {
       const ok = typeof test === 'function' ? test(s) : test.test(s);
       if (ok) {
         let c = conf;
+        // Sanity check: "open the latest chrome documentation" / "open the vs code docs" is the PAGE about the app, not the app.
+        if (intent === 'OPEN_APPLICATION' && /\b(?:documentation|docs|tutorials?|manual|changelog|release notes|api reference|official (?:site|website|page))\b/.test(s)
+          && !/\b(?:folder|directory|files?|project|in|inside|into|with|and|then)\b/.test(s) && findApp(s)) {
+          const target = s.replace(/^(open|launch|start|run|fire up|boot up|boot|pull up|bring up|load|show me|go to|take me to|visit)\s+(up\s+)?(the\s+|my\s+)?/, '').trim();
+          return { intent: 'OPEN_WEB', confidence: .92, tool: 'openWeb', args: { query: target }, text: s };
+        }
         // Sanity check: "open calculator.html" / "open main.py" names a file — not the Calculator app or a website.
-        if (intent === 'OPEN_APPLICATION' && /\b[\w\-]+\.(?:html?|py|js|ts|jsx|tsx|c|cpp|h|java|cs|go|rs|css|json|csv|txt|md|pdf|docx?|pptx?|xlsx?|png|jpe?g|gif|ipynb|sql)\b/.test(s))
+        // (node.js / vue.js / next.js are frameworks, not files: "open the latest node.js documentation" is a web page)
+        if (intent === 'OPEN_APPLICATION' && /\b(?!(?:node|vue|next|nuxt|three|react|express|d3|chart|p5|angular|ember|backbone|socket)\.js\b)[\w\-]+\.(?:html?|py|js|ts|jsx|tsx|c|cpp|h|java|cs|go|rs|css|json|csv|txt|md|pdf|docx?|pptx?|xlsx?|png|jpe?g|gif|ipynb|sql)\b/.test(s))
           return { intent: 'READ_FILE', confidence: .92, tool: 'readFile', args: {}, text: s };
         // "open <something unknown>" = open the best web page for it (e.g. "open SIH 2026 problem statements").
         if (intent === 'OPEN_APPLICATION' && !findApp(s) && !/\b(folder|file|directory)\b/.test(s) && !/^(open|launch|start|run|load)\s+(it|that|this)\b/.test(s)) {

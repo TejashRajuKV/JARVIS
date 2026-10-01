@@ -91,6 +91,9 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     check('Files', 'the laptop file index stays off in tests', (await get('/api/fileIndex/status')).json.ready === false);
     check('Files', 'counting folders before the index is built says so (no made-up number)', (await post('/api/tool/folderStats', { scope: 'my laptop' })).json.indexing === true);
     check('Files', '"did you mean" needs a name', (await post('/api/tool/similar', {})).status === 400);
+    { const v = await post('/api/tool/toolVersion', { tool: 'node' }); check('Laptop', 'the Node.js version installed here (what JARVIS runs on)', v.json.found === true && v.json.version === process.version.slice(1), v.text); }
+    check('Laptop', 'version checks only for a fixed list of tools', (await post('/api/tool/toolVersion', { tool: 'rm -rf' })).status === 400);
+    { const r = await post('/api/tool/recentFiles', {}); check('Files', 'newest files in ~/jarvis, newest first', r.status === 200 && Array.isArray(r.json.files) && r.json.files.every((f, i, a) => !i || a[i - 1].modified >= f.modified), r.text); }
     { const v = (await get('/api/voice/vocab')).json; check('Voice', 'the speech fixer gets your folder names and drive letters (names only)', v.success && Array.isArray(v.names) && Array.isArray(v.drives), JSON.stringify(v).slice(0, 200)); }
     check('JARVIS Code', 'generate needs a request', (await post('/api/code/generate', {})).status === 400);
     check('JARVIS Code', 'generate with the AI offline: a clean error, nothing written', (await post('/api/code/generate', { prompt: 'make a calculator' })).status >= 400);

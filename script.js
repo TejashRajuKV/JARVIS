@@ -200,7 +200,7 @@ function scopeFrom(original, forCreate) {
   if (inIt.test(o)) { const f = focusOf('created') || focusOf('folder'); return { ref: true, path: f ? f.path : '', rest: o.replace(inIt, '').trim() }; }
   if (REF_RE.test(o)) {
     // "…in the same project" → the project in focus first
-    if (/project/i.test((o.match(REF_RE) || [''])[0]) && focusOf('project')) return { ref: true, path: focusOf('project').path, rest: o.replace(REF_RE, '').trim() };
+    if (/\bproject\b/i.test((o.match(REF_RE) || [''])[0]) && focusOf('project')) return { ref: true, path: focusOf('project').path, rest: o.replace(REF_RE, '').trim() };
     const fo = focusOf('folder'), cr = focusOf('created');
     const f = fo && (!cr || fo.t >= cr.t - 1000) ? fo : (cr || fo);   // same moment → "there" is the folder it went into
     return { ref: true, path: f ? f.path : '', rest: o.replace(REF_RE, '').trim() };
@@ -260,7 +260,7 @@ function traceRows(t) {
   (t.notes || []).forEach(([k, v]) => rows.push([k.charAt(0).toUpperCase() + k.slice(1), v]));
   if (t.context) rows.push(['Context', t.context]);
   if (t.decision && typeof Decider !== 'undefined') {
-    rows.push(['Decision', (Decider.LABEL[t.decision.route] || t.decision.route) + ' — ' + t.decision.reason]);
+    rows.push(['Decision', (Decider.LABEL[t.decision.route] || t.decision.route) + (t.decision.confidence ? '  ·  confidence ' + t.decision.confidence.toFixed(2) : '') + (t.decision.override ? '  ·  took over from the rule match' : '') + ' — ' + t.decision.reason]);
     const sg = t.signals; if (sg) rows.push(['Signals', ['fresh', 'source', 'local', 'reasoning', 'question'].map(k => k + ' ' + (sg[k] ? '✓' : '✗')).join(' · ')]);
   }
   rows.push(['Route', t.route || '—']);
@@ -3151,6 +3151,31 @@ async function executeTool(p, raw) {
       if (r.error) return { text: cap(r.error) + '.' };
       return { text: r.found ? '✓ ' + r.label + ' is installed' + (r.path ? ' (`' + r.path + '`)' : '') + '.' : '✗ ' + r.label + ' was not found on your PATH.', op: { kind: 'toolchain_check', found: r.found, label: r.label }, tool: 'checkCompiler' };
     }
+    case 'TOOL_VERSION': {   // what's installed on THIS laptop — not the latest release (that's a web question)
+      const tool = a.tool || (s.match(/\b(node(?:\.?js)?|python3?|npm|pip|git|javac|java|g\+\+|c\+\+|gcc|ollama|docker|vs ?code|visual studio code)\b/) || [])[1] || '';
+      if (!tool) return { text: 'Which one — Node, Python, npm, Git, Java, gcc, Ollama, Docker or VS Code?' };
+      toolStep('toolVersion → ' + tool);
+      const r = await callTool('/tool/toolVersion', { tool: tool.replace(/\.?js$/, '').replace(/^visual studio code$/, 'vscode') });
+      if (r.error) return { text: cap(r.error) + '.' };
+      noteTrace('checked', r.label + ' on this laptop');
+      return r.found ? { text: 'You’re running **' + r.label + ' ' + r.version + '** on this laptop.', speak: r.label + ' ' + r.version + '.', tool: 'toolVersion', suggestions: settings.online ? ['What is the latest ' + r.label + ' version?'] : null }
+        : { text: '**' + r.label + '** isn’t installed on this laptop (or isn’t on your PATH).', tool: 'toolVersion' };
+    }
+    case 'RECENT_FILES': {   // "what's the latest file in my project": newest-modified files, in the project / folder meant
+      const proj = await resolveProject(p.original);
+      if (proj && proj.ask) return proj.ask;
+      const sc = proj && proj.path ? null : scopeFrom(p.original);
+      const dir = (proj && proj.path) || (sc && (sc.path || sc.scope)) || (focusOf('project') || focusOf('folder') || {}).path || '';
+      if (/\bproject\b/.test(s) && !dir) return { text: 'Which project, ' + Persona.sir() + '? Say its name — e.g. "the latest file in the calculator project".' };
+      toolStep('recentFiles → ' + (dir || '~/jarvis'));
+      const r = await callTool('/tool/recentFiles', { dir, n: 5 });
+      if (r.error) return pickPlace(r, dir, async x => executeTool({ ...p, args: { ...a } }, raw)) || { text: cap(r.error) + '.' };
+      if (!r.files.length) return { text: 'There are no files in `' + r.dir + '`.' };
+      setFocus('folder', r.dir); setResults(r.files.map(f => f.path)); setFocus('file', r.files[0].path);
+      const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago'; };
+      return { text: 'The newest file in `' + r.dir + '` is **' + r.files[0].name + '** (changed ' + ago(r.files[0].modified) + ').' + (r.files.length > 1 ? '\n\nRecently changed:\n' + r.files.map((f, i) => (i + 1) + '. `' + f.name + '` — ' + ago(f.modified)).join('\n') : '') + '\n\n_Say "open it" or "open the second one"._',
+        speak: 'The newest file is ' + r.files[0].name.split(/[\\/]/).pop() + '.', tool: 'recentFiles' };
+    }
     case 'CHECK_EXTENSION': {
       const r = await callTool('/tool/checkExtension', { language: a.language });
       if (r.error) return { text: cap(r.error) + '.' };
@@ -4745,7 +4770,9 @@ async function handleUser(text, source) {
     const decision = sig ? Decider.decide(sig, { online: !!(settings.online && backend.online), aiReady: llmReady() }) : { route: 'LOCAL_AI', reason: '' };
     if (turnTrace) { turnTrace.decision = decision; turnTrace.signals = sig; }
     // "find latest information about react": the file-search rule caught it, but it's a web question
-    if (implicitSearch && (decision.route === 'WEB_AI' || decision.want === 'WEB_AI')) p = Object.assign({}, p, { intent: 'CONVERSATION', confidence: 0.5, tool: null });
+    // The decision can take over from a weaker rule match: "find latest information about react" (caught by file
+    // search) → web; "open the nearest atm" (caught by the generic "open the best web page") → Maps.
+    if (decision.override || (implicitSearch && (decision.route === 'WEB_AI' || decision.want === 'WEB_AI' || decision.route === 'MAPS'))) p = Object.assign({}, p, { intent: 'CONVERSATION', confidence: 0.5, tool: null });
 
     // "cancel" / "never mind" with nothing waiting for an answer: say so, instead of asking the AI to plan it (it once
     // planned "close the app jarvis").
@@ -4784,6 +4811,32 @@ async function handleUser(text, source) {
     }
 
     // Current-events questions: read the web first (Online tools on), so the AI answers from sources instead of guessing.
+    // Places ("nearest restaurants to kodigehalli", "hotels near me"): Google Maps in your browser — it knows what's
+    // near and where you are. No AI guessing, and no Online-tools search needed (it's your browser).
+    // "update my node.js" / "install python": JARVIS never installs software — the local AI explains how, honestly.
+    if (wantsLLM && !result && decision.route === 'GUIDE' && llmReady()) {
+      traceRoute('how-to from the local AI (I don’t install software)');
+      result = { askLLM: 'The user asked: "' + cmdText + '". You (JARVIS) cannot install, update or uninstall software yourself, and must not claim you did. Say so in one short sentence, then give clear numbered steps for doing it on Windows — the official download page or the exact command to run (winget / npm / pip), and how to check it worked. Keep it short.', noHistory: true };
+    }
+    // "find / show / open the React docs": the page itself — the best match opens in your browser.
+    if (wantsLLM && !result && decision.route === 'WEB_OPEN') {
+      traceRoute('open the best page');
+      await deliver(await executeTool({ intent: 'OPEN_WEB', args: { query: decision.payload.query }, original: cmdText, text: norm.text, confidence: 1 }, cmdText), { intent: 'OPEN_WEB', confidence: 1 });
+      return;
+    }
+    if (wantsLLM && !result && decision.route === 'MAPS') {
+      traceRoute('Google Maps (places)');
+      // understood as: what kind of place, where (most specific first), how to rank it
+      const pq = decision.payload && decision.payload.query ? decision.payload : Decider.placeQuery(cmdText), mq = pq.query;
+      noteTrace('place', pq.category || '—'); noteTrace('location', pq.location); noteTrace('sort', pq.sort);
+      toolStep('openUrl → Google Maps: ' + mq);
+      const r = await callTool('/tool/openUrl', { url: 'https://www.google.com/maps/search/' + encodeURIComponent(mq) });
+      const SORT = { nearest: 'nearest first', 'best rated': 'best rated', cheapest: 'cheapest first', 'open now': 'open now' };
+      await deliver(r.error ? { text: 'I couldn’t open Google Maps: ' + r.error } : { text: 'Opening **Google Maps**: **' + (pq.category || mq) + '** near **' + pq.location + '**' + (SORT[pq.sort] ? ', ' + SORT[pq.sort] : '') + ' — with ratings, opening hours and directions.' + (pq.sort === 'nearest' ? ' Maps lists the closest ones first, each with its distance.' : ''),
+        speak: 'Opening Google Maps for ' + (pq.category || mq) + ' near ' + pq.location.replace('your current location', 'you') + '.', tool: 'openUrl', card: [['PLACE', pq.category || '—'], ['WHERE', pq.location], ['SORT', pq.sort]],
+        suggestions: settings.online ? ['Search the web for ' + mq] : null }, { intent: 'MAPS', confidence: 1 });
+      return;
+    }
     if (wantsLLM && !result && decision.route === 'WEB_AI') {   // (without the AI, doResearch shows the top links)
       traceRoute('web search → local AI answers from the pages');
       // the whole request goes along ("…and explain how hooks work"), minus a leading "search / find / look up"
@@ -4808,24 +4861,30 @@ async function handleUser(text, source) {
       const userAsk = srcLang !== 'en' && cmdText !== text
         ? (Lang.aiInEnglish() ? cmdText : text + '\n\n(Meaning, in English: "' + cmdText + '". Answer that, in ' + ({ te: 'Telugu', kn: 'Kannada' }[Lang.replyLang()] || 'English') + '.)')
         : text;
-      const ai = llmReady() ? await askLLM(toolPrompt ? result.askLLM : userAsk, { noTools: toolPrompt || answerOnly, imageToken: toolPrompt ? result.imageToken : undefined, noHistory: toolPrompt && !!result.noHistory, limitText: toolPrompt ? cmdText : undefined }) : null;
+      let ai = llmReady() ? await askLLM(toolPrompt ? result.askLLM : userAsk, { noTools: toolPrompt || answerOnly, imageToken: toolPrompt ? result.imageToken : undefined, noHistory: toolPrompt && !!result.noHistory, limitText: toolPrompt ? cmdText : undefined }) : null;
       // The chat model chose a tool: the server validates the name and arguments and sets the permission tier.
       let checked = null;
       if (ai && ai.tool) {
         checked = await callTool('/agent/validate', { tool: ai.tool.tool, args: ai.tool.rawArgs || {} });
         if (!checked.ok) {
-          log('warn', 'AI tool call rejected: ' + (checked.reason || checked.error));
-          await deliver({ text: 'The AI suggested an action I can’t run safely — ' + (checked.reason || checked.error) + '. Nothing was changed.', intent: 'AGENT_FAILED', noPersona: true }, p);
-          return;
+          // A broken tool call (e.g. open_best with no "query"): nothing runs — and instead of giving up, the AI is
+          // asked again for a plain answer, with no tools.
+          log('warn', 'AI tool call rejected: ' + (checked.reason || checked.error) + ' — answering without tools');
+          noteTrace('AI tool call refused', (checked.reason || checked.error) + ' → answered without tools');
+          if (ai.node && ai.node.root) ai.node.root.remove();
+          ai = await askLLM(userAsk, { noTools: true, limitText: cmdText });
+          checked = null;
         }
-        if (checked.step.tier !== 'safe') {
+        if (checked && checked.step.tier !== 'safe') {
           await deliver(await Agent.chatTool(ai.tool.tool, ai.tool.rawArgs || {}, performance.now() - tUnderstood), { intent: 'AGENT_RUN', confidence: 1 });
           return;
         }
-        const mapped = LLM_TOOLS[checked.step.tool](checked.step.args);
-        ai.tool = { ...ai.tool, intent: checked.step.intent, args: Object.assign({}, mapped.args || {}, checked.step.args) };
+        if (checked) {
+          const mapped = LLM_TOOLS[checked.step.tool](checked.step.args);
+          ai.tool = { ...ai.tool, intent: checked.step.intent, args: Object.assign({}, mapped.args || {}, checked.step.args) };
+        }
       }
-      if (ai && ai.tool) {
+      if (ai && ai.tool && checked && checked.ok) {
         const tp = { ...ai.tool, viaAI: true };
         setState('EXECUTING', 'Running ' + tp.tool + '…'); engine('core', true);
         const pre2 = Agent.preSingle(tp);

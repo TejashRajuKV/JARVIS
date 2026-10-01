@@ -196,6 +196,14 @@
     check('Decider', 'fresh facts ("latest … version") → web research', called('/tool/research', d => /latest python version/i.test(d.q || '')), r.text);
     r = await say('find latest information about react');
     check('Decider', '"find latest information about react" → the web, not a file search', called('/tool/research', d => /react/i.test(d.q || '')), r.text);
+    r = await say('what are the nearest restaurants to bengaluru(kodigehalli)');
+    check('Decider', 'places near somewhere → Google Maps (not the AI, not a broken tool call)', called('/tool/openUrl', d => /google\.com\/maps\/search\/nearest%20restaurants%20near%20Kodigehalli%2C%20Bengaluru/.test(d.url || '')) && /near Kodigehalli, Bengaluru, nearest first/.test(r.text), r.text);
+    r = await say('open the nearest restaurant to kodigehalli');
+    check('Decider', 'conflict "open" + place → Maps takes over from "open the best web page"', called('/tool/openUrl', d => /google\.com\/maps\/search\/nearest%20restaurant/.test(d.url || '')), r.text);
+    r = await say('what version of node am i running');
+    check('Decider', '"what version of node am I running" → the version on THIS laptop (not a web search)', called('/tool/toolVersion', d => /node/i.test(d.tool || '')) && /You’re running \*?\*?Node\.js/.test(r.text), r.text);
+    r = await say('what is the latest file in my project');
+    check('Decider', '"the latest file in my project" → newest files, never the web', !called('/tool/research', d => /latest file/i.test(d.q || '')), r.text);
     settings.online = false;
     r = await say('what is the latest node.js version');
     check('Decider', 'Online tools off + fresh facts → asks to turn it on (never stale memory silently)', /Online tools/.test(r.text) && /ENABLE ONLINE TOOLS/.test(r.text) && /ANSWER FROM MEMORY/.test(r.text), r.text);
