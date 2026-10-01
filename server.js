@@ -273,10 +273,78 @@ function laptopSearch(name, { kind, max = 6, contains = false } = {}) {
     }
   };
   for (const [b, d] of bases) if (fs.existsSync(b)) look(b, 0, d);
+  // Deeper than the quick scan reaches (PycharmProjects\pythonProject, D:\…\…\index.html): the background index.
+  if (found.length < max && fileIndex.ready) {
+    const tol = w.length >= 12 ? 2 : w.length >= 6 ? 1 : 0;
+    const exact = [], close = [];
+    for (let i = 0; i < fileIndex.paths.length && exact.length < max; i++) {
+      const isDir = fileIndex.dirs[i] === 1;
+      if (kind && (kind === 'folder') !== isDir) continue;
+      const sq = fileIndex.sq[i];
+      let ok, best = false;
+      if (contains) ok = fileIndex.low[i].includes(q);
+      else {
+        best = sq === w || fileIndex.low[i] === q;
+        ok = best || (tol > 0 && Math.abs(sq.length - w.length) <= tol && editDistance(sq, w) <= tol)
+          || (isDir && w.length >= 5 && sq.startsWith(w) && sq.length - w.length <= 4)
+          || (!isDir && (sq === w + 'notes' || sq === w + 'note'));
+      }
+      if (ok) (best || contains ? exact : close).push(fileIndex.paths[i]);
+    }
+    for (const p of [...exact, ...close]) {
+      if (found.length >= max) break;
+      if (!seen.has(norm(p)) && fs.existsSync(p)) { seen.add(norm(p)); found.push(p); }
+    }
+  }
   laptopCache.set(key, { t: Date.now(), paths: found });
   if (laptopCache.size > 200) laptopCache.clear();
   return found;
 }
+/* Laptop-wide file-name index: every file and folder name on every drive (your home folder in full, other drives in
+   full), skipping blocked places (Windows, Program Files, AppData, secrets), hidden/system entries and build folders
+   (node_modules, .git…). Names and paths only — never file contents. Built in the background a little after start,
+   without blocking requests, and rebuilt every 30 minutes. Off in tests. */
+const fileIndex = { ready: false, building: false, paths: [], low: [], sq: [], dirs: [], builtAt: 0, ms: 0 };
+const INDEX_MAX = 1500000;
+async function buildFileIndex() {
+  if (fileIndex.building) return;
+  fileIndex.building = true;
+  const t0 = Date.now(), paths = [], low = [], sq = [], dirs = [];
+  const roots = [HOME_DIR];
+  if (IS_WIN) for (const d of 'CDEFGHIJ') { const r = d + ':\\'; if (fs.existsSync(r)) roots.push(r); }
+  const seenDir = new Set();
+  let n = 0;
+  const walk = async dir => {
+    if (paths.length >= INDEX_MAX) return;
+    const k = norm(dir); if (seenDir.has(k)) return; seenDir.add(k);
+    let d; try { d = await fs.promises.opendir(dir); } catch { return; }
+    const sub = [];
+    try {
+      for await (const it of d) {
+        if (it.name.startsWith('.') || it.name.startsWith('$') || SKIP_DIRS.has(it.name) || BLOCKED_NAMES.test(it.name)) continue;
+        if (it.isSymbolicLink()) continue;
+        const full = path.join(dir, it.name), isDir = it.isDirectory();
+        if (isDir && blockedPath(full)) continue;
+        if (isInternal(full)) continue;
+        paths.push(full); low.push(it.name.toLowerCase()); sq.push(squashName(it.name)); dirs.push(isDir ? 1 : 0);
+        if (isDir) sub.push(full);
+        if (++n % 2000 === 0) await new Promise(r => setImmediate(r));   // stay responsive while indexing
+        if (paths.length >= INDEX_MAX) break;
+      }
+    } catch {}
+    for (const s of sub) await walk(s);
+  };
+  const perRoot = {};
+  for (const r of roots) { const before = paths.length; try { await walk(r); } catch {} perRoot[r] = paths.length - before; }
+  Object.assign(fileIndex, { ready: true, building: false, paths, low, sq, dirs, perRoot, builtAt: Date.now(), ms: Date.now() - t0 });
+  laptopCache.clear();
+  console.log(`File index: ${paths.length} files and folders in ${Math.round((Date.now() - t0) / 1000)} s`);
+}
+if (!process.env.JARVIS_TEST) {
+  setTimeout(buildFileIndex, 15000).unref();
+  setInterval(buildFileIndex, 30 * 60 * 1000).unref();
+}
+app.get('/api/fileIndex/status', (req, res) => res.json({ ready: fileIndex.ready, building: fileIndex.building, count: fileIndex.paths.length, perRoot: fileIndex.perRoot, builtAt: fileIndex.builtAt, ms: fileIndex.ms }));
 // "dbms" finds "DBMS Notes.md" / "dbms_notes.txt".
 function fuzzyNoteName(n, w) { const s = squashName(n); return !!w && (s === w || s === w + 'notes' || s === w + 'note'); }
 // Open/read by name anywhere: a full path, then ~/jarvis + project folders (forgiving names), then the laptop.
@@ -728,7 +796,8 @@ HOW TO BEHAVE
 - Users talk casually, with typos, slang, Hinglish or broken grammar. Work out what they MEAN and respond to that. If truly ambiguous, ask ONE short clarifying question.
 - ${lengthRule(ctx.responseLen)}
 - Use Markdown. Put code in fenced code blocks with a language tag.
-- Never pretend you performed an action. Only tools actually perform actions.
+- Never pretend you performed an action. Only tools actually perform actions. Writing a reply creates NO file: never say you generated, created, saved, built, opened or ran anything (e.g. "it is saved as calculator.html") unless a tool result in this chat says so. Never say "generating now…" — either put the code in your reply, or don't.
+- If the user wants an app, website, frontend or UI page BUILT, you cannot build it in a reply: tell them to say "build a website for <their idea>" (JARVIS's website builder asks a few questions, builds the page and opens it). Do not promise to build it yourself.
 - You CAN see the user's screen: read_screen captures the window in front (a browser tab, an error, a PDF). For anything about their screen, window, tab or page, use <<read_screen {"explain":true}>> — never say you can't see it.
 - Never mention tool names (like open_in_editor or write_note) in normal replies; describe things in plain words ("say 'open it in VS Code'").
 - You CANNOT browse the internet and have no live data. Never invent "sample" problems, examples or code the user did not ask for.
@@ -911,11 +980,21 @@ app.post('/api/tool/writeFile', (req, res) => {
   let name = String(req.body.name || '').trim().replace(/^["']|["']$/g, '');
   if (!name || /[<>:"|?*]/.test(name.replace(/^[a-z]:/i, ''))) return res.status(400).json({ error: 'Invalid file name' });
   if (!path.extname(name)) name += '.md';
-  const hasDir = /[/\\]/.test(name) || path.isAbsolute(name);
-  const existing = path.isAbsolute(name) ? null : findAllowed(name, { kind: 'file', exact: true });
-  const defaultDir = CODE_EXT.has(path.extname(name).toLowerCase()) ? 'Code' : 'Notes';
-  // A full path ("C:\Users\you\Desktop\todo.txt") may be anywhere that isn't off-limits; a plain name lands in ~/jarvis.
-  const p = existing || (path.isAbsolute(name) ? anyPath(name, { forWrite: true }) : safePath(hasDir ? name : path.join(defaultDir, name)));
+  // "in desktop" / "in downloads": a plain file inside that known folder (still asks first — it is outside ~/jarvis).
+  const where = req.body.where ? knownFolder(req.body.where) : null;
+  if (req.body.where && !where) return res.status(404).json({ error: `I couldn't find your ${req.body.where} folder` });
+  let p;
+  if (where) {
+    const base = path.basename(name);
+    if (!base || /[\\/:*?"<>|]|^\.+$/.test(base)) return res.status(400).json({ error: 'Invalid file name' });
+    p = anyPath(path.join(where, base), { forWrite: true });
+  } else {
+    const hasDir = /[/\\]/.test(name) || path.isAbsolute(name);
+    const existing = path.isAbsolute(name) ? null : findAllowed(name, { kind: 'file', exact: true });
+    const defaultDir = CODE_EXT.has(path.extname(name).toLowerCase()) ? 'Code' : 'Notes';
+    // A full path ("C:\Users\you\Desktop\todo.txt") may be anywhere that isn't off-limits; a plain name lands in ~/jarvis.
+    p = existing || (path.isAbsolute(name) ? anyPath(name, { forWrite: true }) : safePath(hasDir ? name : path.join(defaultDir, name)));
+  }
   if (!p) return res.status(400).json({ error: 'That location is off-limits (Windows, program or app-data folders, or JARVIS itself)' });
   const content = String(req.body.content ?? '');
   if (content.length > 2 * 1024 * 1024) return res.status(413).json({ error: 'Content too large' });
@@ -935,7 +1014,12 @@ app.post('/api/tool/writeFile', (req, res) => {
 });
 
 app.post('/api/tool/createFolder', (req, res) => {
-  const p = anyPath(String(req.body.name || ''), { forWrite: true });
+  // "in desktop" / "in downloads": a plain name inside that known folder (still asks first — it is outside ~/jarvis).
+  const where = req.body.where ? knownFolder(req.body.where) : null;
+  if (req.body.where && !where) return res.status(404).json({ error: `I couldn't find your ${req.body.where} folder` });
+  const nm = String(req.body.name || '').trim();
+  if (where && (!nm || /[\\/:*?"<>|]|^\.+$/.test(nm))) return res.status(400).json({ error: 'Invalid folder name' });
+  const p = where ? anyPath(path.join(where, nm), { forWrite: true }) : anyPath(nm, { forWrite: true });
   if (!p || p === SANDBOX) return res.status(400).json({ error: 'Invalid folder name' });
   if (!approvedChange(req, res, 'create the folder', p)) return;
   try {
@@ -1423,12 +1507,16 @@ app.post('/api/tool/showDesktop', (req, res) => {
 });
 
 const KNOWN = { downloads: 'Downloads', documents: 'Documents', desktop: 'Desktop', pictures: 'Pictures', photos: 'Pictures', music: 'Music', videos: 'Videos' };
+// Desktop/Documents/… — the normal folder, or the OneDrive one when Windows moved it there.
+function knownFolder(key) {
+  const sub = KNOWN[String(key || '').toLowerCase()];
+  return sub ? [path.join(os.homedir(), sub), path.join(os.homedir(), 'OneDrive', sub)].find(c => fs.existsSync(c)) || null : null;
+}
 app.post('/api/tool/openKnownFolder', (req, res) => {
   const key = String(req.body.name || '').toLowerCase();
   const sub = KNOWN[key];
   if (!sub) return res.status(400).json({ error: 'Unknown folder' });
-  const candidates = [path.join(os.homedir(), sub), path.join(os.homedir(), 'OneDrive', sub)];
-  const p = candidates.find(c => fs.existsSync(c));
+  const p = knownFolder(key);
   if (!p) return res.status(404).json({ error: `Couldn't find your ${sub} folder` });
   openPath(p);
   res.json({ success: true, name: sub, path: p });

@@ -22,7 +22,7 @@ const Agent = (() => {
 
   /* ---------- router (plain code) ---------- */
   const QUESTION = /^(what|what's|whats|why|how|who|whom|whose|when|where|which|can|could|should|would|is|are|am|was|were|do|does|did|will|have|has|tell me (about|why|how|what|who)|explain|define|describe|compare)\b/;
-  const THING = '(?:a |an |the |new |my )*(?:folder|directory|file|note|routine|timer|reminder|to-?do|task|deadline|class|snippet)';
+  const THING = '(?:a |an |the |new |my )*(?:\\w+ )?(?:folder|directory|file|note|routine|timer|reminder|to-?do|task|deadline|class|snippet)';
   const ACTION = new RegExp('^(?:open|close|launch|quit|exit|start|stop|set|turn|switch|add|remind|play|pause|resume|mute|unmute|lock|search|google|run|save|copy|paste|block|maximi[sz]e|minimi[sz]e|snap|put|cancel|increase|decrease|raise|lower|dim|brighten|enable|disable|prepare|get (?:me )?ready|install|uninstall|download|format|send|email|delete|erase|wipe|change|update|upgrade|show desktop|take (?:a )?screenshot|read my screen|git (?:status|pull|commit)|(?:create|make|new) ' + THING + ')\\b');
   const isAction = t => ACTION.test(t) && !/\?$/.test(t);
   const isQuestion = t => (QUESTION.test(t) || /\?$/.test(t)) && !ACTION.test(t);

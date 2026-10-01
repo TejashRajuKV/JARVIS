@@ -88,6 +88,7 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     check('Security', 'a foreign Host header is refused (DNS rebinding)', hostStatus === 403, hostStatus);
     check('Security', 'state.js needs same-origin (another site can’t <script> it)', (await get('/api/state.js', { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status === 403);
     check('Security', 'the sandbox is the isolated temp home, not your ~/jarvis', (await get('/api/tool/sandboxInfo')).json.root === SB);
+    check('Files', 'the laptop file index stays off in tests', (await get('/api/fileIndex/status')).json.ready === false);
     check('Security', 'malformed JSON gets a short JSON error, not a stack trace',
       await fetch(S.base + '/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: S.base }, body: '{bad' }).then(async r => r.status === 400 && /Invalid JSON/.test(await r.text())));
 

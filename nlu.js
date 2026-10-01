@@ -627,7 +627,7 @@ const NLU = (() => {
     // productivity
     ['BLOCK_DISTRACTIONS', /^concentrate$|\b(block|kill|close|remove|stop|no more|no)( all)?( the| my)? distract(?:ions?|ing)( apps?| programs?| stuff)?\b|\b(deep work|distraction[- ]free|do not disturb|dnd|monk|beast) mode\b|\bget me focused\b|\bhelp me (focus|concentrate)\b/, .95, 'distractions'],
     ['SHOW_DESKTOP', /\b(show (me )?(the |my )?desktop|minimi[sz]e (all|everything|all (the )?windows)|hide (all )?(the )?windows|go to (the )?desktop)\b/, .95, 'showDesktop'],
-    ['OPEN_KNOWN_FOLDER', /\b(open|show|go to)\b.*\b(downloads|desktop|pictures|photos|music|videos)( folder)?$/, .94, 'openKnownFolder'],
+    ['OPEN_KNOWN_FOLDER', /\b(open|show|go to)\b\s+(?:up\s+)?(?:me\s+)?(?:my\s+|the\s+)?(downloads|desktop|pictures|photos|music|videos)(?:\s+folder)?$/, .94, 'openKnownFolder'],
     ['PRODUCTIVITY_REPORT', /\b(how productive|productivity (report|stats|score|summary)|what did i (do|get done|accomplish|finish|complete)|my (stats|progress)( for)? today|daily (report|stats)|how did i do today)\b/, .95, 'report'],
     // command learning (checked before the personal-memory rules below, whose "forget ..." pattern is broad)
     ['MISSES_LIST', /\bwhat (didn'?t|did not|couldn'?t|could not) you (understand|get)\b|\b(show|list)( me)?( the| my)? (missed|misunderstood|unknown|failed) (phrases|commands|requests)\b|\bphrases you (didn'?t|did not) understand\b/, .95, 'learnList'],
@@ -744,12 +744,15 @@ const NLU = (() => {
     ['DESTRUCTIVE', /\b(delete|remove|erase|wipe) (everything|all (the |my )?files)\b|\bformat (the |my )?(drive|disk|computer)\b|\bclear (the )?sandbox\b/, .99, 'deleteFiles'],
     ['DELETE_ITEM', /\b(delete|remove|trash|bin)\b (the |my |that )?(folder|file|note|directory)\b|^(delete|remove|trash) [\w\- ]+\.\w+$/, .93, 'deleteItem'],
     ['NOTE_APPEND', /^(take|make|write|jot|add) (a )?note(?! (called|named|titled)\b):? (.+)|^note( down)?:? (.+)/, .93, 'writeFile'],
-    ['WRITE_FILE', /\b(create|make|write|save|new)( a| an)?( new)? (text |markdown |md )?(file|note|document)\b/, .94, 'writeFile'],
-    ['CREATE_FOLDER', /\b(create|make|new|add)( a| an)?( new)? (folder|directory)\b/, .96, 'createFolder'],
+    ['WRITE_FILE', /\b(create|make|write|save|new)( a| an)?( new)? (?:\w+ )?(file|note|document)\b/, .94, 'writeFile'],
+    ['CREATE_FOLDER', /\b(create|make|new|add)( a| an)?( new)? (?:\w+ )?(folder|directory)\b/, .96, 'createFolder'],
     ['RENAME_FILE', /\brename\b/, .92, 'renameFile'],
     ['COPY_FILE', /\b(copy|duplicate)\b .+ \bto\b/, .9, 'copyFile'],
     ['MOVE_FILE', /\bmove\b .+ \b(to|into)\b/, .9, 'moveFile'],
     ['SEARCH_FILES', /\b(find|search( for)?|locate|where is)( the| my)? (file|files|folder|document|note)s?\b/, .92, 'searchFiles'],
+    // "where is pythonProject" / "locate calculator.html" / "find agriloop on my laptop": a name on this laptop. If
+    // nothing on the laptop matches, the handler hands it to the AI ("where is delhi" is still answered).
+    ['SEARCH_FILES', /^(?:where(?:'s| is)|locate|find)\s+(?:my\s+|the\s+)?[\w.\-()]+(?:\s+[\w.\-()]+){0,3}?(?:\s+(?:on|in) (?:my |the |this )?(?:laptop|computer|pc|system|drives?))?$/, .88, 'searchFiles'],
     ['LIST_FILES', /\b(list|show|what)( me)?( are)?( all)?( the| my)? (files|folders|documents|notes)\b|\bwhat'?s in (the |my )?(sandbox|jarvis folder)\b/, .94, 'listFiles'],
     ['READ_FILE', /\b(read|open|show|display|what'?s in)( me)?( the| my)? ([\w\-.]+ )?(file|note|notes|document)\b|\b(?:read|open|show)(?: me)? [\w\-() ]+\.(txt|md|pdf)\b/, .9, 'readFile'],
     ['OPEN_FOLDER', /\bopen\b.*\b(folder|directory|sandbox|downloads|documents|projects)\b/, .93, 'openFolder'],
@@ -871,6 +874,9 @@ const NLU = (() => {
       const ok = typeof test === 'function' ? test(s) : test.test(s);
       if (ok) {
         let c = conf;
+        // Sanity check: "open calculator.html" / "open main.py" names a file — not the Calculator app or a website.
+        if (intent === 'OPEN_APPLICATION' && /\b[\w\-]+\.(?:html?|py|js|ts|jsx|tsx|c|cpp|h|java|cs|go|rs|css|json|csv|txt|md|pdf|docx?|pptx?|xlsx?|png|jpe?g|gif|ipynb|sql)\b/.test(s))
+          return { intent: 'READ_FILE', confidence: .92, tool: 'readFile', args: {}, text: s };
         // "open <something unknown>" = open the best web page for it (e.g. "open SIH 2026 problem statements").
         if (intent === 'OPEN_APPLICATION' && !findApp(s) && !/\b(folder|file|directory)\b/.test(s) && !/^(open|launch|start|run|load)\s+(it|that|this)\b/.test(s)) {
           const target = s.replace(/^(open|launch|start|run|fire up|boot up|boot|pull up|bring up|load|show me|go to|take me to|visit)\s+(up\s+)?(the\s+|my\s+)?/, '').trim();

@@ -12,7 +12,7 @@ const Skills = (() => {
   const slug = s => String(s || '').toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'my-website';
 
   /* ================= website generator ================= */
-  const SITE_START = /^(?:please\s+)?(?:build|make|create|generate|design|code|develop)\s+(?:me\s+)?(?:a\s+|an\s+|my\s+|the\s+)?(?:simple\s+|nice\s+|new\s+|modern\s+|small\s+)?(website|web\s?site|web\s?page|landing\s+page|portfolio(?:\s+(?:website|site|page))?|home\s?page|site)\b(?:\s+(?:for|about|on|of)\s+(.+?))?[.!]?$/i;
+  const SITE_START = /^(?:please\s+)?(?:build|make|create|generate|design|code|develop)\s+(?:me\s+)?(?:a\s+|an\s+|my\s+|the\s+)?(?:simple\s+|nice\s+|new\s+|modern\s+|small\s+)?(website|web\s?site|web\s?page|web\s?app|front[\s-]?end(?:\s+(?:ui|page|design))?|(?:ui|user interface)(?:\s+(?:page|design))?|landing\s+page|portfolio(?:\s+(?:website|site|page))?|home\s?page|site)\b(?:\s+(?:for|about|on|of)\s+(.+?))?[.!]?$/i;
   const SITE_Q = [
     ['what', 'What is the website for? (e.g. "my college tech fest", "my portfolio as a CS student")'],
     ['sections', 'What should be on it? List the sections or content — e.g. "events, schedule, registration form, contact".'],
@@ -224,7 +224,8 @@ const Skills = (() => {
       if (um[1] && um[1].trim().length > 2) S.uip.a.context = um[1].trim(); // "ui design prompt for my attendance app": still ask, but keep it
       return uipAsk();
     }
-    const sm = t.match(SITE_START);
+    // Voice often hears "create a frontend for…" as "creative front and for…".
+    const sm = t.replace(/^creative\s+(?=front)/i, 'create a ').replace(/\bfront\s+(?:and|an|in)\s+(?=(?:for|of)\b)/i, 'frontend ').match(SITE_START);
     if (sm) {
       if (needAI()) return needAI();
       S.site = { step: 0, a: {} };

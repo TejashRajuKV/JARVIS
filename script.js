@@ -1556,8 +1556,8 @@ async function fixCode(run, inputText) {
 }
 async function saveToFile(name, content, opts) {
   opts = opts || {};
-  toolStep('writeFile → ' + name);
-  const r = await callTool('/tool/writeFile', { name, content, append: !!opts.append, overwrite: !!opts.overwrite });
+  toolStep('writeFile → ' + (opts.where ? opts.where + '/' : '') + name);
+  const r = await callTool('/tool/writeFile', { name, content, append: !!opts.append, overwrite: !!opts.overwrite, where: opts.where || undefined });
   if (r.exists) {
     const again = mode => async () => {
       const r2 = await callTool('/tool/writeFile', { name: r.path, content, [mode]: true });
@@ -2701,12 +2701,18 @@ async function executeTool(p, raw) {
       return { text: 'Noted in `~/jarvis/' + r.name + '`: "' + content + '"', speak: 'Noted.', tool: 'writeFile' };
     }
     case 'WRITE_FILE': {
-      const nm = p.original.match(/(?:called|named|titled)\s+["']?([\w\- .]+?)["']?(?=\s+(?:with|saying|containing|that says)\b|:|$)/i);
-      const cm = p.original.match(/(?:with|saying|containing|that says|:)\s+["']?([\s\S]+?)["']?$/i);
-      const name = a.name || (nm ? nm[1].trim() : '');
+      // "… in desktop" / "on my desktop": the place, not part of the file name.
+      const WLOC = /\s+(?:in|on|inside|at)\s+(?:the\s+|my\s+)?(desktop|documents|downloads|pictures|music|videos)(?:\s+folder)?\s*$/i;
+      const wlm = p.original.match(WLOC), where = wlm ? wlm[1].toLowerCase() : '';
+      const worig = p.original.replace(WLOC, '');
+      const nm = worig.match(/(?:called|named|titled)\s+["']?([\w\- .]+?)["']?(?=\s+(?:with|saying|containing|that says)\b|:|$)/i) || worig.match(/((?:[a-z]:)?[\w\-.\/\\]*[\w\-]\.[a-z0-9+]{1,6})\b/i);
+      const cm = worig.match(/(?:with|saying|containing|that says|:)\s+["']?([\s\S]+?)["']?$/i);
+      let name = a.name || (nm ? (nm[1] || nm[0]).trim().replace(/^(?:a\s+|the\s+|my\s+)/i, '') : '');
+      // a location qualifier caught inside the name ("calculator.html in desktop") is not part of it
+      name = name.replace(/\s+(?:in|on|inside|at)\s+(?:the\s+|my\s+)?(desktop|documents|downloads|pictures|music|videos)(?:\s+folder)?\s*$/i, '').trim();
       const content = a.content || (cm ? cm[1] : '');
       if (!name) return { text: 'What should I call the file? e.g. "create a note called dsa-tips saying …"' };
-      return saveToFile(name, content ? content + '\n' : '');
+      return saveToFile(name, content ? content + '\n' : '', where ? { where } : undefined);
     }
 
     /* ---- code → file → run ---- */
@@ -3214,12 +3220,20 @@ async function executeTool(p, raw) {
       return { text: '**' + r.value + ' ' + from + ' = ' + r.result.toLocaleString() + ' ' + to + '**', speak: r.value + ' ' + r.from + ' is ' + r.result + ' ' + r.to, tool: 'convert' };
     }
     case 'CREATE_FOLDER': {
-      const m = p.original.match(/(?:called|named)\s+["']?([\w\- .\/]+?)["']?\s*$/i) || p.original.match(/(?:folder|directory)\s+["']?([\w\- .\/]+?)["']?\s*$/i);
-      const name = a.name || (m ? m[1].trim() : '');
+      // "… in desktop" / "on my desktop" / "inside downloads": the place, not part of the name.
+      const LOC = /\s+(?:in|on|inside|at|to|into)\s+(?:the\s+|my\s+)?(desktop|documents|downloads|pictures|music|videos)(?:\s+folder)?\s*$/i;
+      const lm = p.original.match(LOC), where = lm ? lm[1].toLowerCase() : '';
+      const orig = p.original.replace(LOC, '');
+      const m = orig.match(/(?:called|named)\s+["']?([\w\- .\/]+?)["']?\s*$/i) || orig.match(/(?:folder|directory)\s+["']?([\w\- .\/]+?)["']?\s*$/i);
+      const name = (a.name && !where ? a.name : '') || (m ? m[1].trim() : '');
       if (!name) return { text: 'What should I name the folder?' };
-      toolStep('createFolder → ' + name);
-      const r = await callTool('/tool/createFolder', { name });
+      toolStep('createFolder → ' + (where ? where + '/' : '') + name);
+      const r = await callTool('/tool/createFolder', where ? { name, where } : { name });
       if (r.error) return { text: 'Could not create it: ' + r.error };
+      if (where) {
+        if (!r.existed) Undo.push('created folder ' + name + ' on ' + where, async () => { const x = await callTool('/tool/undoCreate', { name: r.name }); if (x.error) throw new Error(x.error); return 'Removed the folder `' + name + '`.'; });
+        return { text: r.existed ? 'The folder `' + name + '` already exists in your ' + cap(where) + '.' : 'Created folder `' + name + '` in your ' + cap(where) + ' (`' + r.name + '`).', tool: 'createFolder' };
+      }
       if (!r.existed) Undo.push('created folder ' + r.name, async () => { const x = await callTool('/tool/undoCreate', { name: r.name }); if (x.error) throw new Error(x.error); return 'Removed the folder `' + r.name + '` (it’s in the trash).'; });
       return { text: r.existed ? 'The folder `' + r.name + '` already exists.' : 'Created folder `~/jarvis/' + r.name + '`.', suggestions: ['Open my ' + r.name + ' folder'], tool: 'createFolder', op: { kind: 'file', name: r.name, existed: !!r.existed } };
     }
@@ -3267,12 +3281,16 @@ async function executeTool(p, raw) {
         after: { sources: sources + cloudNote, suggestions: /.pdf$/i.test(r.results[0].file) ? ['Open ' + r.results[0].file.split('/').pop(), 'Make flashcards from ' + r.results[0].file.split('/').pop()] : ['Open it in VS Code'] } };
     }
     case 'SEARCH_FILES': {
-      const q = s.replace(/\b(find|search( for)?|locate|where is|the|my|file|files|folder|document|note|named|called|in|sandbox)\b/g, ' ').replace(/\s+/g, ' ').trim();
+      // "where is pythonProject" (no "file"/"folder" word): might not be a file at all ("where is delhi").
+      const implicit = !/\b(files?|folders?|documents?|notes?|directory)\b/.test(s);
+      const q = s.replace(/\s+(?:on|in) (?:my |the |this )?(?:laptop|computer|pc|system|drives?)$/, '')
+        .replace(/\b(find|search( for)?|locate|where is|where's|the|my|file|files|folder|document|note|named|called|in|sandbox)\b/g, ' ').replace(/\s+/g, ' ').trim();
       if (!q) return { text: 'What file name should I look for?' };
       toolStep('searchFiles → ' + q);
       const r = await callTool('/tool/searchFiles', { query: q });
       if (r.error) return { text: r.error };
-      if (!r.results.length) return { text: 'No files matching "' + q + '" in ~/jarvis.' };
+      if (!r.results.length && implicit && llmReady()) return { askLLM: raw };
+      if (!r.results.length) return { text: 'Nothing named "' + q + '" anywhere on this laptop.' };
       return { text: 'Found ' + r.results.length + (r.results.length === 1 ? ' match' : ' matches') + ':\n' + r.results.slice(0, 10).map(x => '- `' + x + '`').join('\n'), speak: 'I found ' + r.results.length + ' matches.', tool: 'searchFiles' };
     }
     case 'LIST_FILES': {
@@ -3285,15 +3303,18 @@ async function executeTool(p, raw) {
     case 'READ_FILE': {
       const m = s.match(/(?:read|open|show|display|what'?s in)(?: me)?(?: the| my)?\s+(.+?)(?:\s+(?:file|note|notes|document))?$/);
       let name = a.name || (m ? m[1].trim() : '');
+      // "the calculator.html (that you just created)": just the file name, without the extra words
+      const fn = !a.name && name.match(/(?:^|[\s"'(])([\w\-. ]*?[\w\-]+\.[a-z0-9]{1,5})(?=$|[\s"'),.!?])/i);
+      if (fn) name = fn[1].trim();
       if (/^(it|that|this)$/.test(name) || !name) name = ctx.lastFile || 'notes';
       if (/^(notes?|my notes)$/.test(name)) name = 'notes.md';
-      // "open lecture3.pdf" opens the PDF itself (in your PDF viewer); "read …" shows its text
-      if (/\.pdf$/i.test(name) && /^(?:open|show)\b/.test(s)) {
+      // "open lecture3.pdf" / "open calculator.html" opens the file itself (PDF viewer, browser, Office…); "read …" shows its text
+      if (/\.(pdf|html?|docx?|pptx?|xlsx?|png|jpe?g|gif)$/i.test(name) && /^(?:open|show|launch|run|load)\b/.test(s)) {
         toolStep('openFile → ' + name);
         const opened = o => {
           if (o.error) return { text: cap(o.error) + '.', suggestions: ['List my files'] };
           ctx.lastFile = o.name;
-          return { text: 'Opening **' + o.name + '**.', suggestions: ['Summarise ' + o.name.split(/[\\/]/).pop(), 'Make flashcards from ' + o.name.split(/[\\/]/).pop()], tool: 'openFile' };
+          return { text: 'Opening **' + o.name + '**.', suggestions: !/\.pdf$/i.test(o.name) ? null : ['Summarise ' + o.name.split(/[\\/]/).pop(), 'Make flashcards from ' + o.name.split(/[\\/]/).pop()], tool: 'openFile' };
         };
         const o = await callTool('/tool/openFile', { name });
         return pickPlace(o, name, async x => opened(await callTool('/tool/openFile', { name: x }))) || opened(o);
@@ -3310,12 +3331,24 @@ async function executeTool(p, raw) {
       return pickPlace(r, name, async x => shown(await callTool('/tool/readFile', { name: x }))) || shown(r);
     }
     case 'OPEN_FOLDER': {
-      const m = s.match(/open\s+(?:up\s+)?(?:my\s+|the\s+)?(.+?)\s*(?:folder|directory)?$/);
-      let name = a.name || (m ? m[1].replace(/\b(folder|directory)\b/g, '').trim() : '');
-      if (/^(sandbox|jarvis|jarvis sandbox|files)$/.test(name)) name = '';
+      // "… in desktop" / "on my desktop": the place, not part of the folder name.
+      const OLOC = /\s+(?:in|on|inside|at)\s+(?:the\s+|my\s+)?(desktop|documents|downloads|pictures|music|videos)(?:\s+folder)?\s*$/i;
+      const clean = p.original.replace(OLOC, '');
+      const m = clean.match(/open\s+(?:up\s+)?(?:my\s+|the\s+)?(.+?)\s*(?:folder|directory)?$/i) || s.match(/open\s+(?:up\s+)?(?:my\s+|the\s+)?(.+?)\s*(?:folder|directory)?$/);
+      const raw = (a.name || (m ? m[1].trim() : '')).replace(/\s+(?:in|on|inside|at)\s+(?:the\s+|my\s+)?(desktop|documents|downloads|pictures|music|videos)(?:\s+folder)?\s*$/i, '').trim();
+      const stripped = raw.replace(/\b(folder|directory)\b/g, '').trim();
+      // try the full phrase first ("test folder"), then without the kind word ("test")
+      const candidates = [...new Set([raw, stripped].filter(Boolean))];
+      let name = candidates[0] || '';
+      if (/^(sandbox|jarvis|jarvis sandbox|files)$/i.test(name)) name = '';
+      if (/^(sandbox|jarvis|jarvis sandbox|files)$/i.test(stripped)) name = '';
       toolStep('openFolder → ' + (name || '~/jarvis'));
-      const shown = r => r.error ? { text: cap(r.error) + '.', suggestions: ['Create a folder called ' + name] } : { text: 'Opening `' + r.name + '` in your file explorer.', tool: 'openFolder' };
-      const r = await callTool('/tool/openFolder', { name });
+      const shown = r => r.error ? { text: cap(r.error) + '.', suggestions: name ? ['Create a folder called ' + name] : ['Create a folder called Projects'] } : { text: 'Opening `' + r.name + '` in your file explorer.', tool: 'openFolder' };
+      let r = await callTool('/tool/openFolder', { name });
+      if (r.error && candidates.length > 1) {
+        const r2 = await callTool('/tool/openFolder', { name: candidates[1] });
+        if (!r2.error) return pickPlace(r2, candidates[1], async x => shown(await callTool('/tool/openFolder', { name: x }))) || shown(r2);
+      }
       return pickPlace(r, name, async x => shown(await callTool('/tool/openFolder', { name: x }))) || shown(r);
     }
 
