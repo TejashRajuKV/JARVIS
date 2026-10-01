@@ -14,6 +14,8 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="themes.css">
   <link rel="stylesheet" href="ui.css">
+  <link rel="stylesheet" href="boot-cinema.css">
+  <link rel="stylesheet" href="hud-overlay.css">
 </head>
 <body data-state="boot">
   <canvas id="bgCanvas"></canvas>
@@ -268,6 +270,9 @@
       <div class="s-row"><label>Phone access<small>FULL JARVIS ON YOUR PHONE · PRIVATE VIA TAILSCALE</small></label></div>
       <div class="s-note" id="remoteNote">Checking…</div>
       <div class="s-row"><label>Focus / break (min)</label><input type="number" id="focusMin" min="5" max="120" value="25"><input type="number" id="breakMin" min="1" max="60" value="5"></div>
+      <div class="s-row"><label>Boot cinema<small>ARC REACTOR ANIMATION BEHIND THE BOOT SCREEN</small></label><button class="switch on" id="bootCinemaToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Qwen NLU assist<small>WHEN RULES ARE UNSURE, ASK QWEN 3.5 4B LOCALLY TO PARSE INTENT · OFFLINE</small></label><button class="switch" id="qwenNluToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-row"><label>Holographic HUD<small>FLOATING TRANSLUCENT PANELS · CLOCK · STATS · LOG · QUICK CMD</small></label><button class="switch" id="hudOverlayToggle" role="switch" aria-checked="false"></button></div>
     </div>
     <div class="s-sec">
       <h3>BACKUP &amp; RESTORE</h3>
@@ -328,5 +333,9 @@
   <script src="wizard.js"></script>
   <script src="routines.js"></script>
   <script src="agent.js"></script>
+  <!-- Additive feature modules (all default-OFF except BootCinema, which is non-intrusive) -->
+  <script src="nlu-qwen.js"></script>
+  <script src="boot-cinema.js"></script>
+  <script src="hud-overlay.js"></script>
 </body>
 </html>

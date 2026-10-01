@@ -959,6 +959,55 @@ app.post('/api/summarize', async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+/* ---------------- NL Command Parser (Qwen + rules) ----------------
+   Additive: when the rule engine's confidence is low (CONVERSATION or < 0.85) and the
+   user has enabled "Qwen NLU assist" in settings, the page asks Qwen to extract a
+   structured intent. The model is constrained to a strict JSON schema and a known
+   intent whitelist — it can never invent a tool. If parsing fails or the model is
+   unreachable, the page falls back to the rule-engine result unchanged. */
+const NLU_INTENT_WHITELIST = [
+  'OPEN_APPLICATION','CLOSE_APPLICATION','OPEN_WEB','WEB_SEARCH','SITE_SEARCH',
+  'BRIGHTNESS','VOLUME','MUTE','DARK_MODE','BATTERY','WEATHER','TIME','DATE',
+  'TIMER','REMINDER','TASK_ADD','TASK_LIST','TASK_DONE','TASK_DELETE',
+  'READ_FILE','LIST_FILES','SEARCH_FILES','CREATE_FOLDER','CREATE_FILE',
+  'SCREENSHOT','READ_SCREEN','LOCK','SLEEP','SHUTDOWN','RESTART',
+  'PLAY_MUSIC','PAUSE','NEXT_TRACK','PREV_TRACK',
+  'WEATHER','MAPS','CONVERT','CALCULATE','CONVERSATION'
+];
+app.post('/api/nlu/parse', async (req, res) => {
+  const text = String((req.body && req.body.text) || '').slice(0, 800);
+  if (!text.trim()) return res.status(400).json({ error: 'text required' });
+  const sys = [
+    'You are JARVIS\'s natural-language intent parser.',
+    'Read the user command and reply with ONLY a single JSON object — no prose, no code fences.',
+    'Schema: {"intent": string, "args": object, "confidence": number 0..1}',
+    'The intent MUST be one of: ' + NLU_INTENT_WHITELIST.join(', ') + '.',
+    'If the command is casual chat or you are unsure, use "CONVERSATION".',
+    'Pull app names, file names, numbers, times and queries into args (e.g. {"app":"chrome"}, {"query":"react hooks"}, {"level":50}, {"minutes":10}).',
+    'Be strict: confidence 0.9+ only when the intent is unmistakable. 0.7-0.9 for clear but slightly ambiguous. Below 0.7 means CONVERSATION.',
+    'Never invent an intent not in the whitelist. Never claim to perform the action — you only classify.'
+  ].join(' ');
+  try {
+    const out = await llm.complete({
+      model: req.body.model || DEFAULT_MODEL,
+      system: sys,
+      messages: [{ role: 'user', content: text }],
+      maxTokens: 220, temperature: 0.2, json: true,
+    });
+    let parsed = null;
+    if (out) {
+      try { parsed = JSON.parse(String(out).replace(/^```(?:json)?|```$/gim, '').trim()); }
+      catch { parsed = llm.extractJSON ? llm.extractJSON(out) : null; }
+    }
+    if (!parsed || typeof parsed !== 'object') return res.json({ success: false, reason: 'no_json' });
+    const intent = String(parsed.intent || '').toUpperCase();
+    if (!NLU_INTENT_WHITELIST.includes(intent)) return res.json({ success: false, reason: 'bad_intent', got: intent });
+    const conf = Math.max(0, Math.min(1, Number(parsed.confidence) || 0));
+    const args = parsed.args && typeof parsed.args === 'object' && !Array.isArray(parsed.args) ? parsed.args : {};
+    res.json({ success: true, intent, args, confidence: conf, source: 'qwen' });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 app.post('/api/chat', async (req, res) => {
   const { messages, context = {}, model } = req.body;
   if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'messages required' });

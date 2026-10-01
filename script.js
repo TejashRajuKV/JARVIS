@@ -96,7 +96,7 @@ const store = (() => {
 
 /* ============ data ============ */
 const settings = Object.assign(
-  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '' },
+  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '', qwenNlu: false, hudOverlay: false, bootCinema: true },
   store.get('jarvis.settings', {})
 );
 Persona.setAddressSource(() => {
@@ -4759,6 +4759,21 @@ async function handleUser(text, source) {
     if (p && p.intent === 'FLASH_END') { await deliver(nextFlashCard(), { intent: 'FLASH_REVIEW', confidence: 1 }); return; }
     if (p) { p = { confidence: .95, original: norm.original, fromPending: true, ...p }; }
     else { p = NLU.classify(norm, ctx); p.original = norm.original; }
+    // === NLUQ hook (additive; default disabled) ============================
+    // When the rule engine was unsure (CONVERSATION or confidence < 0.85) and the
+    // user has enabled "Qwen NLU assist" in Settings, ask the local Qwen model
+    // to extract a structured intent. Qwen is constrained to a strict whitelist
+    // and never invents a tool. If Qwen fails or its confidence is below the rule
+    // engine's, the rule result is kept unchanged — existing behavior is preserved.
+    if (typeof NLUQ !== 'undefined' && NLUQ.enabled && !p.fromPending && llmReady()
+        && (p.intent === 'CONVERSATION' || p.confidence < 0.85)
+        && !ctx.pending) {
+      try {
+        const q = await NLUQ.parse(norm, ctx, p);
+        if (q) { const oldIntent = p.intent; p = q; if (turnTrace) noteTrace('qwen_nlu', 'rules=' + oldIntent + ' · qwen=' + p.intent + ' · conf ' + p.confidence.toFixed(2) + ' · ' + NLUQ.describe().latencyMs + 'ms'); }
+      } catch (e) { if (typeof log === 'function') log('warn', 'NLUQ parse error: ' + e.message); }
+    }
+    // === end NLUQ hook ======================================================
     log('ok', 'intent: ' + p.intent + ' · conf ' + p.confidence.toFixed(2) + (norm.text !== text.toLowerCase() ? ' · heard "' + norm.text + '"' : '') + (p.corrected ? ' · typo-corrected to "' + p.corrected + '"' : ''));
     if (p.corrected) p.text = p.corrected;
     if (turnTrace) Object.assign(turnTrace, { normalized: norm.text, intent: p.intent, confidence: p.confidence, corrected: p.corrected, args: p.args,
