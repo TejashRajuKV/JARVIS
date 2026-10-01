@@ -342,3 +342,7 @@ body.dropping::after { border: 1px dashed var(--cyan); border-radius: 10px; back
   .brand small { display: none; }
   .lang-switch, #wakeBtn { flex: 1; justify-content: center; }
 }
+
+/* ---------- "/" skills menu above the chat box ---------- */
+#slashMenu { position: fixed; z-index: 300; display: none; max-height: 300px; overflow-y: auto; background: var(--bg2, #0b1822); border: 1px solid var(--line, #1d3342); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.5); padding: 4px 0; }
+#slashMenu.open { display: block; }

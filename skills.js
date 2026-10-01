@@ -184,6 +184,24 @@ module.exports = function setupSkills(app, { llm, DEFAULT_MODEL, SANDBOX, openPa
     catch (e) { fail(res, e); }
   });
 
+  // UI design prompt: turns the student's own answers into one ready-to-paste prompt (no code, no invented project).
+  app.post('/api/skill/uiprompt', async (req, res) => {
+    const b = req.body || {}, f = k => String(b[k] || '').trim().slice(0, 600);
+    if (!f('task') || !f('context')) return res.status(400).json({ error: 'I need the task and the project context.' });
+    const system = `You write prompts for AI UI generators (v0, Lovable, Claude, Figma AI) using the TCREI framework. Write ONE prompt the student can paste.
+Use ONLY the details given. Never invent a different project, never use placeholders like [Insert ...]. If a detail is missing, choose a sensible default and say it is a default.
+Format it exactly with these five headings, in this order, each followed by its content:
+**Task** — one or two sentences: what to design and the exact output wanted (e.g. a single responsive page as code, or screens).
+**Context** — the project, who uses it, their goal, and the pages/sections and key components the UI needs.
+**References** — look and feel, colours, fonts, example sites, tech stack.
+**Evaluate** — a checklist the AI must check its design against before answering (the student's must-haves plus responsive, accessible, consistent).
+**Iterate** — an instruction to the AI, not your own answer: "After the design, list 2-3 assumptions you made and suggest 2 variations I can ask for next."
+Output ONLY the prompt. No code, no intro sentence, no closing remarks.`;
+    const user = 'Task: ' + f('task') + '\nContext: ' + f('context') + '\nReferences: ' + (f('refs') || 'not given') + '\nMust get right: ' + (f('must') || 'not given');
+    try { res.json({ success: true, text: (await llm.complete({ model: model(req), system, messages: [{ role: 'user', content: user }], temperature: 0.5, maxTokens: 900, timeoutMs: 180000 })).trim() }); }
+    catch (e) { fail(res, e); }
+  });
+
   // Viva / interview practice.
   app.post('/api/skill/viva/questions', async (req, res) => {
     const b = req.body || {};

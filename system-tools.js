@@ -34,7 +34,7 @@ function Await($op, [Type]$type) { $t = $asTask.MakeGenericMethod($type).Invoke(
   /* ---------- read my screen (OCR) ---------- */
   const OCR = WINRT_AWAIT + `
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-Add-Type -Namespace J -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); [DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern bool GetWindowRect(System.IntPtr h, out RECT r); public struct RECT { public int L, T, R, B; }'
+Add-Type -Namespace J -Name U -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); [DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern bool GetWindowRect(System.IntPtr h, out RECT r); [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(System.IntPtr h, System.Text.StringBuilder s, int n); public struct RECT { public int L, T, R, B; }'
 [void][J.U]::SetProcessDPIAware()
 $png = $env:JARVIS_OCR_PNG
 $src = $env:JARVIS_OCR_SRC
@@ -46,6 +46,7 @@ if ($src -eq 'clipboard') {
   $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
   $x = $b.Left; $y = $b.Top; $w = $b.Width; $h = $b.Height
   if ($src -eq 'window') {
+    $sbT = New-Object System.Text.StringBuilder 512; [void][J.U]::GetWindowText([J.U]::GetForegroundWindow(), $sbT, 512); $title = $sbT.ToString()
     $r = New-Object J.U+RECT
     if ([J.U]::GetWindowRect([J.U]::GetForegroundWindow(), [ref]$r) -and ($r.R - $r.L) -gt 80 -and ($r.B - $r.T) -gt 80) {
       $x = [Math]::Max($r.L, $b.Left); $y = [Math]::Max($r.T, $b.Top)
@@ -66,7 +67,7 @@ $eng = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
 $res = Await ($eng.RecognizeAsync($sb)) ([Windows.Media.Ocr.OcrResult])
 $stream.Dispose()
 $lines = @($res.Lines | ForEach-Object { $_.Text })
-[Console]::Out.WriteLine((@{ text = ($lines -join "\`n"); lines = $lines.Count; width = $sb.PixelWidth; height = $sb.PixelHeight } | ConvertTo-Json -Compress))`;
+[Console]::Out.WriteLine((@{ text = ($lines -join "\`n"); lines = $lines.Count; title = $title; width = $sb.PixelWidth; height = $sb.PixelHeight } | ConvertTo-Json -Compress))`;
 
   // Downscales an existing image for the vision model. Deliberately a separate script from OCR: Windows Defender's
   // script scanner (AMSI) blocks screen capture + image re-encoding in one script as "malicious content".
@@ -91,7 +92,7 @@ $small.Save($env:JARVIS_IMG_OUT, [System.Drawing.Imaging.ImageFormat]::Jpeg); $s
 
   app.post('/api/sys/screenRead', winOnly, async (req, res) => {
     const source = ['screen', 'window', 'clipboard'].includes(req.body.source) ? req.body.source : 'window';
-    const delay = source === 'clipboard' ? 0 : Math.max(0, Math.min(5, parseInt(req.body.delay) || 0));
+    const delay = source === 'clipboard' ? 0 : Math.max(0, Math.min(10, parseInt(req.body.delay) || 0));
     const stem = path.join(os.tmpdir(), `jarvis_ocr_${process.pid}_${Date.now()}`);
     const png = stem + '.png', jpg = req.body.vision ? stem + '.jpg' : '';
     if (delay) await new Promise(r => setTimeout(r, delay * 1000));
@@ -113,7 +114,35 @@ $small.Save($env:JARVIS_IMG_OUT, [System.Drawing.Imaging.ImageFormat]::Jpeg); $s
     fs.unlink(png, () => {}); if (jpg) fs.unlink(jpg, () => {}); // the capture never stays on disk
     if (r.error === 'noimage') return res.status(404).json({ error: 'There is no image on the clipboard — snip one with Win+Shift+S first' });
     if (r.error) return res.status(500).json({ error: 'Screen reading failed: ' + r.error });
-    res.json({ success: true, source, text: String(r.text || '').slice(0, 20000), lines: r.lines, width: r.width, height: r.height, ms: Date.now() - t0, imageToken });
+    res.json({ success: true, source, text: String(r.text || '').slice(0, 20000), lines: r.lines, title: String(r.title || '').slice(0, 300), width: r.width, height: r.height, ms: Date.now() - t0, imageToken });
+  });
+
+  /* ---------- browser tab switch (for "analyse my second tab") ---------- */
+  // Presses Ctrl+<n> in the browser, or Ctrl+Tab until JARVIS's own tab is back in front. Keys are sent ONLY while the
+  // foreground window is the browser showing JARVIS (go) or the same browser window (back) — never into another app.
+  // Kept apart from the capture script: AMSI flags key sending + screen capture in one script.
+  const TAB_SWITCH = `
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -Namespace J -Name T -MemberDefinition '[DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow(); [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(System.IntPtr h, System.Text.StringBuilder s, int n);'
+function Title { $s = New-Object System.Text.StringBuilder 512; [void][J.T]::GetWindowText([J.T]::GetForegroundWindow(), $s, 512); $s.ToString() }
+$expect = $env:JARVIS_EXPECT; $hwnd = [J.T]::GetForegroundWindow()
+if ($env:JARVIS_MODE -eq 'go') {
+  if (-not (Title).Contains($expect)) { [Console]::Out.WriteLine((@{ error = 'notfront'; title = (Title) } | ConvertTo-Json -Compress)); return }
+  [System.Windows.Forms.SendKeys]::SendWait('^' + $env:JARVIS_N); Start-Sleep -Milliseconds 1200
+  [Console]::Out.WriteLine((@{ ok = $true; title = (Title) } | ConvertTo-Json -Compress)); return
+}
+for ($i = 0; $i -lt 15; $i++) {
+  if ((Title).Contains($expect)) { [Console]::Out.WriteLine((@{ ok = $true } | ConvertTo-Json -Compress)); return }
+  if ([J.T]::GetForegroundWindow() -ne $hwnd) { break }
+  [System.Windows.Forms.SendKeys]::SendWait('^{TAB}'); Start-Sleep -Milliseconds 250
+}
+[Console]::Out.WriteLine((@{ ok = $false } | ConvertTo-Json -Compress))`;
+  app.post('/api/sys/browserTab', winOnly, async (req, res) => {
+    const b = req.body || {}, mode = b.mode === 'back' ? 'back' : 'go';
+    const n = Math.max(1, Math.min(8, parseInt(b.n) || 0)), expect = String(b.expect || '').slice(0, 200);
+    if (expect.length < 4 || (mode === 'go' && !parseInt(b.n))) return res.status(400).json({ error: 'Bad tab request' });
+    const r = await ps(TAB_SWITCH, { JARVIS_MODE: mode, JARVIS_N: String(n), JARVIS_EXPECT: expect }, 15000);
+    res.json(r);
   });
 
   /* ---------- brightness ---------- */

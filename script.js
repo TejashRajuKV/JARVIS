@@ -3587,12 +3587,20 @@ async function executeTool(p, raw) {
       const clip = p.intent === 'CLIPBOARD_IMAGE_READ';
       const explain = p.intent === 'SCREEN_EXPLAIN' || a.explain === true || a.explain === 'true' || (clip && /\b(explain|describe|fix|solve|summari[sz]e|debug|translate|what does|what'?s wrong|what'?s in|what is in)\b/.test(s));
       const whole = /\b(whole|entire|full|all of (my|the)) screen\b/.test(s);
-      // "analyse my second tab": JARVIS can't switch browser tabs itself — you switch, it captures the window. A tab
-      // gets a longer countdown (bring the browser forward, then pick the tab) and the shortcut for a numbered tab.
+      // "analyse my second tab": a numbered tab is opened by JARVIS itself (Ctrl+<n> in this browser), read, and then
+      // JARVIS's tab is brought back. If that can't be done (browser not in front, e.g. asked from the phone), you
+      // switch during a countdown instead.
       const tab = /\b(tab|browser|web ?page)\b/.test(s);
-      const nth = { first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4, fifth: 5, '5th': 5 }[(/\b(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th)\b(?: browser)? tab\b/.exec(s) || [])[1]];
-      const wait = tab ? 5 : 3;
-      if (!clip) {
+      const nth = { first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4, fifth: 5, '5th': 5, sixth: 6, '6th': 6, seventh: 7, '7th': 7, eighth: 8, '8th': 8 }[(/\b(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th|sixth|6th|seventh|7th|eighth|8th)\b(?: browser)? tab\b/.exec(s) || [])[1]]
+        || +((/\btab\s*(?:no\.?|number|#)?\s*([1-8])\b/.exec(s) || [])[1] || 0) || 0;
+      let auto = false;
+      if (!clip && nth && document.title) {
+        const g = await callTool('/sys/browserTab', { mode: 'go', n: nth, expect: document.title });
+        if (g.ok && g.title && g.title.includes(document.title)) return { text: 'Tab ' + nth + ' is JARVIS itself, ' + Persona.sir() + '. Which other tab should I read?' };
+        auto = !!g.ok;
+      }
+      const wait = auto ? 0 : tab ? 8 : 3;
+      if (!clip && !auto) {
         jarvisSay({ text: (tab ? 'Bring your browser forward and open that tab' + (nth ? ' (**Ctrl+' + nth + '** jumps to tab ' + nth + ')' : '') : 'Switch to the window you want me to read') + ', ' + Persona.sir() + ' — capturing in ' + wait + ' seconds.',
           speak: 'Capturing in ' + wait + ' seconds.', intent: 'SCREEN_READ', noLog: true });
         Array.from({ length: wait }, (_, i) => wait - i).forEach((n, i) => setTimeout(() => toast('Reading your screen in ' + n + '…', true), i * 1000));
@@ -3600,16 +3608,21 @@ async function executeTool(p, raw) {
       toolStep('screenRead');
       const wantVision = explain && llmReady();
       const r = await callTool('/sys/screenRead', { source: clip ? 'clipboard' : whole ? 'screen' : 'window', delay: clip ? 0 : wait, vision: wantVision });
+      if (auto) await callTool('/sys/browserTab', { mode: 'back', expect: document.title }); // bring JARVIS's tab back
       if (r.error) return { text: cap(r.error) + '.' };
+      // Still on JARVIS's own window when the capture fired: reading it would only describe JARVIS (and guess from tab names).
+      if (!clip && !whole && r.title && document.title && r.title.includes(document.title)) return { text: 'I captured my own window, ' + Persona.sir() + ' — you were still on JARVIS. Say it again, then switch to ' + (tab ? 'that tab' : 'the window') + ' within ' + wait + ' seconds.', speak: 'I captured my own window. Try again and switch within ' + wait + ' seconds.', suggestions: [raw] };
       const text = (r.text || '').trim();
       const where = clip ? 'copied image' : 'screen';
+      const titleNote = r.title ? ' The captured window is titled "' + r.title + '".' : '';
+      const honest = '\nDescribe only what is actually visible. If you do not know what a site or app is, say so instead of guessing, and do not offer actions you cannot do.';
       // With vision, the local model sees the screenshot itself (charts, UI, images), and the OCR text is added
       // as a hint for exact wording. Without vision (or text-only models), it's the OCR text alone, as before.
-      if (wantVision && r.imageToken) return { askLLM: raw + '\n\nThe attached image is a screenshot of my ' + where + '.' +
-        (text ? ' Text read from it by OCR (may contain small errors):\n```\n' + text.slice(0, 6000) + '\n```' : '') + '\nAnswer my request about it.', imageToken: r.imageToken };
+      if (wantVision && r.imageToken) return { askLLM: raw + '\n\nThe attached image is a screenshot of my ' + where + '.' + titleNote +
+        (text ? ' Text read from it by OCR (may contain small errors):\n```\n' + text.slice(0, 6000) + '\n```' : '') + honest + '\nAnswer my request about it.', imageToken: r.imageToken };
       if (!text) return { text: 'I could not find any readable text there, ' + Persona.sir() + '. (I read English text only.)' };
       ctx.lastOcr = text;
-      if (wantVision) return { askLLM: raw + '\n\nHere is the text captured from my ' + where + ' (via OCR, so it may contain small errors):\n```\n' + text.slice(0, 8000) + '\n```\nAnswer my request about it.' };
+      if (wantVision) return { askLLM: raw + '\n\nHere is the text captured from my ' + where + ' (via OCR, so it may contain small errors).' + titleNote + '\n```\n' + text.slice(0, 8000) + '\n```' + honest + '\nAnswer my request about it.' };
       return { text: 'Read ' + plural(r.lines, 'line') + ' from your ' + (clip ? 'copied image' : whole ? 'screen' : 'window') + ':\n```text\n' + text.slice(0, 4000) + (text.length > 4000 ? '\n…' : '') + '\n```\n_Read locally with Windows OCR — the capture was deleted straight away._',
         speak: 'I read ' + plural(r.lines, 'line') + ' of text. It is on screen.', tool: 'screenRead',
         actions: [{ label: 'COPY TEXT', fn: async () => { await copyText(text); toast('Copied'); } }, { label: 'EXPLAIN IT', fn: () => handleUser('explain the text you just read from my screen', 'chip') }] };

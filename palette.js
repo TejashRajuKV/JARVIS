@@ -13,6 +13,7 @@
     // Quick actions (the chips under the message box, all groups)
     if (typeof CHIP_GROUPS !== 'undefined') for (const g of Object.keys(CHIP_GROUPS)) for (const c of CHIP_GROUPS[g]) add(c, c.replace('Play / pause', 'pause'), 'Quick actions', g.toLowerCase());
     // Skills & study
+    add('UI design prompt', 'ui design prompt', 'Skills', 'TCREI: 4 questions, then the prompt');
     add('Plan my day', 'plan my day', 'Study');
     add('Plan my GATE prep…', 'plan my gate prep, exam on', 'Study', 'then: exam date + topics');
     add('Take my DBMS viva', 'take my dbms viva', 'Study');
@@ -43,7 +44,8 @@
     add('Why did you do that?', 'why did you do that', 'Help');
     // Learned phrases (command learning)
     if (typeof Agent !== 'undefined' && Agent.learnedSummary) {
-      for (const l of (Agent.learnedSummary() || '').split('\n')) {
+      const ls = Agent.learnedSummary();
+      for (const l of String((ls && ls.text) || '').split('\n')) {
         const m = l.match(/"(.+?)"\s*→/);
         if (m) add('⭐ ' + m[1], m[1], 'Learned', 'taught by you');
       }
@@ -126,6 +128,58 @@
     if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); open ? close() : openPal(); }
     else if (open && e.key === 'Escape') close();
   }, true);
+
+  // "/" in the chat box: a small skills menu right above the input (type to filter, ↑↓ Tab/Enter, Esc).
+  let sbox = null, sitems = [], ssel = 0;
+  function slashQuery(inp) { const v = inp.value; return v.startsWith('/') && !/\s{2,}/.test(v) ? v.slice(1) : null; }
+  function slashClose() { if (sbox) sbox.classList.remove('open'); sitems = []; }
+  function slashRender(inp) {
+    const q = slashQuery(inp);
+    if (q === null) return slashClose();
+    if (!sbox) { sbox = document.createElement('div'); sbox.id = 'slashMenu'; sbox.setAttribute('role', 'listbox'); document.body.appendChild(sbox); }
+    const r = (inp.closest('.input-row') || inp).getBoundingClientRect(); // fixed: the composer panel clips anything above it
+    sbox.style.left = r.left + 'px'; sbox.style.width = r.width + 'px'; sbox.style.bottom = (innerHeight - r.top + 6) + 'px';
+    const ql = q.toLowerCase().trim();
+    sitems = buildItems().filter(it => it.group !== 'Quick actions' || ql) // bare "/" lists the skills, not every chip
+      .map(it => { const lab = it.label.toLowerCase(), t = lab + ' ' + it.group.toLowerCase() + ' ' + (it.hint || '').toLowerCase();
+        const starts = lab.startsWith(ql), word = ql && (' ' + t).includes(' ' + ql); // word-start matches only, so "ui" doesn't hit "quiz"
+        if (ql && !word) return null;
+        return { ...it, s: (starts ? 4 : 0) + (it.group === 'Skills' ? 2 : 0) + (word ? 1 : 0) }; })
+      .filter(Boolean).sort((a, b) => b.s - a.s);
+    ssel = 0; sbox.innerHTML = '';
+    if (!sitems.length) { sbox.innerHTML = '<div class="pal-empty">No skill matches. Delete the / to just ask.</div>'; sbox.classList.add('open'); return; }
+    sitems.forEach((it, i) => {
+      const d = document.createElement('div');
+      d.className = 'pal-item' + (i === 0 ? ' sel' : '');
+      d.innerHTML = '<span class="pl-label"></span><span class="pl-hint"></span>';
+      d.querySelector('.pl-label').textContent = it.label;
+      d.querySelector('.pl-hint').textContent = it.hint || it.group;
+      d.addEventListener('mousedown', e => { e.preventDefault(); slashPick(inp, it); });
+      sbox.appendChild(d);
+    });
+    sbox.classList.add('open');
+  }
+  function slashPick(inp, it) {
+    slashClose();
+    if (/…$/.test(it.label)) { inp.value = it.cmd + ' '; inp.focus(); return; } // needs details: fill, let the user finish
+    inp.value = '';
+    if (typeof handleUser === 'function') handleUser(it.cmd, 'slash');
+  }
+  function slashInit() {
+    const inp = $('#chatInput'); if (!inp) return;
+    inp.addEventListener('input', () => slashRender(inp));
+    inp.addEventListener('blur', () => setTimeout(slashClose, 120));
+    inp.addEventListener('keydown', e => {
+      if (!sitems.length || !sbox || !sbox.classList.contains('open')) return;
+      const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+      const mv = n => { ssel = (ssel + n + sitems.length) % sitems.length; [...sbox.querySelectorAll('.pal-item')].forEach((el, i) => el.classList.toggle('sel', i === ssel)); };
+      if (e.key === 'ArrowDown') { stop(); mv(1); }
+      else if (e.key === 'ArrowUp') { stop(); mv(-1); }
+      else if (e.key === 'Enter' || e.key === 'Tab') { stop(); slashPick(inp, sitems[ssel]); }
+      else if (e.key === 'Escape') { stop(); slashClose(); }
+    }, true);
+  }
+  if (typeof document !== 'undefined') { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', slashInit); else slashInit(); }
 
   // expose for tests (jsdom-less: only the pure parts)
   if (typeof module !== 'undefined') module.exports = { fuzzy, buildItemsRef: buildItems };

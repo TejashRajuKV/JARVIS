@@ -19,6 +19,7 @@ const NOT_TESTABLE = {
   'POST /api/tool/pasteKeys': 'types into the focused app', 'POST /api/tool/writeClipboard': 'overwrites your clipboard',
   'POST /api/tool/readClipboard': 'reads your clipboard', 'POST /api/sys/clipHistory': 'reads your clipboard history',
   'POST /api/tool/screenshot': 'captures your screen', 'POST /api/sys/screenRead': 'OCRs your screen',
+  'POST /api/sys/browserTab': 'presses Ctrl+<n> / Ctrl+Tab in your browser',
   'POST /api/sys/displayOff': 'turns the display off', 'POST /api/sys/window': 'moves your windows',
   'POST /api/tool/openApplication': 'launches apps', 'POST /api/tool/openUrl': 'opens the browser',
   'POST /api/tool/openFile': 'opens a viewer window', 'POST /api/tool/openFolder': 'opens Explorer',
@@ -288,7 +289,7 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     check('Language', 'translate validates the language', (await post('/api/translate', { text: 'hi', to: 'fr' })).status === 400);
     check('Skills', 'viva needs a subject', (await post('/api/skill/viva/questions', {})).status === 400);
     // Missing input gets a plain-English 4xx (the page shows it as-is), never a 500.
-    for (const p of ['/api/skill/viva/grade', '/api/skill/coach', '/api/skill/fix', '/api/skill/site', '/api/skill/siteEdit', '/api/skill/siteRevert']) {
+    for (const p of ['/api/skill/viva/grade', '/api/skill/coach', '/api/skill/fix', '/api/skill/site', '/api/skill/siteEdit', '/api/skill/siteRevert', '/api/skill/uiprompt']) {
       const x = await post(p, {});
       check('Skills', p.replace('/api/skill/', '') + ': missing input gets a plain 4xx message', x.status >= 400 && x.status < 500 && typeof x.json.error === 'string', x.status + ' ' + x.text);
     }

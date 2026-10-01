@@ -4,7 +4,7 @@
    session, or the website questions), starts a skill from its trigger phrase, and otherwise returns null so the
    normal command handling carries on. Uses the page's globals (callTool, jarvisSay, llm, Undo, saveToFile…). */
 const Skills = (() => {
-  const S = { site: null, lastSite: null, coach: null, viva: null };
+  const S = { site: null, lastSite: null, coach: null, viva: null, uip: null };
   const say = (text, extra) => Object.assign({ text, noPersona: true }, extra || {});
   const needAI = () => llmReady() ? null : say('That needs my AI brain, and it’s off or unreachable. Turn it on in **Settings → AI BRAIN** (or add an API key there), then try again.');
   const busyMsg = t => { setState('PROCESSING', t); jarvisSay({ text: '⏳ ' + t, intent: 'SKILL', noTTS: true, noPersona: true }); };
@@ -41,6 +41,23 @@ const Skills = (() => {
     const name = S.lastSite;
     Undo.push('website change', async () => { const x = await callTool('/skill/siteRevert', { name }); if (x.error) throw new Error(x.error); return 'The website is back to the previous version.'; });
     return say('✓ Updated and reopened the website. Say **"undo"** to go back.', { intent: 'WEBSITE', speak: 'Done. I reopened the website.', suggestions: ['Undo'] });
+  }
+
+  /* ================= UI design prompt ================= */
+  const UIP_START = /^(?:ui design(?: prompt)?|(?:write|give|make)(?: me)? (?:a |an )?(?:detailed )?(?:ui|ux)(?: design)? prompt|i want to design (?:a )?ui(?: page)?)\b(?:\s+(?:for|of)\s+(.+?))?[.!:]?$/i;
+  // TCREI: Task, Context, References → the prompt; Evaluate + Iterate are written into it.
+  const UIP_Q = [
+    ['task', '**T — Task.** What should the AI design? (e.g. "a dashboard page", "login + signup screens", "a landing page")'],
+    ['context', '**C — Context.** What is your project, who uses it, and what must the page do? (e.g. "attendance tracker for my college; students check their % and teachers mark attendance")'],
+    ['refs', '**R — References.** Any look, sites or tech to follow? (e.g. "dark and minimal like Linear, React + Tailwind") — or say "skip".'],
+    ['must', '**E — Evaluate.** What must the result get right? (e.g. "works on phones, big readable numbers, under 3 clicks to mark attendance") — or say "skip".'],
+  ];
+  const uipAsk = () => say((S.uip.step ? '' : 'Let’s build your UI prompt with **TCREI** — 4 quick questions (say "cancel" to stop).\n\n') + UIP_Q[S.uip.step][1], { intent: 'UI_PROMPT', speak: UIP_Q[S.uip.step][1].replace(/\*\*[^*]+\*\*\s*/, '').split(' (')[0] });
+  async function uipBuild(a) {
+    busyMsg('Writing your UI design prompt…');
+    const r = await callTool('/skill/uiprompt', a);
+    if (r.error) return say('I couldn’t write it: ' + r.error, { intent: 'UI_PROMPT' });
+    return say(r.text, { intent: 'UI_PROMPT', speak: 'Here is your UI design prompt.', suggestions: ['Build a website for my project'] });
   }
 
   /* ================= DSA coach ================= */
@@ -177,6 +194,17 @@ const Skills = (() => {
     if (!t) return null;
     // 1. an active viva takes every answer
     if (S.viva) return vivaTurn(t);
+    // 1b. UI design prompt questions in progress
+    if (S.uip) {
+      if (cancelRe.test(t)) { S.uip = null; return say('Okay, cancelled.'); }
+      const [key] = UIP_Q[S.uip.step];
+      const skip = (key === 'refs' || key === 'must') && /^(skip|none|any|no|whatever|you choose|your choice)$/i.test(t);
+      if (!skip && t.length < 2) return uipAsk();
+      S.uip.a[key] = skip ? '' : [S.uip.a[key], t].filter(Boolean).join('; '); S.uip.step++;
+      if (S.uip.step < UIP_Q.length) return uipAsk();
+      const a = S.uip.a; S.uip = null;
+      return uipBuild(a);
+    }
     // 2. website questions in progress
     if (S.site) {
       if (cancelRe.test(t)) { S.site = null; return say('Okay, cancelled the website.'); }
@@ -189,6 +217,13 @@ const Skills = (() => {
       return siteBuild(a);
     }
     // 3. starts
+    const um = t.match(UIP_START);
+    if (um) {
+      if (needAI()) return needAI();
+      S.uip = { step: 0, a: {} };
+      if (um[1] && um[1].trim().length > 2) S.uip.a.context = um[1].trim(); // "ui design prompt for my attendance app": still ask, but keep it
+      return uipAsk();
+    }
     const sm = t.match(SITE_START);
     if (sm) {
       if (needAI()) return needAI();
