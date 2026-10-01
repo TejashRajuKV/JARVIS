@@ -174,6 +174,7 @@ const ctx = { lastApp: null, lastIntent: null, lastFile: null, pending: null };
 // results of the last list or search — so "create a folder there", "open it" and "open the second one" mean something.
 ctx.focus = { folder: null, file: null, created: null, results: [] };
 const FOCUS_MS = 15 * 60 * 1000;
+const CONFIRM_MIN = 0.6;   // medium-confidence band for spoken commands: [CONFIRM_MIN, 0.85) → "did you mean …?"
 // (a drive root keeps its slash: "D:\" — "D:" alone would mean the current folder on D)
 function setFocus(kind, p) { if (p) ctx.focus[kind] = { path: /^[a-z]:[\\/]*$/i.test(String(p)) ? String(p)[0].toUpperCase() + ':\\' : String(p).replace(/[\\/]+$/, '') || String(p), t: Date.now() }; }
 function focusOf(kind) { const f = ctx.focus[kind]; return f && Date.now() - f.t < FOCUS_MS ? f : null; }
@@ -188,7 +189,7 @@ function focusNewest() {
 // Where a request points. "in that directory" / "there" → the folder in focus ({ref:true, path}); "in D drive",
 // "on my desktop", "in C:\x\y", "inside calculator", "in my laptop" → {scope} as said (the server reads it);
 // rest = the request without the place.
-const REF_RE = /\s*\b(?:in|inside|into|under|at|to|on|of)\s+(?:that|this|the same|the current|current|the above|the last|same)\s+(?:directory|folder|dir|location|place|path|one)\b|\s+(?:in\s+|inside\s+)?(?:there|over there|in there)\s*$/i;
+const REF_RE = /\s*\b(?:in|inside|into|under|at|to|on|of)\s+(?:that|this|the same|the current|current|the above|the last|same|my current)\s+(?:directory|folder|dir|location|place|path|one|project)\b|\s+(?:in\s+|inside\s+)?(?:there|over there|in there)\s*$/i;
 function scopeFrom(original, forCreate) {
   // creating: only "in/inside/into/on/under" name a place — "a folder called history of art" is a name
   const P = forCreate ? '(?:in|inside|into|under|on)' : '(?:in|inside|into|under|on|of|from|across)';
@@ -198,6 +199,8 @@ function scopeFrom(original, forCreate) {
   const inIt = /\s+(?:in|inside|into)\s+it\s*$/i;
   if (inIt.test(o)) { const f = focusOf('created') || focusOf('folder'); return { ref: true, path: f ? f.path : '', rest: o.replace(inIt, '').trim() }; }
   if (REF_RE.test(o)) {
+    // "…in the same project" → the project in focus first
+    if (/project/i.test((o.match(REF_RE) || [''])[0]) && focusOf('project')) return { ref: true, path: focusOf('project').path, rest: o.replace(REF_RE, '').trim() };
     const fo = focusOf('folder'), cr = focusOf('created');
     const f = fo && (!cr || fo.t >= cr.t - 1000) ? fo : (cr || fo);   // same moment → "there" is the folder it went into
     return { ref: true, path: f ? f.path : '', rest: o.replace(REF_RE, '').trim() };
@@ -240,6 +243,58 @@ async function openFocusPath(p) {
   if (!e.error) return { text: 'Opening **' + p + '** in VS Code.', speak: 'Opening it in VS Code.', tool: 'openInEditor' };
   return { text: 'I couldn’t open `' + p + '`: ' + (f.error || r.error) + '.' };
 }
+/* Intent inspector: how JARVIS understood this turn — what was heard, the intent and its confidence, the details it
+   pulled out, the context it used, the route, the permission tier and timings. Shown under each reply when
+   Settings → "Show how I understood you" is on; "how did you understand that?" shows the last one any time. */
+let turnTrace = null, lastTrace = null;
+function noteTrace(k, v) { if (turnTrace && v !== undefined && v !== null && v !== '') turnTrace.notes.push([k, String(v)]); }
+function traceRoute(r) { if (turnTrace && !turnTrace.route) turnTrace.route = r; }
+function traceRows(t) {
+  if (!t) return [];
+  const rows = [['You ' + (t.source === 'voice' || t.source === 'wake' ? 'said' : 'typed'), t.said]];
+  if (t.heard) rows.push(['Mic heard', t.heard + '  → repaired']);
+  if (t.normalized && t.normalized !== String(t.said || '').toLowerCase()) rows.push(['Read as', t.normalized]);
+  if (t.intent) rows.push(['Intent', t.intent + (t.confidence !== undefined ? '  ·  confidence ' + Number(t.confidence).toFixed(2) : '') + (t.corrected ? '  ·  typo-corrected to “' + t.corrected + '”' : '')]);
+  const args = t.args && Object.entries(t.args).filter(([, v]) => v !== undefined && v !== '' && typeof v !== 'object');
+  if (args && args.length) rows.push(['Details', args.map(([k, v]) => k + ' = ' + v).join(', ')]);
+  (t.notes || []).forEach(([k, v]) => rows.push([k.charAt(0).toUpperCase() + k.slice(1), v]));
+  if (t.context) rows.push(['Context', t.context]);
+  if (t.decision && typeof Decider !== 'undefined') {
+    rows.push(['Decision', (Decider.LABEL[t.decision.route] || t.decision.route) + ' — ' + t.decision.reason]);
+    const sg = t.signals; if (sg) rows.push(['Signals', ['fresh', 'source', 'local', 'reasoning', 'question'].map(k => k + ' ' + (sg[k] ? '✓' : '✗')).join(' · ')]);
+  }
+  rows.push(['Route', t.route || '—']);
+  if (t.tier) rows.push(['Permission', t.tier[0] + (t.tier[1] ? ' — ' + t.tier[1] : '')]);
+  if (t.ms) rows.push(['Time', t.ms + ' ms']);
+  return rows;
+}
+function traceBlock(t) {
+  const d = document.createElement('details'); d.className = 'trace';
+  d.innerHTML = '<summary>🔍 How I understood this</summary><dl>' + traceRows(t).map(([k, v]) => '<dt>' + escHtml(k) + '</dt><dd>' + escHtml(v) + '</dd>').join('') + '</dl>';
+  return d;
+}
+// "in the same project calculator" / "in my calculator project" / "continue in project X" / "in this project" → the
+// project's folder: the one in focus if it's that name, else found on the laptop (exact name), else "did you mean…?".
+// → null (no project mentioned) · { path, how } · { ask: reply } · { missing: name }
+const PROJ_RE = /\b(?:in|inside|into|for|within|continue(?:\s+(?:in|with))?|continuing(?:\s+(?:in|with))?)\s+(?:the\s+|my\s+|this\s+|that\s+|our\s+)?(?:same\s+|current\s+|existing\s+)?(?:project\s+(?:called\s+|named\s+)?["']?([\w\-.]+)|([\w\-.]+)\s+project\b)|\b(?:the\s+)?(?:same|this|current|that|existing)\s+project\b/i;
+async function resolveProject(original) {
+  const m = String(original || '').match(PROJ_RE);
+  if (!m) return null;
+  let name = (m[1] || m[2] || '').trim();
+  if (/^(?:same|current|this|that|the|my|existing|new|a|python|java|web|node|react|code)$/i.test(name)) name = '';
+  const sq = x => String(x || '').toLowerCase().replace(/[\s_-]+/g, '');
+  const baseOf = x => String(x || '').split(/[\\/]/).filter(Boolean).pop() || '';
+  const inFocus = [focusOf('project'), focusOf('folder'), focusOf('created')].filter(Boolean);
+  if (!name) return inFocus.length ? { path: inFocus[0].path, how: 'the project we’re working in' } : { missing: 'that project' };
+  for (const f of inFocus) if (sq(baseOf(f.path)) === sq(name)) return { path: f.path, how: 'the ' + name + ' project we’re working in' };
+  toolStep('find project → ' + name);
+  const r = await callTool('/tool/findFolderAnywhere', { name });
+  const exact = ((r && r.paths) || []).find(x => sq(baseOf(x)) === sq(name));
+  if (exact) return { path: exact, how: 'your ' + name + ' project' };
+  const sims = await similarTo(name, 'folder');
+  if (sims.length) return { ask: didYouMeanReply(name, sims, 'I can’t find a project called exactly **' + name + '**.', 'show') };
+  return { missing: name };
+}
 // "Did you mean…?": names on the laptop close to one that wasn't found (typo, short form, extra words), best first.
 async function similarTo(name, kind) {
   const r = await callTool('/tool/similar', { name: String(name || '').slice(0, 80), kind }).catch(() => null);
@@ -260,7 +315,9 @@ function focusSummary() {
   if (focusOf('folder')) parts.push('folder being looked at: ' + focusOf('folder').path);
   if (focusOf('created')) parts.push('just created: ' + focusOf('created').path);
   if (focusOf('file')) parts.push('last file: ' + focusOf('file').path);
-  if (ctx.lastProject) parts.push('last project: ' + ctx.lastProject);
+  if (focusOf('project')) parts.push('current project: ' + focusOf('project').path);
+  else if (ctx.lastProject) parts.push('last project: ' + ctx.lastProject);
+  if (ctx.focus.lastAction && Date.now() - ctx.focus.lastAction.t < FOCUS_MS) parts.push('last thing done: ' + ctx.focus.lastAction.intent.toLowerCase().replace(/_/g, ' ') + ' — ' + ctx.focus.lastAction.summary.replace(/[*`_]/g, '').slice(0, 100));
   return parts.join('; ');
 }
 
@@ -981,6 +1038,7 @@ async function renderReply(o) {
     o.suggestions.forEach(sg => { const b = document.createElement('button'); b.className = 'chip-cmd'; b.textContent = sg; b.addEventListener('click', () => handleUser(sg, 'text')); d.appendChild(b); });
     node.extraEl.appendChild(d);
   }
+  if (o.trace && (settings.inspect || o.showTrace)) node.extraEl.appendChild(traceBlock(o.trace));
   if (text && !o.noLog) logChat('assistant', text, meta);
   messages.scrollTop = messages.scrollHeight;
   await Promise.all([typed, spoken]);
@@ -2816,9 +2874,14 @@ async function executeTool(p, raw) {
       return { text: 'Noted in `~/jarvis/' + r.name + '`: "' + content + '"', speak: 'Noted.', tool: 'writeFile' };
     }
     case 'WRITE_FILE': {
+      // Project: "in the same project calculator" / "in my calculator project" → that project's folder.
+      const proj = a.folder === undefined ? await resolveProject(p.original) : null;
+      if (proj && proj.ask) return proj.ask;
+      if (proj && proj.missing) return { text: proj.missing === 'that project' ? 'Which project, ' + Persona.sir() + '? Name it — e.g. "in the calculator project" — or open its folder first.' : 'I can’t find a project called **' + proj.missing + '** on this laptop. Say its folder, or "create a folder called ' + proj.missing + '" first.' };
+      if (proj && proj.path) { setFocus('project', proj.path); noteTrace('project', proj.path + ' (' + proj.how + ')'); }
       // Folder: "in that folder" / "there" (the folder in focus), "on my desktop", "in D:\work".
-      const sc = scopeFrom(p.original, true);
-      let folder = '';   // resolved path (conversation focus) — preferred over a named place
+      const sc = proj && proj.path ? { rest: p.original } : scopeFrom(p.original, true);
+      let folder = proj && proj.path ? proj.path : '';   // resolved path (project / conversation focus) — preferred over a named place
       let wscope = '';
       if (sc.ref) {
         if (!sc.path) return { text: 'Which folder do you mean, ' + Persona.sir() + '? Open the folder first and say "create a file there", or name a place like **desktop** or **D drive**.' };
@@ -2849,8 +2912,21 @@ async function executeTool(p, raw) {
       const CODE_HINT = /\b(code|program|script|logic|operations?|function)\b/i.test(p.original);
       const needsCode = !content && (a.needsCode || (CODE_HINT && (/\.(py|cpp|c|js|java|html|css)$/i.test(name) || lang)));
       const where = wscope;
+      // No name, but an obvious one ("…all operations of calculator" in D:\calculator → calculator.py): use it.
+      // Two or three plausible names → ask with them as choices. None → ask as before.
+      let inferred = false;
+      if (!name && (needsCode || CODE_HINT) && lang && LANG_EXT[lang]) {
+        const guesses = NLU.inferFileNames(p.original, LANG_EXT[lang], folder);
+        if (guesses.length === 1) { name = guesses[0]; inferred = true; noteTrace('file name', name + ' (inferred from your request)'); }
+        else if (guesses.length > 1) {
+          ctx.pending = { intent: 'WRITE_FILE', folder, where: wscope, lang, hint: p.original, needsCode: true };
+          return { text: 'What should I call it' + (folder ? ' in `' + folder + '`' : '') + ', ' + Persona.sir() + '?', suggestions: guesses };
+        }
+      }
+      if (needsCode && !llmReady() && inferred) return { text: 'Writing the code for **' + name + '** needs my AI brain, ' + Persona.sir() + ' — it’s off or unreachable (Settings → AI BRAIN). I can create it empty for now.', suggestions: ['Create an empty file called ' + name + (folder ? ' there' : '')] };
       if (needsCode && llmReady()) {
         const target = folder && !/^[a-z]:[\\/]/i.test(name) ? joinPath(folder, name) : name;
+        if (inferred) toast('Naming it ' + name + ' — from your request');
         if (!name) {
           ctx.pending = { intent: 'WRITE_FILE', folder, where, lang, hint: p.original, needsCode: true };
           return { text: 'What should I call the ' + (lang ? ({ python: 'Python', cpp: 'C++', javascript: 'JavaScript', java: 'Java', html: 'HTML', css: 'CSS' }[lang] || lang) : 'code') + ' file' + (folder ? ' in `' + folder + '`' : where ? ' in **' + where + '**' : '') + '?' };
@@ -3037,7 +3113,7 @@ async function executeTool(p, raw) {
       toolStep('locateProject → ' + name);
       const r = await callTool('/tool/locateProject', { name });
       if (r.error) return { text: cap(r.error) + '.' };
-      ctx.lastProject = r.name; if (r.path) setFocus('folder', r.path);
+      ctx.lastProject = r.name; if (r.path) { setFocus('folder', r.path); setFocus('project', r.path); }
       return { text: '✓ Found `' + r.name + '`.', op: { kind: 'project', name: r.name }, tool: 'locateProject' };
     }
     case 'START_PROCESS': {
@@ -4289,6 +4365,12 @@ function resolvePending(norm) {
     if (/^(stop|quit|end|exit|cancel)( (the )?(flash ?cards?|review|session|quiz))?$/.test(s)) { if (flashSession) flashSession.i = flashSession.queue.length; return { intent: 'FLASH_END' }; }
     return { intent: 'FLASH_ANSWER', args: { id: pd.id, answer: norm.original }, text: s };
   }
+  if (pd.intent === 'CONFIRM_INTENT') {   // "Did you mean …?" (medium confidence) — yes runs it, no drops it
+    const t = norm.original.trim().toLowerCase().replace(/[.!?]+$/, '');
+    if (/^(?:y|yes|yeah|yep|yup|sure|correct|right|exactly|ok(?:ay)?|do it|go ahead|please)$/.test(t)) return Object.assign({}, pd.p, { confidence: 0.95, fromPending: true });
+    if (/^(?:n|no|nope|nah|wrong|not that|cancel)$/.test(t)) return { intent: 'CANCELLED' };
+    return null;
+  }
   if (pd.intent === 'DID_YOU_MEAN') {   // "yes" / "2" / "the second one" / "no" — anything else is a new request
     const t = norm.original.trim().toLowerCase().replace(/[.!?]+$/, '').replace(/,?\s*(?:please|sir|jarvis)$/, '');
     let i = /^(?:y|yes|yeah|yep|yup|ya|sure|correct|right|exactly|that one|that's it|thats it|ok(?:ay)?|(?:the )?first(?: one)?)$/.test(t) ? 0 : null;
@@ -4341,6 +4423,10 @@ function resolvePending(norm) {
 }
 // Shows an AI answer (plus sources / suggestion chips) and then runs any follow-up work.
 async function finishAIAnswer(ai, after, p) {
+  // "ANSWER FROM MEMORY" (it needed the web, Online tools was off): say so above the answer
+  if (ctx.fromMemory) { ctx.fromMemory = false; ai.text = '⚠ _From my training data, without searching — this may be out of date._\n\n' + ai.text; }
+  // the inspector, under AI answers too
+  if (turnTrace && !turnTrace.done) { turnTrace.done = true; turnTrace.ms = Math.round(performance.now() - turnTrace.t0); lastTrace = turnTrace; if (settings.inspect && ai.node && ai.node.extraEl) ai.node.extraEl.appendChild(traceBlock(turnTrace)); }
   const isData = after && (after.flashDeck !== undefined || after.plan || after.copyAnswer || after.copyBack || after.save !== undefined);
   if (!isData && !ai.limit) ai.text = Persona.leadIn(ai.text);
   if (after && after.sources) ai.text += after.sources;
@@ -4392,6 +4478,13 @@ async function runAfter(after, aiText, p) {
 async function deliver(result, p) {
   if (!result) return;
   const items = Array.isArray(result) ? result : [result];
+  // The inspector: this turn's trace goes with its first reply (and becomes "the last one" for "how did you understand that").
+  if (turnTrace && !turnTrace.done && items[0] && !items[0].showTrace) {
+    turnTrace.done = true; traceRoute(p && p.viaAI ? 'AI' : 'rules → ' + ((items[0] && items[0].tool) || (p && p.intent) || ''));
+    turnTrace.ms = Math.round(performance.now() - turnTrace.t0); items[0].trace = turnTrace; lastTrace = turnTrace;
+    // what happened, for "same project" / follow-ups
+    if (p && p.intent && !/^(CANCELLED|CONVERSATION|CONFIRM)$/.test(p.intent)) ctx.focus.lastAction = { intent: p.intent, summary: String(items[0].text || '').split('\n')[0].slice(0, 160), t: Date.now() };
+  }
   for (const it of items) {
     if (!it.meta) { it.intent = it.intent || p.intent; it.tool = it.tool || null; it.meta = it.intent + (it.tool ? ' · ' + it.tool + '()' : '') + (p.viaAI ? ' · via AI' : ' · ' + (p.confidence || 1).toFixed(2)); }
     // Rule-based replies get JARVIS's voice; AI answers (it.node) already have it via the system prompt.
@@ -4408,11 +4501,20 @@ async function deliver(result, p) {
   }
   pump();
 }
+// Your folder/project names and drive letters, for repairing what the speech recogniser heard (speechfix.js).
+const voiceVocab = { names: [], drives: [] };
+async function loadVoiceVocab() {
+  try { const r = await fetch(API + '/voice/vocab').then(x => x.json()); if (r && r.success) { voiceVocab.names = r.names || []; voiceVocab.drives = r.drives || []; } } catch (e) {}
+}
+setTimeout(loadVoiceVocab, 20000); setInterval(loadVoiceVocab, 10 * 60 * 1000);   // after the laptop list is built; then every 10 min
 async function handleUser(text, source) {
   text = (text || '').trim(); if (!text) return;
+  const rawHeard = text;   // for the inspector: what the mic gave us, before repairs
   // Spoken English: repair words the recogniser mishears ("front and" → frontend) before anything reads it.
   if ((source === 'voice' || source === 'wake') && typeof SpeechFix !== 'undefined' && Lang.detect(text) === 'en') {
-    const fixed = SpeechFix.fix(text);
+    // …and your own folder/project names, matched by sound ("ugly loop folder" → AGRILOOP-1), and drive letters
+    // that don't exist ("b drive" → D drive).
+    const fixed = SpeechFix.fixNames(SpeechFix.fixDrives(SpeechFix.fix(text), voiceVocab.drives), voiceVocab.names);
     if (fixed && fixed !== text) { log('info', 'heard "' + text + '" → understood "' + fixed + '"'); text = fixed; }
   }
   if (busy) { inputQueue.push([text, source]); toast('Queued: "' + text.slice(0, 40) + '"'); return; }
@@ -4424,6 +4526,7 @@ async function handleUser(text, source) {
     if (typeof APPROVAL_NO !== 'undefined' && APPROVAL_NO.test(t)) { const done = pendingApproval; pendingApproval = null; addMsg('user', text, { source: source || 'text' }); logChat('user', text, '', source || 'text'); done(false); return; }
   }
   busy = true; const t0 = performance.now();
+  turnTrace = { said: text, heard: rawHeard !== text ? rawHeard : '', source: source || 'text', t0, notes: [] };
   // ✏️ edit: the edited message replaces the original and its reply
   if (editing && source === 'text') { const e = editing; editing = null; const i = findUserEntry(e.text, e.t); if (i >= 0 && e.text !== text) deleteExchange(i, true); }
   try {
@@ -4491,6 +4594,15 @@ async function handleUser(text, source) {
       if (rest.length < 3) { await deliver({ text: 'Sorry about that — noted. Say **what didn’t you understand?** to teach me what that should do.', noPersona: true }, { intent: 'LEARN_TEACH', confidence: 1 }); return; }
       cmdText = rest;
     }
+    // "how did you understand that?" — the inspector for the last turn, even with the setting off.
+    if (/^(?:how did you (?:understand|interpret|read|get) (?:that|it|me)|show (?:me )?(?:your|the) reasoning|show (?:me )?how you understood(?: that| it| me)?|explain how you understood(?: that| it)?|inspect (?:that|my last (?:message|command)))[?.!]*$/i.test(cmdText.trim())) {
+      const t = lastTrace; turnTrace = null;
+      await deliver(t ? { text: 'Here is how I understood **“' + t.said + '”**:', showTrace: true, trace: t, noPersona: true, intent: 'SHOW_TRACE' } : { text: 'Nothing to show yet — give me a command first.', intent: 'SHOW_TRACE' }, { intent: 'SHOW_TRACE', confidence: 1 }); return;
+    }
+    // "and create a python file there" / "also open it" / "then list the folders": a continuation — the context
+    // (folder, project, last result) carries on; the joining word is not part of the command.
+    const cont = !ctx.pending && cmdText.match(/^(?:and then|and also|and|also|then|now|next|after that|plus)\s*,?\s+(?=\S)/i);
+    if (cont && cmdText.split(/\s+/).length >= 3) { cmdText = cmdText.slice(cont[0].length); noteTrace('continuation', 'kept the context — ' + (focusSummary() || 'nothing in focus yet')); }
     // Mid-way through "create a project": resolving a missing language or description before building the plan.
     if (ctx.pending && ctx.pending.intent === 'CREATE_PROJECT') {
       const pd = ctx.pending; ctx.pending = null;
@@ -4551,7 +4663,7 @@ async function handleUser(text, source) {
     // Website generator, DSA coach and viva practice (skills-page.js): active sessions and their trigger phrases.
     if (!ctx.pending && typeof Skills !== 'undefined') {
       const sk = await Skills.intercept(cmdText);
-      if (sk) { await deliver(sk, { intent: sk.intent || 'SKILL', confidence: 1 }); return; }
+      if (sk) { traceRoute('skill (website / UI prompt / coach / viva)'); await deliver(sk, { intent: sk.intent || 'SKILL', confidence: 1 }); return; }
     }
     // Routines by name: "study mode", "run bedtime"
     const routine = !ctx.pending && Routines.match(NLU.normalize(cmdText, settings.wakeWord).text);
@@ -4612,7 +4724,7 @@ async function handleUser(text, source) {
       const route = Agent.route(cmdText);
       if (route.kind === 'multi') {
         const res = await Agent.handleMulti(cmdText, route, performance.now() - tr0);
-        if (res) { await deliver(res, { intent: 'AGENT_RUN', confidence: 1 }); return; }
+        if (res) { traceRoute('multi-step agent (' + route.parts.length + ' parts)'); await deliver(res, { intent: 'AGENT_RUN', confidence: 1 }); return; }
       }
     }
 
@@ -4620,10 +4732,20 @@ async function handleUser(text, source) {
     let p = resolvePending(norm);
     if (p && p.intent === 'CANCELLED') { await deliver({ text: 'Okay, never mind.' }, p); return; }
     if (p && p.intent === 'FLASH_END') { await deliver(nextFlashCard(), { intent: 'FLASH_REVIEW', confidence: 1 }); return; }
-    if (p) { p = { confidence: .95, original: norm.original, ...p }; }
+    if (p) { p = { confidence: .95, original: norm.original, fromPending: true, ...p }; }
     else { p = NLU.classify(norm, ctx); p.original = norm.original; }
     log('ok', 'intent: ' + p.intent + ' · conf ' + p.confidence.toFixed(2) + (norm.text !== text.toLowerCase() ? ' · heard "' + norm.text + '"' : '') + (p.corrected ? ' · typo-corrected to "' + p.corrected + '"' : ''));
     if (p.corrected) p.text = p.corrected;
+    if (turnTrace) Object.assign(turnTrace, { normalized: norm.text, intent: p.intent, confidence: p.confidence, corrected: p.corrected, args: p.args,
+      tier: p.intent && p.intent !== 'CONVERSATION' && Agent.tierFor ? Agent.tierFor(p.intent, norm.text) : null, context: typeof focusSummary === 'function' ? focusSummary() : '' });
+    if (p.fromPending && turnTrace) traceRoute('your answer to my question');
+    // The decider (decider.js): direct tool, your local things, the local AI, or the web — from plain signals.
+    const implicitSearch = p.intent === 'SEARCH_FILES' && !/\b(files?|folders?|documents?|notes?|directory)\b/i.test(norm.text);
+    const sig = typeof Decider !== 'undefined' ? Decider.signals(norm.text, { intent: p.intent, confidence: p.confidence, implicitSearch }) : null;
+    const decision = sig ? Decider.decide(sig, { online: !!(settings.online && backend.online), aiReady: llmReady() }) : { route: 'LOCAL_AI', reason: '' };
+    if (turnTrace) { turnTrace.decision = decision; turnTrace.signals = sig; }
+    // "find latest information about react": the file-search rule caught it, but it's a web question
+    if (implicitSearch && (decision.route === 'WEB_AI' || decision.want === 'WEB_AI')) p = Object.assign({}, p, { intent: 'CONVERSATION', confidence: 0.5, tool: null });
 
     // "cancel" / "never mind" with nothing waiting for an answer: say so, instead of asking the AI to plan it (it once
     // planned "close the app jarvis").
@@ -4631,6 +4753,15 @@ async function handleUser(text, source) {
       await deliver({ text: 'There’s nothing to cancel right now.', intent: 'CANCELLED', noPersona: true }, { intent: 'CANCELLED', confidence: 1 }); return;
     }
     const wantsLLM = p.intent === 'CONVERSATION' || p.confidence < 0.85;
+    // Medium confidence on something SPOKEN (the mic may have misheard): ask before acting, instead of guessing or
+    // handing it to the AI. Never for questions, and not for "open <something unknown>" (that opens the best web page).
+    if (wantsLLM && spoken && p.intent !== 'CONVERSATION' && p.confidence >= CONFIRM_MIN && p.confidence < 0.85 && p.intent !== 'OPEN_APPLICATION'
+      && !Agent.isQuestion(norm.text) && !/\?\s*$/.test(norm.text)) {
+      ctx.pending = { intent: 'CONFIRM_INTENT', p };
+      traceRoute('medium confidence → asked first');
+      await deliver({ text: 'I’m not completely sure I heard that right, ' + Persona.sir() + '. Did you mean **“' + (p.corrected || norm.text) + '”** (' + p.intent.toLowerCase().replace(/_/g, ' ') + ')?', suggestions: ['Yes', 'No'], noPersona: true, intent: 'CONFIRM' }, p);
+      return;
+    }
     let result = null;
     const tUnderstood = performance.now();
 
@@ -4649,17 +4780,29 @@ async function handleUser(text, source) {
     if (wantsLLM && !answerOnly && !result && Agent.wantsAction(norm.text)) Agent.recordMiss(cmdText, llmReady() ? 'planner' : 'not understood');
     if (wantsLLM && !answerOnly && !result && llmReady() && Agent.wantsAction(norm.text)) {
       const res = await Agent.plan(cmdText, performance.now() - tUnderstood);
-      if (res) { await deliver(res, { intent: res.intent || 'AGENT_RUN', confidence: 1 }); return; }
+      if (res) { traceRoute('AI planner (no rule matched an action)'); await deliver(res, { intent: res.intent || 'AGENT_RUN', confidence: 1 }); return; }
     }
 
     // Current-events questions: read the web first (Online tools on), so the AI answers from sources instead of guessing.
-    if (wantsLLM && !result && settings.online && backend.online && llmReady() && (FACTUAL.test(norm.text) || TIME_SENSITIVE.test(norm.text)) && !LEARNING.test(norm.text) && !/\bmy\b/.test(norm.text)) {
-      result = await doResearch(norm.text.replace(/[?!.]+$/, ''));
+    if (wantsLLM && !result && decision.route === 'WEB_AI') {   // (without the AI, doResearch shows the top links)
+      traceRoute('web search → local AI answers from the pages');
+      // the whole request goes along ("…and explain how hooks work"), minus a leading "search / find / look up"
+      result = await doResearch(norm.text.replace(/[?!.]+$/, '').replace(/^(?:please\s+)?(?:search(?: the web| online| google)?(?: for)?|look up|find(?: me)?(?: out)?)\s+/i, ''));
+    }
+    // It needs the web, but Online tools is off: ask — never answer something that changes from stale memory silently.
+    if (wantsLLM && !result && !answerOnly && decision.route === 'OFFER_ONLINE') {
+      traceRoute('needs the web — Online tools is off → asked');
+      const ask = cmdText;
+      await deliver({ text: 'That changes over time, ' + Persona.sir() + ' — I’d need to search the web for it, and **Online tools** is off.', noPersona: true, intent: 'DECIDE',
+        actions: [{ label: 'ENABLE ONLINE TOOLS & SEARCH', fn: () => { settings.online = true; saveSettings(); bindSwitchState('#onlineToggle', 'online'); updateNetUI(); log('warn', 'online tools enabled'); handleUser(ask, 'chip'); } },
+          { label: 'ANSWER FROM MEMORY', fn: () => { ctx.answerOnly = true; ctx.fromMemory = true; handleUser(ask, 'chip'); } }] }, { intent: 'DECIDE', confidence: 1 });
+      return;
     }
 
     if (result && !result.askLLM && wantsLLM) {
       await deliver(result, p);
     } else if (wantsLLM || (result && result.askLLM)) {
+      traceRoute(result && result.askLLM ? 'rules → ' + (p.tool || p.intent) + ' → AI writes the answer (' + llm.model + ')' : 'AI chat (' + llm.model + ') — no command matched');
       const toolPrompt = result && typeof result.askLLM === 'string';
       // Telugu/Kannada: include our English reading too — speech recognition often mangles English technical words.
       const userAsk = srcLang !== 'en' && cmdText !== text
@@ -5339,6 +5482,7 @@ async function updateHotkeyNote() {
 $('#settingsBtn').addEventListener('click', updateHotkeyNote);
 bindSwitch('#alertsToggle', 'alerts', v => log('info', 'smart alerts ' + (v ? 'on' : 'off')));
 bindSwitch('#chargerAlertsToggle', 'chargerAlerts', v => log('info', 'charger alerts ' + (v ? 'on' : 'off')));
+bindSwitch('#inspectToggle', 'inspect', v => toast(v ? 'I’ll show how I understood each request (🔍 under the reply)' : 'Inspector off — say “how did you understand that?” any time'));
 // Phone alerts: the server pushes reminders/deadline alerts to ntfy.sh under a random, unguessable topic.
 function updatePhoneNote() {
   const n = $('#phonePushNote');

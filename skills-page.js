@@ -34,7 +34,7 @@ const Skills = (() => {
     const r = await callTool('/skill/site', { what: a.what, sections: a.sections, style: a.style || '', name: nm, model: llm.model, folder: a.folder || undefined, where: a.where || undefined });
     if (r.error) return say('I couldn’t build it: ' + r.error, { intent: 'WEBSITE' });
     S.lastSite = r.name; S.lastSiteAbs = r.dir || null; S.lastSiteDir = r.dir || r.folder;
-    if (r.dir && typeof setFocus === 'function') { setFocus('folder', r.dir); setFocus('created', r.path || r.dir); }
+    if (r.dir && typeof setFocus === 'function') { setFocus('folder', r.dir); setFocus('created', r.path || r.dir); if (a.folder) setFocus('project', a.folder); }
     Undo.push('built the ' + r.name + ' website', async () => { const x = await callTool('/tool/undoCreate', { name: r.folder }); if (x.error) throw new Error(x.error); return 'Removed the website folder `' + r.folder + '` (it’s in the trash).'; });
     if (a.project || a.where) return say('✓ Built ' + (a.project ? 'the frontend for **' + a.project + '**' : 'your website') + ' → `' + (r.path || r.file) + '` (' + r.lines + ' lines) and opened it in your browser.\n\nWant changes? Just say them — e.g. **"make the buttons bigger"**, **"use a dark theme"**. Say **"go back to the previous version"** if a change goes wrong.',
       { intent: 'WEBSITE', speak: 'The frontend is ready. I opened it in your browser.', suggestions: ['Make the buttons bigger', 'Use a dark theme', 'Open it in VS Code'],

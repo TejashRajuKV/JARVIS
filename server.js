@@ -397,6 +397,29 @@ function similarNames(want, { kind, max = 5, min = 0.82 } = {}) {
   }
   return out.sort((a, b) => b.score - a.score || a.path.length - b.path.length).slice(0, max);
 }
+// Your own words, for the speech fixer (speechfix.js): names of your folders and projects (the top levels of each
+// drive, home, Desktop, Documents, Downloads, and your project folders) and which drive letters exist. The browser's
+// recogniser only knows dictionary words — "agriloop" comes back as "ugly loop" — so the page matches what it heard
+// against these by sound. Names only.
+app.get('/api/voice/vocab', (req, res) => {
+  const names = new Map(), add = n => { const s = String(n || '').trim(); if (s.length >= 3 && s.length <= 40 && /[a-z]/i.test(s) && !names.has(s.toLowerCase())) names.set(s.toLowerCase(), s); };
+  (config.roots || []).forEach(r => add(path.basename(r)));
+  const tops = [HOME_DIR, path.join(HOME_DIR, 'Desktop'), path.join(HOME_DIR, 'Documents'), path.join(HOME_DIR, 'Downloads'), path.join(HOME_DIR, 'OneDrive', 'Desktop'), path.join(SANDBOX, 'Projects')];
+  const drives = IS_WIN ? 'CDEFGHIJ'.split('').filter(d => fs.existsSync(d + ':\\')) : [];
+  drives.forEach(d => tops.push(d + ':\\'));
+  if (fileIndex.ready) {
+    const roots = tops.map(t => t.toLowerCase().replace(/[\\/]+$/, ''));
+    for (let i = 0; i < fileIndex.paths.length && names.size < 4000; i++) {
+      if (fileIndex.dirs[i] !== 1) continue;
+      const p = fileIndex.paths[i], parent = path.dirname(p).toLowerCase().replace(/[\\/]+$/, '');
+      // a folder directly in one of those places, or one level below (Downloads\Documents - Copy\AGRILOOP-1)
+      if (roots.includes(parent) || roots.includes(path.dirname(parent))) { if (!SIM_NOISE.test(p)) add(path.basename(p)); }
+    }
+  } else {
+    for (const t of tops) { try { fs.readdirSync(t, { withFileTypes: true }).forEach(it => { if (it.isDirectory() && !it.name.startsWith('.') && !it.name.startsWith('$') && !SKIP_DIRS.has(it.name)) add(it.name); }); } catch {} }
+  }
+  res.json({ success: true, drives, names: [...names.values()] });
+});
 app.post('/api/tool/similar', (req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 80);
   if (!name) return res.status(400).json({ error: 'Which name?' });

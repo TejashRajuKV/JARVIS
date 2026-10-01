@@ -260,6 +260,7 @@
       <div class="s-row"><label>Home city<small>USED FOR WEATHER</small></label><input type="text" id="cityInput" maxlength="40" placeholder="e.g. Bengaluru"></div>
       <div class="s-row"><label>Smart alerts<small>LOW BATTERY · HIGH RAM · DEADLINES SOON</small></label><button class="switch on" id="alertsToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Charger alerts<small>SAYS WHEN PLUGGED IN OR UNPLUGGED</small></label><button class="switch on" id="chargerAlertsToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Show how I understood you<small>UNDER EACH REPLY: INTENT · CONFIDENCE · DETAILS · CONTEXT · ROUTE · PERMISSION</small></label><button class="switch" id="inspectToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-row"><label>Global hotkey<small>CTRL+SHIFT+J · SEND SELECTED TEXT FROM ANY APP</small></label><button class="switch" id="hotkeyToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-note" id="hotkeyNote" style="margin:-4px 0 12px"></div>
       <div class="s-row"><label>Phone alerts<small>REMINDERS VIA THE FREE NTFY APP · SENDS REMINDER TEXT ONLINE</small></label><button class="switch" id="phonePushToggle" role="switch" aria-checked="false"></button></div>
@@ -310,6 +311,7 @@
 
   <script src="api/state.js"></script>
   <script src="speechfix.js"></script>
+  <script src="decider.js"></script>
   <script src="nlu.js"></script>
   <script src="persona.js"></script>
   <script src="lang.js"></script>

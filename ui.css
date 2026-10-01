@@ -373,3 +373,12 @@ body.dropping::after { border: 1px dashed var(--cyan); border-radius: 10px; back
 #codeMessages .code-empty b { color: var(--ink); }
 #codeMessages .msg.user .mhead .who { color: var(--cyan, #6cc4e8); }
 @media (max-width: 760px) { #codeMessages { padding: 16px 14px 20px; } }
+
+/* ---------- intent inspector (🔍 How I understood this) ---------- */
+details.trace { margin-top: 10px; border: 1px solid var(--rule, #24313a); border-radius: 8px; background: var(--bg1, #0b0d0f); font-size: 12.5px; }
+details.trace summary { cursor: pointer; padding: 6px 10px; color: var(--dim, #9aa); font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em; list-style: none; }
+details.trace summary::-webkit-details-marker { display: none; }
+details.trace[open] summary { border-bottom: 1px solid var(--rule, #24313a); color: var(--cyan, #6cc4e8); }
+details.trace dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; padding: 8px 12px 10px; }
+details.trace dt { color: var(--faint, #778); font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding-top: 1px; }
+details.trace dd { margin: 0; color: var(--ink); word-break: break-word; }

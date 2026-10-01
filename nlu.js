@@ -1071,6 +1071,36 @@ const NLU = (() => {
     }).sort((x, y) => y.score - x.score).slice(0, n).map(x => x.e);
   }
 
+  /* "Create a python file which includes all operations of calculator" — no name was given, but one is obvious.
+     → candidate file names (most specific first), from what the file is for and the folder it goes in.
+     One distinct candidate → use it; 2–3 → ask with them as choices; none → ask as before. */
+  const NAME_FILLER = /\b(?:a|an|the|all|any|every|some|my|our|its|new|simple|basic|complete|full|small|python|py|java|javascript|js|c|cpp|html|css|code|program|script|file|files|that|which|it|this|for|of|to|in|on|with|and|includes?|including|contains?|containing|has|have|does|do|performs?|handles?|implements?|should|will|can|logic|functions?|methods?|operations?|features?|all the)\b/gi;
+  function inferFileNames(original, ext, folderPath) {
+    // the place isn't part of the name: "… there", "… in d drive", "… on my desktop", "… in that folder"
+    const s = String(original || '').toLowerCase().replace(/[.!?]+$/, '')
+      .replace(/\s+(?:over there|in there|there|here|in it|inside it)\s*$/, '')
+      .replace(/\s+(?:in|on|inside|into|at)\s+(?:the\s+|my\s+)?(?:[a-z]\s+drive|[a-z]:\S*|desktop|documents|downloads|(?:that|this|the same|same)\s+(?:folder|directory|project))\s*$/, '');
+    const out = [];
+    const add = x => { const n = String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40); if (n && n.length >= 3 && !out.includes(n)) out.push(n); };
+    // what it is for: "for X", "which includes … of X", "that does X", "to X"
+    const purpose = s.match(/\b(?:for|of|about|to|that (?:does|handles|performs|implements)|which (?:does|handles|performs|implements|includes|contains|has)|containing|including|with)\s+(?:all\s+(?:the\s+)?)?(.+?)(?:\s+(?:in|inside|into|on|at)\s+(?:the|my|this|that|same)\b.*)?[.!?]*$/);
+    if (purpose) {
+      const words = purpose[1].replace(NAME_FILLER, ' ').replace(/[^a-z0-9 ]/g, ' ').trim().split(/\s+/).filter(Boolean);
+      if (words.length) add(words.slice(0, 3).join('_'));
+    }
+    // "a login function" / "a sorting program" (no "for")
+    const thing = s.match(/\b(?:a|an)\s+([a-z]+)\s+(?:function|program|script|module|class|app)\b/);
+    if (thing && !NAME_FILLER.test(thing[1])) add(thing[1]);
+    NAME_FILLER.lastIndex = 0;
+    // the folder it goes in: D:\calculator → calculator — only when the request itself doesn't say what it's for
+    const base = out.length ? '' : String(folderPath || '').split(/[\\/]/).filter(Boolean).pop();
+    if (base && !/^[a-z]:$/i.test(base) && !/^(?:desktop|documents|downloads|code|notes|projects|jarvis|src|test\d*)$/i.test(base)) add(base);
+    // a short form of another candidate is the same idea ("calc" vs "calculator"): keep the one from what you asked for
+    const distinct = out.filter((n, i) => !out.some((m, j) => j < i && (n.startsWith(m) || m.startsWith(n))));
+    const e = ext ? (ext.startsWith('.') ? ext : '.' + ext) : '';
+    return distinct.slice(0, 3).map(n => n + e);
+  }
+
   const TOOL_COUNT = new Set(R.map(r => r[3]).filter(Boolean)).size;
-  return { APPS, SITES, TOOL_COUNT, normalize, classify, romanLang, fromRoman, findApp, findSite, bareSiteName, bestResult, editorFolder, setInstalledApps, appByKey, parseWhen, parseDate, parseTimeOfDay, parseRepeat, convertUnits, stripWhen, dayIndex, suggest, lev, DAYS, parseCodeAsk, resolveCodeTool, CODE_ASK_TOOLS };
+  return { inferFileNames, APPS, SITES, TOOL_COUNT, normalize, classify, romanLang, fromRoman, findApp, findSite, bareSiteName, bestResult, editorFolder, setInstalledApps, appByKey, parseWhen, parseDate, parseTimeOfDay, parseRepeat, convertUnits, stripWhen, dayIndex, suggest, lev, DAYS, parseCodeAsk, resolveCodeTool, CODE_ASK_TOOLS };
 })();

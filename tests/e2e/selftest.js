@@ -170,6 +170,36 @@
   check('Did you mean', '"2" opens the second suggestion', called('/tool/openFolder', d => /calc_app$/.test(d.name || '')), JSON.stringify(calls.filter(c => c.endpoint === '/tool/openFolder').slice(-1)));
   r = await say('check whether calculater folder exists'); await handleUser('no', 'text'); await idle(15000);
   check('Did you mean', '"no" ends it without acting', !ctx.pending, JSON.stringify(ctx.pending));
+  // ---- smart file creation + continuations: the name comes from the request, the folder from the context
+  r = await say('create a folder called calcproj');
+  r = await say('and create a python file for calculator operations there');
+  check('Smart files', '"and … there" keeps the context, and the file name comes from the request (no "what should I call it?")',
+    /calculator\.py/.test(r.text) && !/What should I call/i.test(r.text), r.text);
+  // ---- medium confidence on a SPOKEN command: asked first
+  ctx.pending = null;
+  { const before = jarvisMsgs().length; await handleUser('close zzqx player', 'voice'); await idle(15000);
+    const t = jarvisMsgs().slice(before).map(m => m.innerText).join(' ');
+    check('Confidence', 'a half-understood spoken command is asked about ("did you mean …?"), not guessed', /Did you mean/i.test(t) && ctx.pending && ctx.pending.intent === 'CONFIRM_INTENT', t);
+    await handleUser('no', 'text'); await idle(15000); }
+  // ---- the intent inspector
+  settings.inspect = true;
+  r = await say('battery');
+  check('Inspector', 'with the switch on, replies show "How I understood this" (intent, confidence, route, permission)',
+    !!jarvisMsgs().slice(-1)[0].querySelector('details.trace') && /SYS_BATTERY/.test(jarvisMsgs().slice(-1)[0].querySelector('details.trace').innerText), jarvisMsgs().slice(-1)[0].innerHTML.slice(0, 300));
+  settings.inspect = false;
+  r = await say('how did you understand that');
+  check('Inspector', '"how did you understand that" shows the last trace even with the switch off', /battery/i.test(r.text) && !!jarvisMsgs().slice(-1)[0].querySelector('details.trace'), r.text);
+  // ---- the decider: web for fresh facts (or an offer to go online), local AI for understanding, local for your files
+  { const was = settings.online;
+    settings.online = true;
+    r = await say('what is the latest python version');
+    check('Decider', 'fresh facts ("latest … version") → web research', called('/tool/research', d => /latest python version/i.test(d.q || '')), r.text);
+    r = await say('find latest information about react');
+    check('Decider', '"find latest information about react" → the web, not a file search', called('/tool/research', d => /react/i.test(d.q || '')), r.text);
+    settings.online = false;
+    r = await say('what is the latest node.js version');
+    check('Decider', 'Online tools off + fresh facts → asks to turn it on (never stale memory silently)', /Online tools/.test(r.text) && /ENABLE ONLINE TOOLS/.test(r.text) && /ANSWER FROM MEMORY/.test(r.text), r.text);
+    settings.online = was; }
   // ---- "save this file by creating a new folder called X": the code just written, as a real file — asked where first
   chatLog.push({ role: 'assistant', text: 'Here it is:\n```html\n<!DOCTYPE html>\n<html><body><h1>Calc</h1></body></html>\n```', t: Date.now() });
   r = await say('okay save this file by creating new folder called calc_site');

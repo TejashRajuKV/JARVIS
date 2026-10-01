@@ -31,6 +31,23 @@ for (const [t, not] of [['how many people live in india', 'COUNT_FOLDERS'], ['wh
   check('Intents', '"' + t + '" is not ' + not, got !== not, got);
 }
 
+/* ---------- an obvious file name is used, not asked for (NLU.inferFileNames) ---------- */
+for (const [said, ext, folder, want] of [
+  ['continue in the same project calculator create a new python file in that which includes all operations of calculator', '.py', 'D:\\calculator', ['calculator.py']],
+  ['create a python file for calculator operations', '.py', '', ['calculator.py']],
+  ['create a python file for calculator operations there', '.py', 'C:\\x\\calc', ['calculator.py']],
+  ['create a python file with a login function', '.py', '', ['login.py']],
+  ['create a java program to sort numbers', '.java', '', ['sort_numbers.java']],
+  ['create a python file that handles student attendance', '.py', 'D:\\test123', ['student_attendance.py']],
+  ['create a python file for the calculator in the same project', '.py', 'D:\\calculator', ['calculator.py']],
+  ['create a python file for student marks', '.py', 'D:\\attendance', ['student_marks.py']],   // the request says what it's for → that, not the folder name
+  ['create a python file', '.py', 'D:\\calculator', ['calculator.py']],                           // nothing said → the folder's name
+  ['create a python file', '.py', '', []],                                                                     // nothing to go on → ask
+]) {
+  const got = NLU.inferFileNames(said, ext, folder);
+  check('File names', '"' + said.slice(0, 60) + '…" → ' + (want.length ? want.join(' / ') : 'ask'), JSON.stringify(got) === JSON.stringify(want), got);
+}
+
 /* ---------- speech: what the recogniser hears → what was meant ---------- */
 const HEARD = [
   ['creative front and for calculator app', 'create frontend for calculator app'],
@@ -51,6 +68,18 @@ const HEARD = [
   ['bring it back and forth', 'bring it back and forth'],
 ];
 for (const [heard, meant] of HEARD) { const got = SpeechFix.fix(heard); check('Speech', '"' + heard + '" → "' + meant + '"', got === meant, got); }
+// your own folder names, matched by SOUND (what the mic really heard on this laptop)
+{
+  const names = ['AGRILOOP-1', 'AGRILOOP61', 'AGRRILOOP', 'dsa_sprint', 'calculator', 'pythonProject', 'Downloads', 'Projects', 'notes', 'books', 'tools', 'music'];
+  const heard = s => SpeechFix.fixNames(SpeechFix.fixDrives(SpeechFix.fix(s), ['C', 'D']), names);
+  for (const [said, want] of [['open agri look folder', 'open AGRILOOP-1 folder'], ['open ugly loop folder', 'open AGRILOOP-1 folder'], ['open agree look folder', 'open AGRILOOP-1 folder'],
+    ['open agri Roop folder', 'open AGRILOOP-1 folder'], ['start agree loop backend', 'start AGRILOOP-1 backend'], ['open DSS print folder in plot code', 'open dsa_sprint folder in vs code'],
+    ['open calculater folder', 'open calculator folder'], ['list folders in b drive', 'list folders in D drive'], ['open agriloop holder', 'open AGRILOOP-1 folder'],
+    // left alone
+    ['open the new folder', 'open the new folder'], ['open python project folder', 'open python project folder'], ['open pics folder', 'open pics folder'], ['open travis folder', 'open travis folder'],
+    ['open apple pie folder', 'open apple pie folder'], ['create a folder called notes', 'create a folder called notes'], ['open my projects folder', 'open my projects folder'], ['list folders in c drive', 'list folders in c drive']])
+    check('Speech names', '"' + said + '" → "' + want + '"', heard(said) === want, heard(said));
+}
 check('Speech', 'of the recogniser’s guesses, the one with JARVIS words wins', SpeechFix.pickAlternative(['create a front', 'create a frontend', 'create a front and']) === 'create a frontend');
 check('Speech', 'the first guess is kept when no other is clearly better', SpeechFix.pickAlternative(['open chrome', 'open crow']) === 'open chrome');
 // after repair, the misheard request reaches the right place

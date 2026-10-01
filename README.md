@@ -312,6 +312,9 @@ A coding mode with **its own conversation**, separate from the normal chat. Clic
 - **Say the goal, not just the commands:** "I'm going to study. Set the volume to 30, enable focus mode, close distracting apps, open my DBMS notes and start a 45-minute session." JARVIS takes "study" as the plan's goal, merges overlapping steps (one 45-minute session, not two), closes distractions *before* the session starts, and shows the whole plan once — with ⚠ on anything that needs permission — so **one EXECUTE** approves it.
 - Steps that depend on an earlier one ("create a folder DSA and open it in VS Code") are skipped if that earlier step fails, instead of running on a broken result. The run ends with a tally: "4 of 4 verified".
 - **Same intent, many wordings:** "make a folder" / "make me a directory" / "can you create a folder"; "how many folders are on my laptop" / "list number of folders" / "count directories in D drive"; "create a frontend" / "build UI for calculator" / "design the front end" — each maps to one command with its details (name, place, project) pulled out.
+- **Obvious names aren't asked for:** "continue in the same project calculator, create a python file which includes all operations of calculator" finds the `calculator` project and writes `calculator.py` there (the AI writes the code) — only when two or three names are equally plausible does it ask, with them as choices. "In the same project" / "this project" / "my calculator project" all resolve to the project; "and …", "also …", "then …" carry the context on.
+- **Half-heard voice commands are asked about:** if the mic's words only half-match a command (medium confidence), JARVIS asks "Did you mean …?" (**Yes / No**) instead of guessing or handing it to the AI.
+- **See how it understood you:** **Settings → Show how I understood you** adds a 🔍 block under each reply — what was heard (and repaired), intent and confidence, the details it pulled out, the context it used, the decision (tool / local AI / web) with its reason, the route, the permission tier and timing. "How did you understand that?" shows it any time.
 - **When JARVIS doesn't understand:** a request no rule matches goes to the AI planner (its guess is shown before anything runs), and questions or remarks that merely mention a setting ("what is volume in physics?") are never treated as commands. Say **"no, that's wrong"** right after a mistake, or **"what didn't you understand?"** to see recent misses — **TEACH** maps a phrase to a command you type ("lecture time" → "mute and block distractions"), which then runs through the normal checks every time.
 - **When a plan fails part-way**, its card offers the honest ways out: **RETRY** (only what didn't complete — what already worked isn't repeated), **CONTINUE** (only the remaining steps that don't depend on the failed one, directly or indirectly) and **ROLLBACK (n)** (reverses the *n* changes this plan made that can be reversed, newest first — see [Undo](#undo-backup--your-data)). This is transaction-*like*, not a full transaction: things that can't be undone (a sent message, an opened editor) are listed, not pretended away.
 - Long plans can be **cancelled** and then **resumed**. Every run has an id (e.g. `AGT-20260928-004`); ask "what did you just do?". **"Inspect the last run"** (or the **INSPECT** button under a plan, or "inspect AGT-20260928-004") opens an **execution inspector** card: goal, route and planner time, how many tools were valid, permissions asked and answered, every step with its timing and verification note, how many actions can be undone, total time and a final status (COMPLETED / PARTIAL / FAILED / CANCELLED). It is built only from what was recorded when the plan ran.
@@ -387,6 +390,7 @@ Open **SETTINGS** (top right).
 | | Test my mic | Say 14 command words; see what the mic heard, what JARVIS repaired, and the score. |
 | **Behaviour** | HUD theme · Answer length | Arc blue, gold, crimson, violet; concise/balanced/detailed. |
 | | Online tools · Home city | Weather, web answers, contests, directions (off by default). |
+| | Show how I understood you | Under each reply: what was heard, intent, confidence, details, context, decision (tool / local AI / web) and why, permission tier. |
 | | Smart alerts · Charger alerts · Global hotkey | Battery/RAM/deadline alerts; "charger connected / disconnected"; Ctrl+Shift+J. |
 | | Phone alerts · Phone access | ntfy alerts & commands (+ authenticator); Tailscale access. |
 | | Focus / break (min) | Pomodoro lengths. |
@@ -444,6 +448,23 @@ Open **SETTINGS** (top right).
 4. **Act & verify** — tools run on the server; results are checked for real where possible.
 5. **Speak** — the reply is shown (Markdown), spoken, and translated if needed.
 
+### How JARVIS decides: tool, local AI or web
+
+Every request goes through a small **decision engine** (`decider.js`) — plain rules, no AI call, so it is fast and predictable. It looks at a few signals and picks one route:
+
+| Route | When | Example |
+|---|---|---|
+| **Direct tool** | a command JARVIS knows | "open chrome", "set volume to 50", "create a folder called test" |
+| **Local** (your files + tools) | it's about *your* things — files, folders, projects, what you were just working on | "fix the previous python file", "where is pythonProject", "what does my notes.md say" |
+| **Local AI** | understanding or reasoning that doesn't need fresh facts | "explain binary search simply", "why is quicksort faster" |
+| **Web + local AI** | it needs current or outside information — the web is searched, then the local AI answers **only from those pages**, with sources | "what's the latest Node.js version", "today's AI news", "find the latest React docs and explain hooks" |
+| **Web search (browser)** | you asked to search | "search google for binary search visualizer" |
+
+- **Signals:** *fresh* (latest, today, version, price, news, driver, update, who won…), *source* (search for, look up, official documentation, according to…), *local* (my/this file, folder, project; there, it, previous; a file name), *reasoning* (explain, why, compare…), *question*.
+- "binary **search**" or "**node.js**" don't fool it: the noun "search" isn't a request to search, and node.js isn't one of your files. "my **latest** file" is local, not news.
+- **Online tools off** and the question needs the web: JARVIS says so and offers **ENABLE ONLINE TOOLS & SEARCH** or **ANSWER FROM MEMORY** (marked "may be out of date") — it never answers something that changes from stale memory silently.
+- Turn on **Settings → Show how I understood you** to see the decision, its reason and the signals under each reply (or ask "how did you understand that?").
+
 ---
 
 ## 12. Project structure
@@ -471,6 +492,7 @@ Open **SETTINGS** (top right).
 | `phoneauth.js` | Authenticator codes (TOTP) for phone commands |
 | `hotkey.js` | Global Ctrl+Shift+J helper |
 | `palette.js` | Ctrl+K command palette and the "/" skills menu |
+| `decider.js` | The decision engine: direct tool, your local things, the local AI, or the web — from plain signals, with a reason |
 | `manifest.webmanifest`, `sw.js` | PWA install: own window, Start-menu icon, offline app shell |
 | `tts.js` | Neural voices |
 | `voice.js` | Utterance collector: waits until you have finished speaking (and for the recogniser's final words) before sending your sentence |
@@ -512,7 +534,7 @@ Opt-in checks on the real laptop — sets volume and brightness and opens/closes
 npm run test:live
 ```
 
-32 suites check every feature, not just the phrases:
+33 suites check every feature, not just the phrases:
 
 | Suite | Checks | What it covers |
 |---|---|---|
@@ -527,6 +549,7 @@ npm run test:live
 | `codeask.test.js` | 58 | Coding-AI phrases, safe command building |
 | `skills-page.test.js` | 51 | Website / coach / viva conversations |
 | `reliability.test.js` | 84 | The presentation review: many wordings → one intent (create/count/list folders, frontends, saving code), misheard speech repaired (and ordinary sentences left alone), "did you mean" ranking, the frontend-for-a-project flow |
+| `decider.test.js` | 42 | The decision engine: ~35 requests → direct tool / local / local AI / web + AI / browser search, Online-tools-off offers, every decision has a reason |
 | `jarviscode.test.js` | 20 | JARVIS Code: the AI's answer → files, the plain-code-block fallback, paths that must never leave the project |
 | `backup.test.js` | 44 | Export/import, encryption, hostile files, snapshots |
 | `skills.test.js` | 38 | Page generation safety, coach, viva grading, code fixer |

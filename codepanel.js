@@ -71,7 +71,7 @@
   };
   function useFolder(p) {
     st.folder = p || '';
-    if (p) { st.recent = [p, ...st.recent.filter(x => x !== p)].slice(0, 6); if (typeof setFocus === 'function') setFocus('folder', p); }
+    if (p) { st.recent = [p, ...st.recent.filter(x => x !== p)].slice(0, 6); if (typeof setFocus === 'function') { setFocus('folder', p); setFocus('project', p); } }
     showFolder(); save();
   }
   function fillModels() {

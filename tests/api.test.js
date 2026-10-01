@@ -91,6 +91,7 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     check('Files', 'the laptop file index stays off in tests', (await get('/api/fileIndex/status')).json.ready === false);
     check('Files', 'counting folders before the index is built says so (no made-up number)', (await post('/api/tool/folderStats', { scope: 'my laptop' })).json.indexing === true);
     check('Files', '"did you mean" needs a name', (await post('/api/tool/similar', {})).status === 400);
+    { const v = (await get('/api/voice/vocab')).json; check('Voice', 'the speech fixer gets your folder names and drive letters (names only)', v.success && Array.isArray(v.names) && Array.isArray(v.drives), JSON.stringify(v).slice(0, 200)); }
     check('JARVIS Code', 'generate needs a request', (await post('/api/code/generate', {})).status === 400);
     check('JARVIS Code', 'generate with the AI offline: a clean error, nothing written', (await post('/api/code/generate', { prompt: 'make a calculator' })).status >= 400);
     check('JARVIS Code', 'apply refuses an empty file list', (await post('/api/code/apply', { files: [] })).status === 400);
