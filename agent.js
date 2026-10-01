@@ -645,7 +645,7 @@ const Agent = (() => {
     const steps = []; let msPlan = 0;
     for (const p of r.classified) {
       if (known(p)) { steps.push(fromRule(p, steps.length)); continue; }
-      const j = await callTool('/agent/plan', { text: p.step, model: llm.model || undefined });
+      const j = await callTool('/agent/plan', { text: p.step, model: llm.model || undefined, context: typeof focusSummary === 'function' ? focusSummary() : '' });
       msPlan += j.ms_plan || 0;
       if (!j.ok) return failure(text, '“' + p.step + '”: ' + (j.empty ? 'I don’t have a tool for that part' : (j.reason || j.error || 'no safe plan')));
       for (const s of j.plan.steps) steps.push(fromTool(s));
@@ -1021,7 +1021,7 @@ const Agent = (() => {
   async function plan(text, tRoute) {
     setState('PROCESSING', 'Planning…');
     const t0 = performance.now();
-    const j = await callTool('/agent/plan', { text, model: llm.model || undefined });
+    const j = await callTool('/agent/plan', { text, model: llm.model || undefined, context: typeof focusSummary === 'function' ? focusSummary() : '' });
     const ms = performance.now() - t0;
     if (j.empty) return null;                                // the planner says it isn't an action → normal chat path
     if (!j.ok) {

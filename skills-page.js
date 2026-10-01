@@ -20,15 +20,31 @@ const Skills = (() => {
   ];
   function siteAsk() { return say(SITE_Q[S.site.step][1], { intent: 'WEBSITE', speak: SITE_Q[S.site.step][1].split(' (')[0].split(' —')[0] }); }
   async function siteBuild(a) {
-    const nm = a.what.replace(/^(?:my|a|an|the|our)\s+/i, '').split(/\s+/).slice(0, 5).join(' ');
-    busyMsg('Building your website — this can take 1–3 minutes with a local AI model…');
-    const r = await callTool('/skill/site', { what: a.what, sections: a.sections, style: a.style || '', name: nm, model: llm.model });
+    const nm = (a.project || a.what.replace(/^(?:my|a|an|the|our)\s+/i, '')).split(/\s+/).slice(0, 5).join(' ');
+    busyMsg((a.folder ? 'Building the frontend in ' + a.folder : 'Building your website') + ' — this can take 1–3 minutes with a local AI model…');
+    const r = await callTool('/skill/site', { what: a.what, sections: a.sections, style: a.style || '', name: nm, model: llm.model, folder: a.folder || undefined });
     if (r.error) return say('I couldn’t build it: ' + r.error, { intent: 'WEBSITE' });
-    S.lastSite = r.name;
+    S.lastSite = r.name; S.lastSiteFolder = a.folder || null; S.lastSiteDir = r.dir || r.folder;
+    if (r.dir && typeof setFocus === 'function') { setFocus('folder', r.dir); setFocus('created', r.path || r.dir); }
     Undo.push('built the ' + r.name + ' website', async () => { const x = await callTool('/tool/undoCreate', { name: r.folder }); if (x.error) throw new Error(x.error); return 'Removed the website folder `' + r.folder + '` (it’s in the trash).'; });
+    if (a.project) return say('✓ Built the frontend for **' + a.project + '** → `' + (r.path || r.file) + '` (' + r.lines + ' lines) and opened it in your browser.\n\nWant changes? Just say them — e.g. **"make the buttons bigger"**, **"use a dark theme"**. Say **"go back to the previous version"** if a change goes wrong.',
+      { intent: 'WEBSITE', speak: 'The frontend is ready. I opened it in your browser.', suggestions: ['Make the buttons bigger', 'Use a dark theme', 'Open it in VS Code'],
+        actions: [{ label: 'OPEN AGAIN', fn: () => callTool('/skill/siteOpen', { name: r.name, folder: a.folder }) }, { label: 'OPEN IN VS CODE', fn: () => callTool('/tool/openInEditor', { name: r.dir || r.folder }) }] });
     return say('✓ Built your website → `' + r.file + '` (' + r.lines + ' lines) and opened it in your browser.\n\nWant changes? Just say them — e.g. **"make the header bigger"**, **"add a contact section"**, **"use a blue colour scheme"**. Say **"go back to the previous version"** if a change goes wrong.',
       { intent: 'WEBSITE', speak: 'Your website is ready. I opened it in your browser.', suggestions: ['Make the header bigger', 'Add a contact section', 'Open the website in VS Code'],
         actions: [{ label: 'OPEN AGAIN', fn: () => callTool('/skill/siteOpen', { name: r.name }) }, { label: 'OPEN IN VS CODE', fn: () => callTool('/tool/openInEditor', { name: r.folder }) }] });
+  }
+  // "project calculator" / "my calculator project" / "the calculator app" → "calculator"
+  const projectName = x => String(x || '').trim().replace(/[.!?]+$/, '').replace(/^(?:my|the|a|an|our)\s+/i, '').replace(/^(?:project|app)\s+(?:called\s+|named\s+)?/i, '')
+    .replace(/\s+(?:project|app|application|website|folder)$/i, '').replace(/^(?:my|the)\s+/i, '').trim();
+  // An existing folder with that name: the folder in focus, then anywhere on the laptop (file index).
+  async function findProjectFolder(name) {
+    const f = typeof focusOf === 'function' && focusOf('folder');
+    const sq = x => String(x || '').toLowerCase().replace(/[\s_-]+/g, '');
+    if (f && sq(f.path.split(/[\\/]/).pop()) === sq(name)) return f.path;
+    const r = await callTool('/tool/findFolderAnywhere', { name });
+    const paths = (r && r.paths) || [];
+    return paths.find(p => sq(p.split(/[\\/]/).pop()) === sq(name)) || null;
   }
   // "make the header bigger" after a site was built → edit it in place.
   const SITE_WORDS = /\b(website|site|web ?page|page|landing page|section|header|footer|hero|banner|navbar|nav bar|menu|button|buttons|colou?rs?|theme|font|fonts|background|logo|image|images|title|heading|text|card|cards|form|layout|dark mode|light mode|gallery|schedule|events?|contact|about|faq)\b/i;
@@ -36,10 +52,10 @@ const Skills = (() => {
   async function siteEdit(change) {
     if (needAI()) return needAI();
     busyMsg('Updating the website…');
-    const r = await callTool('/skill/siteEdit', { name: S.lastSite, change, model: llm.model });
+    const r = await callTool('/skill/siteEdit', { name: S.lastSite, folder: S.lastSiteFolder || undefined, change, model: llm.model });
     if (r.error) return say('I couldn’t change it: ' + r.error, { intent: 'WEBSITE' });
-    const name = S.lastSite;
-    Undo.push('website change', async () => { const x = await callTool('/skill/siteRevert', { name }); if (x.error) throw new Error(x.error); return 'The website is back to the previous version.'; });
+    const name = S.lastSite, folder = S.lastSiteFolder || undefined;
+    Undo.push('website change', async () => { const x = await callTool('/skill/siteRevert', { name, folder }); if (x.error) throw new Error(x.error); return 'The website is back to the previous version.'; });
     return say('✓ Updated and reopened the website. Say **"undo"** to go back.', { intent: 'WEBSITE', speak: 'Done. I reopened the website.', suggestions: ['Undo'] });
   }
 
@@ -206,6 +222,19 @@ const Skills = (() => {
       return uipBuild(a);
     }
     // 2. website questions in progress
+    if (S.site && S.site.stage === 'folder') {   // "I found Calculator at D:\… — create the frontend there?"
+      if (cancelRe.test(t)) { S.site = null; return say('Okay, cancelled.'); }
+      if (/^(?:y|yes|yeah|yep|sure|ok(?:ay)?|do it|go ahead|please do|there|that one|correct|right)\b/i.test(t)) S.site.a.folder = S.site.found;
+      else if (!/^(?:n|no|nope|nah|not there|somewhere else|new folder|in jarvis)\b/i.test(t)) return say('Shall I create the frontend in **' + S.site.found + '**? Say **yes**, or **no** to make a new project in ~/jarvis/Projects.', { intent: 'WEBSITE' });
+      S.site.stage = 'brief';
+      return say('Anything specific — features, colours, style? Or say **go ahead** and I’ll design it.', { intent: 'WEBSITE', speak: 'Anything specific, or shall I go ahead?' });
+    }
+    if (S.site && S.site.stage === 'brief') {   // one optional question for a named project, not three
+      if (cancelRe.test(t)) { S.site = null; return say('Okay, cancelled.'); }
+      const a = S.site.a; S.site = null;
+      if (!/^(?:go ahead|go|no|nothing|skip|you decide|you choose|just do it|do it|start|build it|proceed|ok(?:ay)?|that's it)\b/i.test(t)) a.sections = t;
+      return siteBuild(a);
+    }
     if (S.site) {
       if (cancelRe.test(t)) { S.site = null; return say('Okay, cancelled the website.'); }
       const [key] = SITE_Q[S.site.step];
@@ -224,11 +253,21 @@ const Skills = (() => {
       if (um[1] && um[1].trim().length > 2) S.uip.a.context = um[1].trim(); // "ui design prompt for my attendance app": still ask, but keep it
       return uipAsk();
     }
-    // Voice often hears "create a frontend for…" as "creative front and for…".
-    const sm = t.replace(/^creative\s+(?=front)/i, 'create a ').replace(/\bfront\s+(?:and|an|in)\s+(?=(?:for|of)\b)/i, 'frontend ').match(SITE_START);
+    const sm = t.match(SITE_START);   // misheard voice ("creative front and for…") is already repaired by speechfix.js
     if (sm) {
       if (needAI()) return needAI();
       S.site = { step: 0, a: {} };
+      // "a frontend / UI for (my) (project) calculator": it's for one of your projects — find it, then one question.
+      const forProject = sm[2] && /^(?:front|ui|user interface|web ?app)/i.test(sm[1]) ? projectName(sm[2]) : '';
+      if (forProject) {
+        S.site.a.project = forProject;
+        S.site.a.what = 'the frontend (user interface) of the ' + forProject + ' app — ' + sm[2].trim();
+        const found = await findProjectFolder(forProject);
+        if (found) { S.site.stage = 'folder'; S.site.found = found;
+          return say('I found **' + forProject + '** at `' + found + '`. Shall I create the frontend there? (**yes** / **no** — no makes a new project in ~/jarvis/Projects)', { intent: 'WEBSITE', speak: 'I found ' + forProject + '. Shall I create the frontend there?' }); }
+        S.site.stage = 'brief';
+        return say('I’ll build a frontend for **' + forProject + '** in ~/jarvis/Projects. Anything specific — features, colours, style? Or say **go ahead**.', { intent: 'WEBSITE', speak: 'Anything specific, or shall I go ahead?' });
+      }
       if (sm[2] && sm[2].trim().length > 2) { S.site.a.what = sm[2].trim(); S.site.step = 1; }
       else if (/portfolio/i.test(sm[1])) { S.site.a.what = 'my personal portfolio'; S.site.step = 1; }
       return siteAsk();
@@ -241,7 +280,7 @@ const Skills = (() => {
     // 5. change the website that was just built
     if (S.lastSite && SITE_EDIT.test(t) && SITE_WORDS.test(t) && !/\b(to-?do|todo|list|reminder|volume|brightness|timer|alarm)\b/i.test(t)) return siteEdit(t);
     if (S.lastSite && /^(?:go back to the (?:previous|old|last) version|revert the (?:website|site|page))/i.test(t)) { const x = await callTool('/skill/siteRevert', { name: S.lastSite }); return say(x.error ? 'Couldn’t go back: ' + x.error : '✓ The website is back to the previous version (reopened).'); }
-    if (S.lastSite && /^open (?:the |my )?(?:website|site) in (?:vs ?code|editor)$/i.test(t)) { const x = await callTool('/tool/openInEditor', { name: 'Projects/' + S.lastSite }); return say(x.error ? cap(x.error) + '.' : 'Opening the website in **VS Code**.'); }
+    if (S.lastSite && /^open (?:the |my )?(?:website|site) in (?:vs ?code|editor)$/i.test(t)) { const x = await callTool('/tool/openInEditor', { name: S.lastSiteDir || ('Projects/' + S.lastSite) }); return say(x.error ? cap(x.error) + '.' : 'Opening the website in **VS Code**.'); }
     return null;
   }
   return { intercept, state: S, SITE_START, VIVA_START, COACH_START, DSA_WORDS };

@@ -73,7 +73,7 @@ const FEATURES = [
   // ---- files
   ['Files', 'WRITE_FILE', ['create a file called ideas', 'make a new note']], ['Files', 'NOTE_APPEND', ['take a note: buy pens', 'note down call the warden']],
   ['Files', 'READ_FILE', ['read my notes', 'open notes.md']], ['Files', 'LIST_FILES', ['list my files', "what's in the sandbox"]],
-  ['Files', 'SEARCH_FILES', ['find the file about graphs', 'search for my notes']], ['Files', 'CREATE_FOLDER', ['create a folder called dsa', 'make a new folder']],
+  ['Files', 'SEARCH_FILES', ['find the file about graphs', 'search for my notes']], ['Files', 'CREATE_FOLDER', ['create a folder called dsa', 'make a new folder']], ['Files', 'COUNT_FOLDERS', ['how many folders are on my laptop', 'list number of folders in my laptop']],
   ['Files', 'RENAME_FILE', ['rename notes.md to dbms.md', 'rename that']], ['Files', 'COPY_FILE', ['copy notes.md to backup', 'duplicate a.txt to b.txt']],
   ['Files', 'MOVE_FILE', ['move notes.md to archive', 'move report into done']], ['Files', 'DELETE_ITEM', ['delete the file old.txt', 'delete old.txt']],
   ['Files', 'DESTRUCTIVE', ['delete all my files', 'format my drive']], ['Files', 'CHECK_EXISTS', ['check if notes.md exists', 'does dsa exist', 'check whether DSS print folder exist in my laptop']],

@@ -223,6 +223,8 @@
       <div class="s-row"><label>Neural voice<small>FRIDAY · TELUGU · KANNADA · MICROSOFT · SENDS REPLY TEXT ONLINE</small></label><button class="switch on" id="neuralVoiceToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Voice check<small>WHAT THIS BROWSER SUPPORTS</small></label><button class="btn" id="voiceCheckBtn">CHECK</button></div>
       <div class="s-note" id="voiceCheckOut" style="margin:-4px 0 12px"></div>
+      <div class="s-row"><label>Test my mic<small>SAY 14 WORDS · SEE WHAT I HEAR, AND WHAT I FIX</small></label><button class="btn" id="micTestBtn">START</button></div>
+      <div class="s-note" id="micTestOut" style="margin:-4px 0 12px"></div>
       <div class="s-row"><label>Address me as</label><select id="addressSelect"><option value="sir">SIR</option><option value="ma'am">MA'AM</option><option value="boss">BOSS</option><option value="name">MY NAME</option></select></div>
       <div class="s-row"><label>Voice</label><select id="voiceSelect"></select></div>
       <div class="s-note" style="margin:-4px 0 12px">For the most film-like voice, open JARVIS in <em>Microsoft Edge</em> — it has a natural British voice ("Ryan").</div>
@@ -286,6 +288,7 @@
   <div id="toasts"></div>
 
   <script src="api/state.js"></script>
+  <script src="speechfix.js"></script>
   <script src="nlu.js"></script>
   <script src="persona.js"></script>
   <script src="lang.js"></script>

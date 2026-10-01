@@ -101,7 +101,25 @@ const WAKE = ['jarvis', 'జార్విస్', 'జార్వీస్', 
   check('Tap to talk', 'a pause mid-sentence does not cut tap-to-talk off', r.commits().join('|') === 'open vs code in the dsa folder', r.commits());
   const f = rig();
   f.interim('what time is'); f.u.flush();
-  check('Tap to talk', 'tapping the mic again sends what was said right away', f.commits().join('|') === 'what time is');
+  check('Tap to talk', 'tapping while the words are still a guess waits briefly for the final', f.commits().length === 0, f.log);
+  f.wait(800);
+  check('Tap to talk', 'tapping the mic again sends what was said (after at most a short grace)', f.commits().join('|') === 'what time is', f.log);
+  const g = rig();
+  g.final('open chrome'); g.u.flush();
+  check('Tap to talk', 'tapping with only final words sends right away', g.commits().join('|') === 'open chrome', g.log);
+  const h = rig();
+  h.interim('create a front'); h.u.flush(); h.wait(200); h.final('create a frontend for calculator'); h.wait(200);
+  check('Tap to talk', 'tap, then the final arrives: the final words are sent ("frontend", not "front")', h.commits().join('|') === 'create a frontend for calculator', h.log);
+}
+{ // the presentation bug: an interim "front" was sent before the recogniser finished the word
+  const r = rig();
+  r.interim('create a front'); r.wait(1700);
+  check('Interim vs final', 'silence with a pending interim does not send the guess yet', r.commits().length === 0, r.log);
+  r.final('create a frontend'); r.wait(1700);
+  check('Interim vs final', 'the final version is what gets sent', r.commits().join('|') === 'create a frontend', r.log);
+  const s = rig();
+  s.interim('open notepad'); s.wait(3000);
+  check('Interim vs final', 'an interim that never becomes final is still sent after the extra grace', s.commits().join('|') === 'open notepad', s.log);
   const q = rig();
   q.wait(8100);
   check('Tap to talk', 'tapping and saying nothing ends quietly after 8 s', q.log.includes('idle') && !q.commits().length);

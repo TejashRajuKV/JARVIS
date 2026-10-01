@@ -745,7 +745,9 @@ const NLU = (() => {
     ['DELETE_ITEM', /\b(delete|remove|trash|bin)\b (the |my |that )?(folder|file|note|directory)\b|^(delete|remove|trash) [\w\- ]+\.\w+$/, .93, 'deleteItem'],
     ['NOTE_APPEND', /^(take|make|write|jot|add) (a )?note(?! (called|named|titled)\b):? (.+)|^note( down)?:? (.+)/, .93, 'writeFile'],
     ['WRITE_FILE', /\b(create|make|write|save|new)( a| an)?( new)? (?:\w+ )?(file|note|document)\b/, .94, 'writeFile'],
-    ['CREATE_FOLDER', /\b(create|make|new|add)( a| an)?( new)? (?:\w+ )?(folder|directory)\b/, .96, 'createFolder'],
+    // "list number of folders in my laptop" / "how many folders are in D drive" / "count my directories"
+    ['COUNT_FOLDERS', /\b(?:how many|number of|no\.? of|count(?: of)?|total(?: number of)?|amount of)\s+(?:all\s+)?(?:the\s+|my\s+)?(?:folders?|director(?:y|ies)|dirs|files)\b|\bcount\s+(?:all\s+)?(?:the\s+|my\s+)?(?:folders?|director(?:y|ies)|files)\b/, .95, 'countFolders'],
+    ['CREATE_FOLDER', /\b(create|make|new|add|build|generate)( me)?( a| an| one| the)?( new)? (?:\w+ )?(folder|directory|dir)\b/, .96, 'createFolder'],
     ['RENAME_FILE', /\brename\b/, .92, 'renameFile'],
     ['COPY_FILE', /\b(copy|duplicate)\b .+ \bto\b/, .9, 'copyFile'],
     ['MOVE_FILE', /\bmove\b .+ \b(to|into)\b/, .9, 'moveFile'],
@@ -753,7 +755,7 @@ const NLU = (() => {
     // "where is pythonProject" / "locate calculator.html" / "find agriloop on my laptop": a name on this laptop. If
     // nothing on the laptop matches, the handler hands it to the AI ("where is delhi" is still answered).
     ['SEARCH_FILES', /^(?:where(?:'s| is)|locate|find)\s+(?:my\s+|the\s+)?[\w.\-()]+(?:\s+[\w.\-()]+){0,3}?(?:\s+(?:on|in) (?:my |the |this )?(?:laptop|computer|pc|system|drives?))?$/, .88, 'searchFiles'],
-    ['LIST_FILES', /\b(list|show|what)( me)?( are)?( all)?( the| my)? (files|folders|documents|notes)\b|\bwhat'?s in (the |my )?(sandbox|jarvis folder)\b/, .94, 'listFiles'],
+    ['LIST_FILES', /\b(list|show|display|what)( me)?( are)?( all)?( the| my)? (files|folders|documents|notes|directories|dirs)\b|\bwhat'?s in (the |my )?(sandbox|jarvis folder|[a-z] drive)\b|\b(?:list|show|display)\b.*\b(?:folders|directories|files)\s+(?:in|on|inside|of|from)\b/, .94, 'listFiles'],
     ['READ_FILE', /\b(read|open|show|display|what'?s in)( me)?( the| my)? ([\w\-.]+ )?(file|note|notes|document)\b|\b(?:read|open|show)(?: me)? [\w\-() ]+\.(txt|md|pdf)\b/, .9, 'readFile'],
     ['OPEN_FOLDER', /\bopen\b.*\b(folder|directory|sandbox|downloads|documents|projects)\b/, .93, 'openFolder'],
 

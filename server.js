@@ -820,7 +820,10 @@ WHAT YOU KNOW ABOUT THE USER
 ${facts}
 
 THEIR CURRENT TASKS / DEADLINES
-${tasks}${summaryRule(ctx.earlier)}${limitRule(cleanLimit(ctx.limit))}`;
+${tasks}${ctx.focus ? `
+
+RIGHT NOW (what "that folder", "there", "it" refer to)
+${String(ctx.focus).slice(0, 600)}` : ''}${summaryRule(ctx.earlier)}${limitRule(cleanLimit(ctx.limit))}`;
 }
 // Rolling conversation memory: the page sends a compact summary of everything before the last 14 messages.
 function summaryRule(earlier) {
@@ -911,19 +914,87 @@ app.post('/api/chat', async (req, res) => {
 /* ---------------- files (sandboxed to ~/jarvis) ---------------- */
 app.get('/api/tool/sandboxInfo', (req, res) => res.json({ success: true, root: SANDBOX }));
 
+// Where a request points, as people say it: "my laptop" (everything), "D drive" / "d:" (a drive), "desktop" /
+// "my downloads" (known folders), a full path. null = a folder name to look up (findAnywhere).
+function whereDir(w) {
+  const k = knownFolder(w);
+  if (k) return { path: k };
+  const sc = scopeDir(w);
+  return sc && sc.path ? sc : { error: (sc && sc.error) || `I couldn't find the folder "${w}"` };
+}
+function scopeDir(raw) {
+  const s = String(raw || '').trim().replace(/^["']|["']$/g, '').replace(/[.?!]+$/, '');
+  if (!s || /^(?:(?:my|the|this|whole|entire)\s+)*(?:laptop|computer|pc|system|machine|all (?:my )?drives|everywhere)$/i.test(s)) return { all: true };
+  const d = s.match(/^(?:the\s+|my\s+)?([a-z])(?::[\\/]?|\s+drive)$/i) || s.match(/^drive\s+([a-z]):?$/i);
+  if (d) { const r = d[1].toUpperCase() + ':\\'; return fs.existsSync(r) ? { path: r } : { error: `There is no ${d[1].toUpperCase()}: drive on this laptop` }; }
+  const k = s.replace(/^(?:my|the)\s+/i, '').replace(/\s+folder$/i, '').toLowerCase();
+  if (KNOWN[k]) { const p = knownFolder(k); return p ? { path: p } : { error: `I couldn't find your ${KNOWN[k]} folder` }; }
+  if (path.isAbsolute(s) && !/^[/\\]/.test(s)) { const p = anyPath(s); return p && fs.existsSync(p) ? { path: p } : { error: `I can't find "${s}"` }; }
+  return null;
+}
 app.post('/api/tool/listFiles', (req, res) => {
-  const f = req.body.dir ? findAnywhere(req.body.dir, { kind: 'folder' }) : { path: SANDBOX };
+  const sc = req.body.dir ? scopeDir(req.body.dir) : null;
+  if (sc && sc.error) return res.status(404).json({ error: sc.error });
+  if (sc && sc.all) {   // "list folders in my laptop": the drives, and your home folder
+    const drives = IS_WIN ? 'CDEFGHIJ'.split('').map(d => d + ':\\').filter(r => fs.existsSync(r)) : ['/'];
+    return res.json({ success: true, dir: 'This laptop', path: '', folders: [...drives, HOME_DIR], files: [], projects: [], laptop: true });
+  }
+  const f = sc && sc.path ? { path: sc.path } : req.body.dir ? findAnywhere(req.body.dir, { kind: 'folder' }) : { path: SANDBOX };
   if (!f || !f.path) return notFoundOrChoices(res, f, req.body.dir);
   const dir = f.path;
   try {
-    const items = fs.readdirSync(dir, { withFileTypes: true }).filter(i => !i.name.startsWith('.'));
+    const items = fs.readdirSync(dir, { withFileTypes: true }).filter(i => !i.name.startsWith('.') && !i.name.startsWith('$') && !BLOCKED_NAMES.test(i.name));
     res.json({
-      success: true, dir: rel(dir) || '~/jarvis',
+      success: true, dir: rel(dir) || '~/jarvis', path: dir,
       folders: items.filter(i => i.isDirectory() && !SKIP_DIRS.has(i.name)).map(i => i.name),
       files: items.filter(i => i.isFile()).map(i => i.name),
       projects: dir === SANDBOX ? config.roots.map(r => path.basename(r)) : [],
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// "how many folders are on my laptop" / "count folders in D drive": answered from the laptop file index (names only),
+// so it covers every level, not just the top. Hidden, system and build folders (node_modules, .git…) are not counted.
+app.post('/api/tool/folderStats', (req, res) => {
+  const raw = String(req.body.scope || '').trim();
+  let sc = scopeDir(raw);
+  if (sc && sc.error) return res.status(404).json({ error: sc.error });
+  if (!sc) { const f = findAnywhere(raw, { kind: 'folder' }); if (!f || !f.path) return notFoundOrChoices(res, f, raw); sc = { path: f.path }; }
+  // One folder: counted live from disk (always current — the index may be up to 30 minutes old), unless it is huge.
+  if (!sc.all) {
+    const t0 = Date.now(); let folders = 0, files = 0, seen = 0, complete = true; const directDirs = []; let directFiles = 0;
+    const walk = (dir, depth) => {
+      if (!complete) return;
+      let items; try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const it of items) {
+        if (++seen > 300000 || Date.now() - t0 > 4000) { complete = false; return; }
+        if (it.name.startsWith('.') || it.name.startsWith('$') || SKIP_DIRS.has(it.name) || BLOCKED_NAMES.test(it.name) || it.isSymbolicLink()) continue;
+        const full = path.join(dir, it.name), isDir = it.isDirectory();
+        if (isDir && blockedPath(full)) continue;
+        if (isDir) folders++; else files++;
+        if (depth === 0) { if (isDir) directDirs.push(it.name); else directFiles++; }
+        if (isDir) walk(full, depth + 1);
+      }
+    };
+    walk(sc.path, 0);
+    if (complete || !fileIndex.ready)
+      return res.json({ success: true, scope: sc.path, path: sc.path, folders, files, partial: !complete,
+        direct: { folders: directDirs.slice(0, 40), folderCount: directDirs.length, files: directFiles }, perDrive: null });
+  }
+  if (!fileIndex.ready) return res.json({ success: true, indexing: true, scope: sc.all ? 'this laptop' : sc.path });
+  const pre = sc.all ? '' : (sc.path.endsWith(path.sep) ? sc.path : sc.path + path.sep).toLowerCase();
+  let folders = 0, files = 0, directFiles = 0; const directDirs = [], perDrive = {};
+  for (let i = 0; i < fileIndex.paths.length; i++) {
+    const p = fileIndex.paths[i];
+    if (pre && !p.toLowerCase().startsWith(pre)) continue;
+    const isDir = fileIndex.dirs[i] === 1;
+    if (isDir) folders++; else files++;
+    if (sc.all) { const d = p.slice(0, 2).toUpperCase(); perDrive[d] = perDrive[d] || { folders: 0, files: 0 }; perDrive[d][isDir ? 'folders' : 'files']++; }
+    else if (!p.slice(pre.length).includes(path.sep)) { if (isDir) directDirs.push(path.basename(p)); else directFiles++; }
+  }
+  res.json({ success: true, scope: sc.all ? 'this laptop' : sc.path, path: sc.all ? '' : sc.path, folders, files,
+    direct: sc.all ? null : { folders: directDirs.slice(0, 40), folderCount: directDirs.length, files: directFiles }, perDrive: sc.all ? perDrive : null,
+    builtAt: fileIndex.builtAt });
 });
 
 const pdf = require('./pdftext');
@@ -953,7 +1024,7 @@ app.post('/api/tool/openFile', (req, res) => {
   const p = f.path;
   if (!/\.(pdf|txt|md|png|jpe?g|gif|docx?|pptx?|xlsx?|csv|html?)$/i.test(p)) return res.status(400).json({ error: 'I only open documents and pictures this way — say "run" for programs' });
   openPath(p);
-  res.json({ success: true, name: rel(p) });
+  res.json({ success: true, name: rel(p), path: p });
 });
 app.post('/api/tool/readFile', (req, res) => {
   const f = findAnywhere(String(req.body.name || ''), { kind: 'file' });
@@ -964,13 +1035,13 @@ app.post('/api/tool/readFile', (req, res) => {
       if (r.scanned) return res.status(422).json({ error: 'That PDF is pictures of pages (a scan), with no text I can read. Try "read my screen" with the page open instead' });
       let content = pdf.withMarkers(r.pages); const cut = content.length > 200000;
       if (cut) content = content.slice(0, 200000);
-      res.json({ success: true, name: rel(p), content, pages: r.total, truncated: cut });
+      res.json({ success: true, name: rel(p), path: p, content, pages: r.total, truncated: cut });
     }).catch(e => res.status(422).json({ error: cap1(e.message) }));
   }
   try {
     const st = fs.statSync(p);
     if (st.size > 200 * 1024) return res.status(413).json({ error: 'File too large to read aloud (>200KB)' });
-    res.json({ success: true, name: rel(p), content: fs.readFileSync(p, 'utf-8') });
+    res.json({ success: true, name: rel(p), path: p, content: fs.readFileSync(p, 'utf-8') });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -981,13 +1052,14 @@ app.post('/api/tool/writeFile', (req, res) => {
   if (!name || /[<>:"|?*]/.test(name.replace(/^[a-z]:/i, ''))) return res.status(400).json({ error: 'Invalid file name' });
   if (!path.extname(name)) name += '.md';
   // "in desktop" / "in downloads": a plain file inside that known folder (still asks first — it is outside ~/jarvis).
-  const where = req.body.where ? knownFolder(req.body.where) : null;
-  if (req.body.where && !where) return res.status(404).json({ error: `I couldn't find your ${req.body.where} folder` });
+  // where: a known folder ("desktop") or any folder as scopeDir reads it ("D drive", "C:\Users\me\Projects").
+  const where = req.body.where ? whereDir(req.body.where) : null;
+  if (where && where.error) return res.status(404).json({ error: where.error });
   let p;
   if (where) {
     const base = path.basename(name);
     if (!base || /[\\/:*?"<>|]|^\.+$/.test(base)) return res.status(400).json({ error: 'Invalid file name' });
-    p = anyPath(path.join(where, base), { forWrite: true });
+    p = anyPath(path.join(where.path, base), { forWrite: true });
   } else {
     const hasDir = /[/\\]/.test(name) || path.isAbsolute(name);
     const existing = path.isAbsolute(name) ? null : findAllowed(name, { kind: 'file', exact: true });
@@ -1015,17 +1087,18 @@ app.post('/api/tool/writeFile', (req, res) => {
 
 app.post('/api/tool/createFolder', (req, res) => {
   // "in desktop" / "in downloads": a plain name inside that known folder (still asks first — it is outside ~/jarvis).
-  const where = req.body.where ? knownFolder(req.body.where) : null;
-  if (req.body.where && !where) return res.status(404).json({ error: `I couldn't find your ${req.body.where} folder` });
+  // where: a known folder ("desktop") or any folder as scopeDir reads it ("D drive", "C:\Users\me\Projects").
+  const where = req.body.where ? whereDir(req.body.where) : null;
+  if (where && where.error) return res.status(404).json({ error: where.error });
   const nm = String(req.body.name || '').trim();
   if (where && (!nm || /[\\/:*?"<>|]|^\.+$/.test(nm))) return res.status(400).json({ error: 'Invalid folder name' });
-  const p = where ? anyPath(path.join(where, nm), { forWrite: true }) : anyPath(nm, { forWrite: true });
+  const p = where ? anyPath(path.join(where.path, nm), { forWrite: true }) : anyPath(nm, { forWrite: true });
   if (!p || p === SANDBOX) return res.status(400).json({ error: 'Invalid folder name' });
   if (!approvedChange(req, res, 'create the folder', p)) return;
   try {
     const existed = fs.existsSync(p);
     fs.mkdirSync(p, { recursive: true });
-    res.json({ success: true, name: rel(p), existed });
+    res.json({ success: true, name: rel(p), path: p, existed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1152,7 +1225,7 @@ app.post('/api/tool/undoCreate', (req, res) => { // removes something JARVIS cre
 app.post('/api/tool/searchFiles', (req, res) => {
   const q = String(req.body.query || '').toLowerCase().trim();
   if (!q) return res.status(400).json({ error: 'Query required' });
-  const results = [];
+  const results = [], paths = [];   // paths: the same items as full paths (for "open the second one")
   const walk = (dir, depth) => {
     if (depth > 5 || results.length >= 30) return;
     let items;
@@ -1160,7 +1233,7 @@ app.post('/api/tool/searchFiles', (req, res) => {
     for (const item of items) {
       if (item.name.startsWith('.') || SKIP_DIRS.has(item.name)) continue;
       const full = path.join(dir, item.name);
-      if (item.name.toLowerCase().includes(q)) results.push(rel(full) + (item.isDirectory() ? '/' : ''));
+      if (item.name.toLowerCase().includes(q)) { results.push(rel(full) + (item.isDirectory() ? '/' : '')); paths.push(full); }
       if (item.isDirectory()) walk(full, depth + 1);
     }
   };
@@ -1168,9 +1241,9 @@ app.post('/api/tool/searchFiles', (req, res) => {
     allRoots().forEach(r => walk(r, 0));
     // Then the rest of the laptop (Desktop, Documents, Downloads, drives), shown as full paths.
     if (results.length < 30) for (const p of laptopSearch(q, { contains: true, max: 30 - results.length })) {
-      if (!rootOf(p)) { let dir = false; try { dir = fs.statSync(p).isDirectory(); } catch {} results.push(p + (dir ? path.sep : '')); }
+      if (!rootOf(p)) { let dir = false; try { dir = fs.statSync(p).isDirectory(); } catch {} results.push(p + (dir ? path.sep : '')); paths.push(p); }
     }
-    res.json({ success: true, results });
+    res.json({ success: true, results, paths });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1180,7 +1253,7 @@ app.post('/api/tool/openFolder', (req, res) => {
   if (!f || !f.path) return notFoundOrChoices(res, f, name);
   const p = f.path;
   openPath(p);
-  res.json({ success: true, name: rel(p) || '~/jarvis' });
+  res.json({ success: true, name: rel(p) || '~/jarvis', path: p });
 });
 
 /* ---------------- code: editor / run / paste ---------------- */
@@ -1220,7 +1293,7 @@ const rag = require('./rag')(app, { allRoots, SKIP_DIRS, rel, isInternal, pdfPag
 rag.startWatcher(); // new/changed files are picked up automatically (still cheap; explicit reindex stays available)
 
 // Website generator, DSA coach and viva practice (skills.js).
-require('./skills')(app, { llm, DEFAULT_MODEL, SANDBOX, openPath, rel, findAllowed });
+require('./skills')(app, { llm, DEFAULT_MODEL, SANDBOX, openPath, rel, findAllowed, anyPath, approvedChange });
 
 // Checks only — JARVIS never installs a missing compiler or extension, it just reports what it found.
 const TOOLCHAIN = {

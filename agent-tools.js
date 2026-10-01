@@ -23,6 +23,8 @@ module.exports = function agentTools({ APPS, safePath, llm, DEFAULT_MODEL }) {
     url: { type: 'url' },
     path: { type: 'path' },
     when: { type: 'when' },
+    // a place on the laptop: "desktop", "D drive", "C:\Users\me\Projects", "laptop" — any write there still asks first
+    place: { type: 'place' },
   };
   const req = s => Object.assign({ required: true }, s);
 
@@ -56,8 +58,9 @@ module.exports = function agentTools({ APPS, safePath, llm, DEFAULT_MODEL }) {
     network: { intent: 'SYS_NETWORK', desc: 'IP address', args: {} },
     write_note: { intent: 'WRITE_FILE', desc: 'save text into a file in the ~/jarvis sandbox', args: { name: req(T.path), content: req(T.text(20000)) }, check: 'file' },
     read_file: { intent: 'READ_FILE', desc: '', args: { name: req(T.path) } },
-    list_files: { intent: 'LIST_FILES', desc: '', args: {} },
-    create_folder: { intent: 'CREATE_FOLDER', desc: 'create a folder in the sandbox', args: { name: req(T.path) }, check: 'file' },
+    list_files: { intent: 'LIST_FILES', desc: 'list the folders and files in a place ("dir": desktop, D drive, a full path; empty = ~/jarvis)', args: { dir: T.place } },
+    count_folders: { intent: 'COUNT_FOLDERS', desc: 'count folders and files on the laptop or in a place ("scope": laptop, D drive, desktop, a full path)', args: { scope: T.place } },
+    create_folder: { intent: 'CREATE_FOLDER', desc: 'create a folder ("where": desktop, D drive or a full path; empty = ~/jarvis)', args: { name: req(T.path), where: T.place } },
     git_status: { intent: 'GIT_STATUS', desc: '', args: {} },
     briefing: { intent: 'BRIEFING', desc: 'daily briefing', args: {} },
     save_code: { intent: 'SAVE_CODE', desc: 'save the most recent code block from this chat into a file (e.g. "bfs.py")', args: { name: T.path }, check: 'file' },
@@ -177,6 +180,11 @@ module.exports = function agentTools({ APPS, safePath, llm, DEFAULT_MODEL }) {
         if (s.length > 200 || /(^|[\\/])\.\.([\\/]|$)/.test(s) || /^[a-z]:/i.test(s) || /^[\\/]/.test(s) || /[\0<>|"?*]/.test(s)) return { err: 'must be a plain name inside the ~/jarvis sandbox' };
         return safePath(s) ? { v: s } : { err: 'outside the allowed folders' };
       }
+      case 'place': {
+        const s = String(v).trim();
+        if (s.length > 200 || /(^|[\\/])\.\.([\\/]|$)/.test(s) || /[\0<>|"?*]/.test(s)) return { err: 'not a valid place' };
+        return { v: s };
+      }
       case 'when': {
         const s = String(v).trim();
         // Same rule as the REMIND handler: a one-off time, or a repeat ("every year in july", "every monday at 8").
@@ -289,7 +297,9 @@ Rules:
       const t0 = Date.now();
       let raw = '';
       try {
-        raw = await llm.complete({ model: String(req.body.model || DEFAULT_MODEL), system: PLAN_PROMPT(), messages: [{ role: 'user', content: text }],
+        // What "that folder" / "it" / "there" refer to right now (the page's conversation focus).
+        const context = String(req.body.context || '').trim().slice(0, 600);
+        raw = await llm.complete({ model: String(req.body.model || DEFAULT_MODEL), system: PLAN_PROMPT(), messages: [{ role: 'user', content: (context ? 'Context (what "that folder", "there", "it" mean): ' + context + '\n\nRequest: ' : '') + text }],
           json: true, temperature: 0, maxTokens: 300, timeoutMs: 60000 });
       } catch (e) {
         return res.json({ ok: false, reason: 'the AI is unavailable (' + e.message + ')', ms_plan: Date.now() - t0 });

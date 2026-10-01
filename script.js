@@ -170,6 +170,84 @@ function memDel(id) { undoRemoved('deleted memory', () => memory, v => { memory 
 
 // Conversation context for follow-ups ("close it", "what about RAM").
 const ctx = { lastApp: null, lastIntent: null, lastFile: null, pending: null };
+// What the conversation is about right now: the folder / file JARVIS last showed, found or made, and the numbered
+// results of the last list or search — so "create a folder there", "open it" and "open the second one" mean something.
+ctx.focus = { folder: null, file: null, created: null, results: [] };
+const FOCUS_MS = 15 * 60 * 1000;
+// (a drive root keeps its slash: "D:\" — "D:" alone would mean the current folder on D)
+function setFocus(kind, p) { if (p) ctx.focus[kind] = { path: /^[a-z]:[\\/]*$/i.test(String(p)) ? String(p)[0].toUpperCase() + ':\\' : String(p).replace(/[\\/]+$/, '') || String(p), t: Date.now() }; }
+function focusOf(kind) { const f = ctx.focus[kind]; return f && Date.now() - f.t < FOCUS_MS ? f : null; }
+function setResults(paths) { ctx.focus.results = (paths || []).filter(Boolean).slice(0, 30); ctx.focus.resultsT = Date.now(); }
+const joinPath = (dir, name) => /[\\/]$/.test(dir) ? dir + name : dir + (/\\/.test(dir) || /^[a-z]:/i.test(dir) ? '\\' : '/') + name;
+// The newest thing in focus ("open it"): a folder or file shown, found or created in the last 15 minutes.
+function focusNewest() {
+  const c = ['created', 'file', 'folder'].map(k => focusOf(k) && Object.assign({ kind: k }, focusOf(k))).filter(Boolean);
+  return c.sort((a, b) => b.t - a.t)[0] || null;
+}
+// Where a request points. "in that directory" / "there" → the folder in focus ({ref:true, path}); "in D drive",
+// "on my desktop", "in C:\x\y", "inside calculator", "in my laptop" → {scope} as said (the server reads it);
+// rest = the request without the place.
+const REF_RE = /\s*\b(?:in|inside|into|under|at|to|on|of)\s+(?:that|this|the same|the current|current|the above|the last|same)\s+(?:directory|folder|dir|location|place|path|one)\b|\s+(?:in\s+|inside\s+)?(?:there|over there|in there)\s*$/i;
+function scopeFrom(original, forCreate) {
+  // creating: only "in/inside/into/on/under" name a place — "a folder called history of art" is a name
+  const P = forCreate ? '(?:in|inside|into|under|on)' : '(?:in|inside|into|under|on|of|from|across)';
+  const o = String(original || '').trim().replace(/[.?!]+$/, '');
+  // "in it" = inside what was just created; "there" / "that folder" = where you were looking (or the new folder, if
+  // that came after).
+  const inIt = /\s+(?:in|inside|into)\s+it\s*$/i;
+  if (inIt.test(o)) { const f = focusOf('created') || focusOf('folder'); return { ref: true, path: f ? f.path : '', rest: o.replace(inIt, '').trim() }; }
+  if (REF_RE.test(o)) {
+    const fo = focusOf('folder'), cr = focusOf('created');
+    const f = fo && (!cr || fo.t >= cr.t) ? fo : (cr || fo);
+    return { ref: true, path: f ? f.path : '', rest: o.replace(REF_RE, '').trim() };
+  }
+  // The LAST "in/on …" is the place: "list number OF folders IN my laptop" → "my laptop".
+  const abs = o.match(/^(.*)\s+(?:in|inside|into|under|at|to|on|of|from)\s+["']?([a-z]:(?:[\\/][^"']*)?)["']?\s*$/i);
+  if (abs) return { scope: abs[2], rest: abs[1].trim() };
+  const m = o.match(new RegExp('^(.*)\\s+' + P + '\\s+(?:(?:the|my|this|whole|entire|all)\\s+)*([\\w\\- ]+?)(?:\\s+(?:folder|directory))?\\s*$', 'i'));
+  if (m && !/^(?:it|that|this|total|all|folders?|files?|directories)$/i.test(m[2])) return { scope: m[2].trim(), rest: m[1].trim() };
+  return { rest: o };
+}
+// "open it" / "open the second one" / "open number 2" → { path } of the thing meant, { text } to explain, or null
+// (not about the focus — the normal pipeline handles it).
+const ORDINAL = { first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4, fifth: 5, '5th': 5, sixth: 6, '6th': 6, last: -1 };
+function openFocusTarget(text) {
+  const t = String(text || '').trim().toLowerCase().replace(/[.!?]+$/, '').replace(/^(?:please|can you|could you|jarvis,?)\s+/, '').replace(/\s+(?:please|now|for me)$/, '');
+  let idx = null, m = t.match(/^(?:open|show|launch)(?: up)?\s+(?:the\s+)?(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th|sixth|6th|last)(?:\s+(?:one|result|folder|file|match|item))?$/);
+  if (m) idx = ORDINAL[m[1]];
+  else if ((m = t.match(/^(?:open|show)\s+(?:number|no\.?|#|item|result)\s*(\d{1,2})$/))) idx = +m[1];
+  if (idx !== null) {
+    const R = ctx.focus.results || [];
+    if (!R.length || Date.now() - (ctx.focus.resultsT || 0) > FOCUS_MS) return null;
+    const p = idx === -1 ? R[R.length - 1] : R[idx - 1];
+    return p ? { path: p } : { text: 'There ' + (R.length === 1 ? 'is only 1 item' : 'are only ' + R.length + ' items') + ' in that list, ' + Persona.sir() + '.' };
+  }
+  if (/^(?:open|show)(?: up)?\s+(?:it|that|this|it up|that folder|this folder|the folder|that file|the file|the new folder|the one you (?:just )?(?:made|created))$/.test(t)) {
+    const f = focusNewest();
+    if (!f || (ctx.lastAppT && ctx.lastAppT > f.t)) return null;   // "open it" right after an app is about the app
+    return { path: f.path };
+  }
+  return null;
+}
+async function openFocusPath(p) {
+  toolStep('open → ' + p);
+  const r = await callTool('/tool/openFolder', { name: p });
+  if (!r.error) { setFocus('folder', r.path || p); return { text: 'Opening `' + (r.path || p) + '` in your file explorer.', speak: 'Opening it.', tool: 'openFolder' }; }
+  const f = await callTool('/tool/openFile', { name: p });
+  if (!f.error) { setFocus('file', f.path || p); return { text: 'Opening **' + (f.path || p) + '**.', speak: 'Opening it.', tool: 'openFile' }; }
+  const e = await callTool('/tool/openInEditor', { name: p });
+  if (!e.error) return { text: 'Opening **' + p + '** in VS Code.', speak: 'Opening it in VS Code.', tool: 'openInEditor' };
+  return { text: 'I couldn’t open `' + p + '`: ' + (f.error || r.error) + '.' };
+}
+// A short line for the AI (chat + planner) so it knows what "that folder" / "it" refer to.
+function focusSummary() {
+  const parts = [];
+  if (focusOf('folder')) parts.push('folder being looked at: ' + focusOf('folder').path);
+  if (focusOf('created')) parts.push('just created: ' + focusOf('created').path);
+  if (focusOf('file')) parts.push('last file: ' + focusOf('file').path);
+  if (ctx.lastProject) parts.push('last project: ' + ctx.lastProject);
+  return parts.join('; ');
+}
 
 /* ============ dom refs ============ */
 const stateChip = $('#stateChip'), stateMsg = $('#stateMsg'), liveTranscript = $('#liveTranscript');
@@ -2069,7 +2147,7 @@ async function executeTool(p, raw) {
         toolStep('openApplication → ' + app.k);
         const r = await callTool('/tool/openApplication', { app: app.k });
         if (r.error) return { text: 'I could not open ' + app.n + ' — ' + r.error + '.' };
-        ctx.lastApp = app.k;
+        ctx.lastApp = app.k; ctx.lastAppT = Date.now();
         { const at = Date.now(); Undo.push('opened ' + app.n, async () => { if (Date.now() - at > 5 * 6e4) throw new Error('it was opened more than 5 minutes ago, so I won’t close it (you may have work in it)'); const x = await callTool('/tool/closeApplication', { app: app.k }); if (!x.success) throw new Error(x.error || 'it isn’t running'); return 'Closed ' + app.n + ' again.'; }); }
         return { text: pick(['Opening ', 'Launching ', 'Starting ']) + '**' + app.n + '**.', speak: 'Opening ' + app.n, tool: 'openApplication' };
       }
@@ -2098,7 +2176,7 @@ async function executeTool(p, raw) {
     }
     case 'WORKFLOW': {
       toolStep('workflow → vscode + projects');
-      await callTool('/tool/openApplication', { app: 'vscode' }); ctx.lastApp = 'vscode';
+      await callTool('/tool/openApplication', { app: 'vscode' }); ctx.lastApp = 'vscode'; ctx.lastAppT = Date.now();
       await callTool('/tool/openFolder', { name: 'Projects' });
       const pend = todos.filter(t => !t.done);
       return { text: 'Coding environment ready: **VS Code** is launching and your **Projects** folder is open.' + (pend.length ? ' Top of your list: "' + pend[0].text + '".' : '') + ' Want a focus session too?', suggestions: ['Start a focus session', 'Git status'] };
@@ -2861,7 +2939,7 @@ async function executeTool(p, raw) {
       toolStep('locateProject → ' + name);
       const r = await callTool('/tool/locateProject', { name });
       if (r.error) return { text: cap(r.error) + '.' };
-      ctx.lastProject = r.name;
+      ctx.lastProject = r.name; if (r.path) setFocus('folder', r.path);
       return { text: '✓ Found `' + r.name + '`.', op: { kind: 'project', name: r.name }, tool: 'locateProject' };
     }
     case 'START_PROCESS': {
@@ -3220,22 +3298,50 @@ async function executeTool(p, raw) {
       return { text: '**' + r.value + ' ' + from + ' = ' + r.result.toLocaleString() + ' ' + to + '**', speak: r.value + ' ' + r.from + ' is ' + r.result + ' ' + r.to, tool: 'convert' };
     }
     case 'CREATE_FOLDER': {
-      // "… in desktop" / "on my desktop" / "inside downloads": the place, not part of the name.
-      const LOC = /\s+(?:in|on|inside|at|to|into)\s+(?:the\s+|my\s+)?(desktop|documents|downloads|pictures|music|videos)(?:\s+folder)?\s*$/i;
-      const lm = p.original.match(LOC), where = lm ? lm[1].toLowerCase() : '';
-      const orig = p.original.replace(LOC, '');
-      const m = orig.match(/(?:called|named)\s+["']?([\w\- .\/]+?)["']?\s*$/i) || orig.match(/(?:folder|directory)\s+["']?([\w\- .\/]+?)["']?\s*$/i);
-      const name = (a.name && !where ? a.name : '') || (m ? m[1].trim() : '');
-      if (!name) return { text: 'What should I name the folder?' };
-      toolStep('createFolder → ' + (where ? where + '/' : '') + name);
+      // Where: "in that directory" / "there" (the folder in focus), "in D drive", "on my desktop", "in C:\x\y",
+      // "inside calculator" (a folder by name). What: "called X" / "named X" / "folder X".
+      const sc = a.base ? { scope: a.base, rest: p.original } : scopeFrom(p.original, true);
+      if (a.base && /^(?:it|that|there|that folder|that directory)$/i.test(a.base)) { const f = focusOf('folder') || focusOf('created'); sc.scope = ''; sc.path = f ? f.path : ''; sc.ref = true; }
+      if (sc.ref && !sc.path) return { text: 'Which folder do you mean, ' + Persona.sir() + '? Say a place like **D drive**, **desktop** or a full path — or open the folder first and say "create a folder there".' };
+      const where = sc.path || sc.scope || '';
+      const orig = sc.rest || p.original;
+      const m = orig.match(/(?:called|named|titled)\s+["']?([\w\- .()]+?)["']?\s*$/i) || orig.match(/(?:folder|directory|dir)\s+["']?([\w\- .()]+?)["']?\s*$/i);
+      let name = (a.name && !sc.scope && !sc.path ? a.name : '') || (m ? m[1].trim() : '') || (a.base ? a.name : '');
+      if (/^(?:in|on|inside|there|here|it|that|this|for|please)$/i.test(name)) name = '';
+      if (!name) { ctx.pending = { intent: 'CREATE_FOLDER', base: where }; return { text: 'What should I name the folder' + (where ? ' in **' + where + '**' : '') + '?', speak: 'What should I name the folder?' }; }
+      toolStep('createFolder → ' + (where ? where + ' → ' : '') + name);
       const r = await callTool('/tool/createFolder', where ? { name, where } : { name });
-      if (r.error) return { text: 'Could not create it: ' + r.error };
-      if (where) {
-        if (!r.existed) Undo.push('created folder ' + name + ' on ' + where, async () => { const x = await callTool('/tool/undoCreate', { name: r.name }); if (x.error) throw new Error(x.error); return 'Removed the folder `' + name + '`.'; });
-        return { text: r.existed ? 'The folder `' + name + '` already exists in your ' + cap(where) + '.' : 'Created folder `' + name + '` in your ' + cap(where) + ' (`' + r.name + '`).', tool: 'createFolder' };
-      }
-      if (!r.existed) Undo.push('created folder ' + r.name, async () => { const x = await callTool('/tool/undoCreate', { name: r.name }); if (x.error) throw new Error(x.error); return 'Removed the folder `' + r.name + '` (it’s in the trash).'; });
-      return { text: r.existed ? 'The folder `' + r.name + '` already exists.' : 'Created folder `~/jarvis/' + r.name + '`.', suggestions: ['Open my ' + r.name + ' folder'], tool: 'createFolder', op: { kind: 'file', name: r.name, existed: !!r.existed } };
+      if (r.error) return { text: 'Could not create it: ' + r.error + (r.choices ? '\n' + r.choices.map(x => '- `' + x + '`').join('\n') : '') };
+      if (r.path) { setFocus('created', r.path); if (where) setFocus('folder', r.path.replace(/[\\/][^\\/]+$/, '')); }
+      if (!r.existed) Undo.push('created folder ' + name, async () => { const x = await callTool('/tool/undoCreate', { name: r.path || r.name }); if (x.error) throw new Error(x.error); return 'Removed the folder `' + name + '` (it’s in the trash).'; });
+      const shown = where ? '`' + (r.path || r.name) + '`' : '`~/jarvis/' + r.name + '`';
+      return { text: r.existed ? 'The folder ' + shown + ' already exists.' : 'Created folder **' + name + '** → ' + shown + '.', speak: r.existed ? 'That folder already exists.' : 'Created the folder ' + name + '.',
+        suggestions: ['Open it'], tool: 'createFolder', op: where ? null : { kind: 'file', name: r.name, existed: !!r.existed } };
+    }
+    case 'COUNT_FOLDERS': {
+      // "list number of folders in my laptop" / "how many folders are in D drive" / "count directories there"
+      const sc = a.scope ? { scope: a.scope } : scopeFrom(p.original);
+      if (sc.ref && !sc.path) return { text: 'Which folder should I count, ' + Persona.sir() + '? Say **my laptop**, **D drive**, **desktop** or a full path.' };
+      const scope = sc.path || sc.scope || 'laptop';
+      toolStep('folderStats → ' + scope);
+      const shown = r => {
+        if (r.error) return { text: cap(r.error) + '.' };
+        if (r.indexing) return { text: 'I’m still building the list of everything on this laptop (it takes a few seconds after I start). Ask me again in a moment, ' + Persona.sir() + '.' };
+        const n = x => x.toLocaleString();
+        const note = '\n\n_Not counting hidden, system and build folders (Windows, Program Files, AppData, node_modules, .git…)._';
+        if (!r.path) {
+          const drives = Object.entries(r.perDrive || {}).sort().map(([d, c]) => '- **' + d + '** — ' + n(c.folders) + ' folders, ' + n(c.files) + ' files').join('\n');
+          return { text: 'This laptop has **' + n(r.folders) + ' folders** and **' + n(r.files) + ' files**.\n' + drives + note, speak: 'This laptop has ' + r.folders + ' folders and ' + r.files + ' files.', tool: 'folderStats' };
+        }
+        setFocus('folder', r.path);
+        const d = r.direct || { folders: [], folderCount: 0, files: 0 };
+        if (d.folders.length) setResults(d.folders.map(x => joinPath(r.path, x)));
+        const list = d.folders.length ? '\n\nFolders directly inside:\n' + d.folders.slice(0, 15).map((x, i) => (i + 1) + '. 📁 ' + x).join('\n') + (d.folderCount > 15 ? '\n…and ' + (d.folderCount - 15) + ' more' : '') : '';
+        return { text: '**' + r.path + '** has **' + n(r.folders) + ' folders** and **' + n(r.files) + ' files** in total (' + d.folderCount + ' folders and ' + d.files + ' files directly inside).' + (r.partial ? ' _(It’s a big folder — I stopped counting after a few seconds, so the real total is higher.)_' : '') + list + note,
+          speak: r.path + ' has ' + r.folders + ' folders and ' + r.files + ' files.', suggestions: ['Create a folder there', 'Open it'], tool: 'folderStats' };
+      };
+      const r = await callTool('/tool/folderStats', { scope });
+      return pickPlace(r, scope, async x => shown(await callTool('/tool/folderStats', { scope: x }))) || shown(r);
     }
     case 'RENAME_FILE': {
       const m = p.original.match(/rename\s+(?:the\s+)?(?:file\s+|folder\s+)?["']?(.+?)["']?\s+(?:to|as)\s+["']?(.+?)["']?$/i);
@@ -3291,14 +3397,32 @@ async function executeTool(p, raw) {
       if (r.error) return { text: r.error };
       if (!r.results.length && implicit && llmReady()) return { askLLM: raw };
       if (!r.results.length) return { text: 'Nothing named "' + q + '" anywhere on this laptop.' };
-      return { text: 'Found ' + r.results.length + (r.results.length === 1 ? ' match' : ' matches') + ':\n' + r.results.slice(0, 10).map(x => '- `' + x + '`').join('\n'), speak: 'I found ' + r.results.length + ' matches.', tool: 'searchFiles' };
+      setResults(r.paths || []);
+      if (r.paths && r.paths.length === 1) setFocus(/[\\/]$/.test(r.results[0]) ? 'folder' : 'file', r.paths[0]);
+      return { text: 'Found ' + r.results.length + (r.results.length === 1 ? ' match' : ' matches') + ':\n' + r.results.slice(0, 10).map((x, i) => (i + 1) + '. `' + x + '`').join('\n') + (r.results.length > 1 ? '\n\n_Say "open the first one" or "open number 2"._' : ''), speak: 'I found ' + r.results.length + ' matches.', tool: 'searchFiles' };
     }
     case 'LIST_FILES': {
-      const m = s.match(/\bin (?:the |my )?([\w\- ]+?)(?: folder)?$/);
-      toolStep('listFiles');
-      const r = await callTool('/tool/listFiles', { dir: m && !/sandbox|jarvis/.test(m[1]) ? m[1] : '' });
-      const shown = r => r.error ? { text: r.error } : { text: '**' + (r.dir === '~/jarvis' ? backend.sandbox : r.dir) + '**\n' + (r.folders.map(f => '- 📁 ' + f).concat(r.files.map(f => '- 📄 ' + f)).join('\n') || '_(empty)_') + (r.projects && r.projects.length ? '\n\n**Project folders:** ' + r.projects.map(x => '`' + x + '`').join(', ') + ' — say "list files in ' + r.projects[0] + '"' : ''), speak: plural(r.folders.length, 'folder') + ' and ' + plural(r.files.length, 'file') + '.', tool: 'listFiles' };
-      return pickPlace(r, m && m[1], async x => shown(await callTool('/tool/listFiles', { dir: x }))) || shown(r);
+      // "list folders in D drive" / "show folders on my desktop" / "list files there" / "list folders in my laptop"
+      const sc = a.dir ? { scope: a.dir } : scopeFrom(p.original);
+      if (sc.ref && !sc.path) return { text: 'Which folder should I list, ' + Persona.sir() + '? Say **D drive**, **desktop** or a full path.' };
+      const dir = sc.path || (sc.scope && !/^(?:sandbox|jarvis|jarvis sandbox)$/i.test(sc.scope) ? sc.scope : '');
+      toolStep('listFiles' + (dir ? ' → ' + dir : ''));
+      const onlyFolders = /\b(folders?|director(?:y|ies)|dirs?)\b/.test(s) && !/\bfiles?\b/.test(s);
+      const shown = r => {
+        if (r.error) return { text: cap(r.error) + '.' };
+        if (r.path) setFocus('folder', r.path);
+        const files = onlyFolders ? [] : r.files;
+        const base = r.path || backend.sandbox;
+        setResults(r.folders.map(f => r.laptop ? f : joinPath(base, f)).concat(files.map(f => joinPath(base, f))));
+        const lines = r.folders.map((f, i) => (i + 1) + '. 📁 ' + f).concat(files.map((f, i) => (r.folders.length + i + 1) + '. 📄 ' + f));
+        const head = '**' + (r.laptop ? 'This laptop' : r.path || (r.dir === '~/jarvis' ? backend.sandbox : r.dir)) + '** — ' + plural(r.folders.length, 'folder') + (onlyFolders ? '' : ', ' + plural(r.files.length, 'file'));
+        return { text: head + '\n' + (lines.slice(0, 60).join('\n') || '_(empty)_') + (lines.length > 60 ? '\n…and ' + (lines.length - 60) + ' more' : '')
+          + (r.projects && r.projects.length ? '\n\n**Project folders:** ' + r.projects.map(x => '`' + x + '`').join(', ') + ' — say "list files in ' + r.projects[0] + '"' : '')
+          + (lines.length ? '\n\n_Say "open the 2nd one", "how many folders are there" or "create a folder there"._' : ''),
+          speak: plural(r.folders.length, 'folder') + (onlyFolders ? '' : ' and ' + plural(r.files.length, 'file')) + '.', tool: 'listFiles' };
+      };
+      const r = await callTool('/tool/listFiles', { dir });
+      return pickPlace(r, dir, async x => shown(await callTool('/tool/listFiles', { dir: x }))) || shown(r);
     }
     case 'READ_FILE': {
       const m = s.match(/(?:read|open|show|display|what'?s in)(?: me)?(?: the| my)?\s+(.+?)(?:\s+(?:file|note|notes|document))?$/);
@@ -3313,7 +3437,7 @@ async function executeTool(p, raw) {
         toolStep('openFile → ' + name);
         const opened = o => {
           if (o.error) return { text: cap(o.error) + '.', suggestions: ['List my files'] };
-          ctx.lastFile = o.name;
+          ctx.lastFile = o.name; if (o.path) setFocus('file', o.path);
           return { text: 'Opening **' + o.name + '**.', suggestions: !/\.pdf$/i.test(o.name) ? null : ['Summarise ' + o.name.split(/[\\/]/).pop(), 'Make flashcards from ' + o.name.split(/[\\/]/).pop()], tool: 'openFile' };
         };
         const o = await callTool('/tool/openFile', { name });
@@ -3322,7 +3446,7 @@ async function executeTool(p, raw) {
       toolStep('readFile → ' + name);
       const shown = r => {
         if (r.error) return { text: /not found|can.t find|couldn.t find/i.test(r.error) ? 'I could not find "' + name + '" in ~/jarvis, your project folders or the usual places on this laptop.' : cap(r.error) + '.', suggestions: ['List my files'] };
-        ctx.lastFile = r.name;
+        ctx.lastFile = r.name; if (r.path) setFocus('file', r.path);
         const ext = (r.name.split('.').pop() || '').toLowerCase();
         const body = ext === 'md' ? r.content : '```' + ext + '\n' + r.content + '\n```';
         return { op: { kind: 'file', name: r.name }, text: '**' + r.name + '**\n\n' + (r.content.trim() ? body.slice(0, 6000) : '_(empty file)_'), speak: 'Here is ' + r.name.split(/[\\/]/).pop() + '.', suggestions: llmReady() && r.content.length > 200 ? ['Summarise that file'] : null, tool: 'readFile' };
@@ -3343,7 +3467,7 @@ async function executeTool(p, raw) {
       if (/^(sandbox|jarvis|jarvis sandbox|files)$/i.test(name)) name = '';
       if (/^(sandbox|jarvis|jarvis sandbox|files)$/i.test(stripped)) name = '';
       toolStep('openFolder → ' + (name || '~/jarvis'));
-      const shown = r => r.error ? { text: cap(r.error) + '.', suggestions: name ? ['Create a folder called ' + name] : ['Create a folder called Projects'] } : { text: 'Opening `' + r.name + '` in your file explorer.', tool: 'openFolder' };
+      const shown = r => { if (!r.error && r.path) setFocus('folder', r.path); return r.error ? { text: cap(r.error) + '.', suggestions: name ? ['Create a folder called ' + name] : ['Create a folder called Projects'] } : { text: 'Opening `' + (r.path || r.name) + '` in your file explorer.', tool: 'openFolder' }; };
       let r = await callTool('/tool/openFolder', { name });
       if (r.error && candidates.length > 1) {
         const r2 = await callTool('/tool/openFolder', { name: candidates[1] });
@@ -3760,8 +3884,9 @@ const LLM_TOOLS = {
   network: () => ({ intent: 'SYS_NETWORK' }),
   write_note: (a) => ({ intent: 'WRITE_FILE', args: { name: a.name, content: a.content } }),
   read_file: (a) => ({ intent: 'READ_FILE', args: { name: a.name } }),
-  list_files: () => ({ intent: 'LIST_FILES' }),
-  create_folder: (a) => ({ intent: 'CREATE_FOLDER', args: { name: a.name } }),
+  list_files: (a) => ({ intent: 'LIST_FILES', args: { dir: a.dir } }),
+  count_folders: (a) => ({ intent: 'COUNT_FOLDERS', args: { scope: a.scope } }),
+  create_folder: (a) => ({ intent: 'CREATE_FOLDER', args: { name: a.name, base: a.where } }),
   git_status: () => ({ intent: 'GIT_STATUS' }),
   briefing: () => ({ intent: 'BRIEFING' }),
   save_code: (a) => ({ intent: 'SAVE_CODE', args: { name: a.name } }),
@@ -3819,6 +3944,7 @@ function llmContext() {
     address: Persona.sir(),
     language: Lang.aiInEnglish() ? 'en' : Lang.replyLang(),
     persona: settings.persona,
+    focus: typeof focusSummary === 'function' ? focusSummary() : '',
   };
 }
 const FACTUAL = /^(who|when|where)\b|^what (is|are|was|were) (the |a |an )?(capital|population|height|age|meaning|founder|ceo|president|prime minister)\b|^who is [a-z]+( [a-z]+){0,3}$/;
@@ -4014,6 +4140,8 @@ function resolvePending(norm) {
   if (pd.intent === 'REMIND' && NLU.parseWhen(s)) return { intent: 'REMIND', args: { text: pd.text, when: s }, text: s };
   if (pd.intent === 'ADD_DEADLINE' && NLU.parseDate(s)) return { intent: 'ADD_DEADLINE', args: { title: pd.title, due: s }, text: s };
   if (pd.intent === 'SET_TIMER' && /\d/.test(s)) return { intent: 'SET_TIMER', args: {}, text: 'timer ' + s };
+  if (pd.intent === 'CREATE_FOLDER' && /^[\w\- .()]{1,60}$/.test(norm.original.trim().replace(/^(?:call it|name it|called|named)\s+/i, '')))
+    return { intent: 'CREATE_FOLDER', args: { name: norm.original.trim().replace(/^(?:call it|name it|called|named)\s+/i, ''), base: pd.base }, text: s, original: 'create a folder' };
   if (pd.intent === 'GIT_COMMIT') return { intent: 'GIT_COMMIT', args: {}, text: s, original: 'commit with message ' + norm.original };
   if (pd.intent === 'SAVE_CODE' && /^[\w\-.\/\\: ]{1,80}$/.test(norm.original.trim())) return { intent: 'SAVE_CODE', args: { code: pd.code, name: extractFileName('as ' + norm.original.trim()) || norm.original.trim() }, text: s };
   if ((pd.intent === 'DIRECTIONS' || pd.intent === 'DIRECTIONS_OPEN' || pd.intent === 'DISTANCE') && norm.original.trim().length >= 2) return { intent: pd.intent, args: { from: norm.original.trim(), to: pd.to }, text: s };
@@ -4090,6 +4218,11 @@ async function deliver(result, p) {
 }
 async function handleUser(text, source) {
   text = (text || '').trim(); if (!text) return;
+  // Spoken English: repair words the recogniser mishears ("front and" → frontend) before anything reads it.
+  if ((source === 'voice' || source === 'wake') && typeof SpeechFix !== 'undefined' && Lang.detect(text) === 'en') {
+    const fixed = SpeechFix.fix(text);
+    if (fixed && fixed !== text) { log('info', 'heard "' + text + '" → understood "' + fixed + '"'); text = fixed; }
+  }
   if (busy) { inputQueue.push([text, source]); toast('Queued: "' + text.slice(0, 40) + '"'); return; }
   busy = true; const t0 = performance.now();
   // ✏️ edit: the edited message replaces the original and its reply
@@ -4210,6 +4343,11 @@ async function handleUser(text, source) {
       pd.answers[stepDef.key] = isSkip ? '' : raw;
       await askOrFinishGuidedFlow(pd.flow, pd.step + 1, pd.answers);
       return;
+    }
+    // "open it" / "open that folder" / "open the second one" / "open number 3": the folder or file in focus.
+    if (!ctx.pending && !(typeof Skills !== 'undefined' && (Skills.state.site || Skills.state.uip || Skills.state.viva))) {
+      const target = openFocusTarget(cmdText);
+      if (target) { await deliver(target.text ? { text: target.text } : await openFocusPath(target.path), { intent: 'OPEN_FOCUS', confidence: 1 }); return; }
     }
     // Website generator, DSA coach and viva practice (skills-page.js): active sessions and their trigger phrases.
     if (!ctx.pending && typeof Skills !== 'undefined') {
@@ -4445,7 +4583,9 @@ async function startRec(r) {
 // Speech recognition marks text "final" at every short pause; Voice.createUtterance (voice.js) collects the whole
 // sentence and hands it over only when you have gone quiet for the "Pause before I answer" setting.
 const pauseMs = () => clamp(+settings.pauseMs || 1600, 600, 4000);
-const piecesOf = ev => Array.from(ev.results, r => ({ text: (r[0] && r[0].transcript) || '', isFinal: r.isFinal }));
+// Final results: of the recogniser's alternatives, the one that reads most like a JARVIS command (speechfix.js).
+const piecesOf = ev => Array.from(ev.results, r => ({ isFinal: r.isFinal,
+  text: r.isFinal && r.length > 1 && typeof SpeechFix !== 'undefined' ? SpeechFix.pickAlternative(Array.from(r, a => a.transcript)) : (r[0] && r[0].transcript) || '' }));
 const showHeard = t => { liveTranscript.textContent = t; liveTranscript.classList.toggle('on', !!t); };
 let dictUtt = null, dictTick = 0, dictSource = 'voice';
 // opts.source: 'voice' (mic button) or 'wake' (after "Jarvis" was heard in the background); opts.prompt: say
@@ -5089,6 +5229,46 @@ $('#voiceCheckBtn').addEventListener('click', () => {
   });
   const browser = /Edg\//.test(navigator.userAgent) ? 'Edge' : /Chrome\//.test(navigator.userAgent) ? 'Chrome' : 'this browser';
   $('#voiceCheckOut').innerHTML = rows.join('<br>') + '<br>Speech recognition: ' + (SR ? escHtml(browser) + ' — tap the mic after choosing a language to test it' : 'not supported here');
+});
+// Mic test: measures what the recogniser really hears for the words JARVIS commands depend on (raw), and what
+// SpeechFix turns it into (fixed) — instead of guessing "the mic works". Last results kept in jarvis.micTest.
+const MIC_TEST = ['frontend', 'create a frontend', 'create a folder', 'folder', 'directory', 'calculator project', 'VS Code', 'JavaScript', 'React', 'Python',
+  'brightness', 'Chrome', 'make UI', 'create UI for calculator'];
+let micTesting = false;
+function micHear(timeoutMs) {
+  return new Promise(resolve => {
+    let done = false; const r = makeRec(false);
+    const finish = v => { if (done) return; done = true; clearTimeout(t); try { r.stop(); } catch (e) {} resolve(v); };
+    const t = setTimeout(() => finish(null), timeoutMs);
+    r.onresult = ev => { const res = ev.results[ev.results.length - 1]; if (res && res.isFinal) finish(Array.from(res, a => a.transcript.trim())); };
+    r.onerror = () => finish(null); r.onend = () => finish(null);
+    try { r.start(); } catch (e) { finish(null); }
+  });
+}
+$('#micTestBtn').addEventListener('click', async () => {
+  const out = $('#micTestOut');
+  if (micTesting) { micTesting = false; return; }
+  if (!SR) { out.textContent = 'Speech recognition needs Chrome or Edge.'; return; }
+  if (micHeld) { toast('Finish the current voice command first'); return; }
+  micTesting = true; $('#micTestBtn').textContent = 'STOP';
+  if (wakeOn) { wakePaused = true; retireWakeRec(); }
+  const norm = x => String(x || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  const rows = [];
+  for (let i = 0; i < MIC_TEST.length && micTesting; i++) {
+    const want = MIC_TEST[i];
+    out.innerHTML = '<b>' + (i + 1) + ' / ' + MIC_TEST.length + '</b> — say: <b>“' + escHtml(want) + '”</b> 🎙';
+    const alts = await micHear(7000);
+    const raw = alts ? alts[0] : '', picked = alts ? SpeechFix.pickAlternative(alts) : '', fixed = SpeechFix.fix(picked);
+    rows.push({ want, raw, fixed, rawOk: norm(raw) === norm(want), ok: norm(fixed) === norm(want) });
+    await sleep(250);
+  }
+  micTesting = false; $('#micTestBtn').textContent = 'START';
+  if (wakeOn && wakePaused) { wakePaused = false; loopWake(); }
+  store.set('jarvis.micTest', { t: Date.now(), rows });
+  const rawOk = rows.filter(r => r.rawOk).length, ok = rows.filter(r => r.ok).length;
+  out.innerHTML = 'Heard right: <b>' + rawOk + ' / ' + rows.length + '</b> · after JARVIS’s corrections: <b>' + ok + ' / ' + rows.length + '</b>'
+    + rows.filter(r => !r.rawOk || !r.ok).map(r => '<br>' + (r.ok ? '✓' : '✗') + ' “' + escHtml(r.want) + '” — heard “' + escHtml(r.raw || '(nothing)') + '”' + (r.fixed !== r.raw ? ' → “' + escHtml(r.fixed) + '”' : '')).join('');
+  log('info', 'mic test: ' + rawOk + '/' + rows.length + ' heard right, ' + ok + '/' + rows.length + ' after corrections');
 });
 bindSwitch('#onlineToggle', 'online', v => { updateNetUI(); log(v ? 'warn' : 'info', 'online tools ' + (v ? 'enabled — weather & web answers use the internet' : 'disabled — fully offline')); });
 bindSwitch('#llmToggle', 'llm', v => { updateLLMUI(); if (v) warmLLM(); });

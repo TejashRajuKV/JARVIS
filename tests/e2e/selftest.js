@@ -132,6 +132,30 @@
   check('Focus', 'a running session is not silently restarted (asks first)', has(r, /already running/i) && focus && focus.min === 45, r.text);
   r = await say('stop the focus session');
   check('Focus', 'stop the session', !focus, r.text);
+  // ---- context: "there" / "that directory" / "open it" mean the folder just shown or made (presentation failures)
+  r = await say('create a folder called ctxtest');
+  r = await say('list folders in ctxtest');
+  check('Context', 'listing a folder puts it in focus', ctx.focus.folder && /ctxtest$/i.test(ctx.focus.folder.path), JSON.stringify(ctx.focus.folder) + ' ' + r.text);
+  r = await say('create a folder called inner in that directory');
+  check('Context', '"in that directory" = the folder just listed (not a folder named "inner in that directory")',
+    called('/tool/createFolder', d => d.name === 'inner' && /ctxtest$/i.test(d.where || '')) && /Created folder/.test(r.text), r.text);
+  r = await say('open it');
+  check('Context', '"open it" opens the folder just created', called('/tool/openFolder', d => /ctxtest[\\/]inner$/i.test(d.name || '')), r.text);
+  r = await say('make me a directory called second there');
+  check('Context', '"make me a directory … there" (other words, same intent)', called('/tool/createFolder', d => d.name === 'second' && /ctxtest/i.test(d.where || '')), r.text);
+  r = await say('list folders in ctxtest');
+  r = await say('open the second one');
+  check('Context', '"open the second one" opens item 2 of the list just shown', called('/tool/openFolder', d => /ctxtest[\\/](inner|second)$/i.test(d.name || '')), r.text);
+  ctx.focus = { folder: null, file: null, created: null, results: [] };
+  r = await say('create a folder called lost in that directory');
+  check('Context', 'with nothing in focus, "that directory" is asked about — never guessed', /Which folder do you mean/i.test(r.text) && !called('/tool/createFolder', d => d.name === 'lost'), r.text);
+  r = await say('list number of folders in my laptop');
+  check('Folders', '"list number of folders in my laptop" counts folders (laptop-wide)', called('/tool/folderStats', d => /laptop/i.test(d.scope || '')) && /folders|building the list/i.test(r.text), r.text);
+  r = await say('how many folders are in ctxtest');
+  check('Folders', '"how many folders are in X" counts in that folder', called('/tool/folderStats', d => /ctxtest/i.test(d.scope || '')), r.text);
+  r = await say('create a frontend design for project zzcalc');
+  check('Frontend', '"create a frontend design for project X" starts the builder for that project (no AI chat)', (/frontend for \*?\*?zzcalc|Anything specific/i.test(r.text) && called('/tool/findFolderAnywhere', d => /zzcalc/i.test(d.name || ''))) || (!llmReady() && /AI brain/.test(r.text)), r.text);
+  r = await say('cancel');
   // ---- weather (service faked): answered from the weather service, never by the AI
   {
     const was = { online: settings.online, city: settings.city };
