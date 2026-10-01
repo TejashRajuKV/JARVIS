@@ -90,6 +90,79 @@ $small.Save($env:JARVIS_IMG_OUT, [System.Drawing.Imaging.ImageFormat]::Jpeg); $s
     return v && v.expires > Date.now() ? v.b64 : null;
   };
 
+  /* ---------- folder picker (JARVIS Code "＋") ---------- */
+  // The Windows "Select Folder" dialog (the Explorer-style one), shown over the window in front (your browser).
+  // A web page can't learn a folder's real path, so the server shows the dialog and returns what you picked.
+  const PICK_FOLDER = `
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace JarvisPick {
+  [ComImport, Guid("DC1C5A9C-E88A-4dde-A5A1-60F82A20AEF7")] public class FileOpenDialogRCW {}
+  [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IShellItem {
+    void BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+    void GetParent(out IShellItem ppsi);
+    void GetDisplayName(uint sigdnName, [MarshalAs(UnmanagedType.LPWStr)] out string ppszName);
+    void GetAttributes(uint sfgaoMask, out uint psfgaoAttribs);
+    void Compare(IShellItem psi, uint hint, out int piOrder);
+  }
+  [ComImport, Guid("42f85136-db7e-439c-85f1-e4075d135fc8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IFileDialog {
+    [PreserveSig] int Show(IntPtr parent);
+    void SetFileTypes(uint cFileTypes, IntPtr rgFilterSpec);
+    void SetFileTypeIndex(uint iFileType);
+    void GetFileTypeIndex(out uint piFileType);
+    void Advise(IntPtr pfde, out uint pdwCookie);
+    void Unadvise(uint dwCookie);
+    void SetOptions(uint fos);
+    void GetOptions(out uint pfos);
+    void SetDefaultFolder(IShellItem psi);
+    void SetFolder(IShellItem psi);
+    void GetFolder(out IShellItem ppsi);
+    void GetCurrentSelection(out IShellItem ppsi);
+    void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+    void GetFileName([MarshalAs(UnmanagedType.LPWStr)] out string pszName);
+    void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string pszTitle);
+    void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string pszText);
+    void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string pszLabel);
+    void GetResult(out IShellItem ppsi);
+  }
+  public static class Picker {
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+    static extern void SHCreateItemFromParsingName(string pszPath, IntPtr pbc, ref Guid riid, out IShellItem ppv);
+    public static string Pick(string title, string start) {
+      IFileDialog d = (IFileDialog)new FileOpenDialogRCW();
+      uint o; d.GetOptions(out o);
+      d.SetOptions(o | 0x20 | 0x40 | 0x800);   // pick folders, real file-system folders only, must exist
+      d.SetTitle(title); d.SetOkButtonLabel("Use this folder");
+      if (!String.IsNullOrEmpty(start)) { try { Guid g = typeof(IShellItem).GUID; IShellItem si; SHCreateItemFromParsingName(start, IntPtr.Zero, ref g, out si); d.SetFolder(si); } catch {} }
+      int hr = d.Show(GetForegroundWindow());
+      if (hr == unchecked((int)0x800704C7)) return null;     // you pressed Cancel
+      if (hr != 0) return "ERR:" + hr.ToString("X8");        // the dialog couldn't open
+      IShellItem r; d.GetResult(out r);
+      string p; r.GetDisplayName(0x80058000, out p);         // SIGDN_FILESYSPATH
+      return p;
+    }
+  }
+}
+'@
+$p = [JarvisPick.Picker]::Pick($env:JARVIS_PICK_TITLE, $env:JARVIS_PICK_START)
+if ($p -like 'ERR:*') { [Console]::Out.WriteLine((@{ error = 'dialog error ' + $p.Substring(4) } | ConvertTo-Json -Compress)) }
+elseif ($p) { [Console]::Out.WriteLine((@{ path = $p } | ConvertTo-Json -Compress)) } else { [Console]::Out.WriteLine('{"cancelled":true}') }`;
+  let picking = false;
+  app.post('/api/sys/pickFolder', winOnly, async (req, res) => {
+    if (picking) return res.status(409).json({ error: 'The folder picker is already open — look for it on your screen' });
+    picking = true;
+    try {
+      const start = String(req.body.start || '').slice(0, 260);
+      const r = await ps(PICK_FOLDER, { JARVIS_PICK_TITLE: String(req.body.title || 'Choose a folder for JARVIS').slice(0, 100), JARVIS_PICK_START: /^[a-z]:[\\/]/i.test(start) ? start : '' }, 10 * 60 * 1000);
+      if (r.error) return res.status(500).json({ error: 'The folder picker didn’t open: ' + r.error });
+      res.json(r.cancelled ? { success: true, cancelled: true } : { success: true, path: String(r.path || '') });
+    } finally { picking = false; }
+  });
+
   app.post('/api/sys/screenRead', winOnly, async (req, res) => {
     const source = ['screen', 'window', 'clipboard'].includes(req.body.source) ? req.body.source : 'window';
     const delay = source === 'clipboard' ? 0 : Math.max(0, Math.min(10, parseInt(req.body.delay) || 0));

@@ -12,24 +12,33 @@ const Skills = (() => {
   const slug = s => String(s || '').toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'my-website';
 
   /* ================= website generator ================= */
-  const SITE_START = /^(?:please\s+)?(?:build|make|create|generate|design|code|develop)\s+(?:me\s+)?(?:a\s+|an\s+|my\s+|the\s+)?(?:simple\s+|nice\s+|new\s+|modern\s+|small\s+)?(website|web\s?site|web\s?page|web\s?app|front[\s-]?end(?:\s+(?:ui|page|design))?|(?:ui|user interface)(?:\s+(?:page|design))?|landing\s+page|portfolio(?:\s+(?:website|site|page))?|home\s?page|site)\b(?:\s+(?:for|about|on|of)\s+(.+?))?[.!]?$/i;
+  const SITE_START = /^(?:please\s+)?(?:build|make|create|generate|design|code|develop)\s+(?:me\s+)?(?:a\s+|an\s+|my\s+|the\s+)?(?:simple\s+|nice\s+|new\s+|modern\s+|small\s+)?(website|web\s?site|web\s?page|web\s?app|front[\s-]?end(?:\s+(?:ui|page|design|website|web\s?site|web\s?page|web\s?app|app|site|interface))?|(?:ui|user interface)(?:\s+(?:page|design))?|landing\s+page|portfolio(?:\s+(?:website|site|page))?|home\s?page|site)\b(?:\s+(?:for|about|on|of)\s+(.+?))?[.!]?$/i;
   const SITE_Q = [
     ['what', 'What is the website for? (e.g. "my college tech fest", "my portfolio as a CS student")'],
     ['sections', 'What should be on it? List the sections or content — e.g. "events, schedule, registration form, contact".'],
     ['style', 'How should it look? Colours, dark or light, a site it should feel like — or say "skip".'],
   ];
+  // After the questions: build straight away if the place is known (an existing project), otherwise ask where.
+  function siteNext() {
+    const a = S.site.a;
+    if (a.folder || a.where !== undefined) { S.site = null; return siteBuild(a); }
+    S.site.stage = 'where';
+    const folder = slug(a.project || a.what.replace(/^(?:my|a|an|the|our)\s+/i, '').split(/\s+/).slice(0, 5).join(' '));
+    return say('Where should I save it, ' + (typeof Persona !== 'undefined' ? Persona.sir() : 'sir') + '? I’ll make a folder **' + folder + '** there with the page in it. Say **desktop**, **D drive**, a full path like `D:\\Projects`, or **jarvis** for ~/jarvis/Projects.',
+      { intent: 'WEBSITE', speak: 'Where should I save it?', suggestions: ['Desktop', 'D drive', 'Jarvis folder'] });
+  }
   function siteAsk() { return say(SITE_Q[S.site.step][1], { intent: 'WEBSITE', speak: SITE_Q[S.site.step][1].split(' (')[0].split(' —')[0] }); }
   async function siteBuild(a) {
     const nm = (a.project || a.what.replace(/^(?:my|a|an|the|our)\s+/i, '')).split(/\s+/).slice(0, 5).join(' ');
-    busyMsg((a.folder ? 'Building the frontend in ' + a.folder : 'Building your website') + ' — this can take 1–3 minutes with a local AI model…');
-    const r = await callTool('/skill/site', { what: a.what, sections: a.sections, style: a.style || '', name: nm, model: llm.model, folder: a.folder || undefined });
+    busyMsg((a.folder ? 'Building the frontend in ' + a.folder : 'Building your website' + (a.where ? ' in ' + a.where : '')) + ' — this can take 1–3 minutes with a local AI model…');
+    const r = await callTool('/skill/site', { what: a.what, sections: a.sections, style: a.style || '', name: nm, model: llm.model, folder: a.folder || undefined, where: a.where || undefined });
     if (r.error) return say('I couldn’t build it: ' + r.error, { intent: 'WEBSITE' });
-    S.lastSite = r.name; S.lastSiteFolder = a.folder || null; S.lastSiteDir = r.dir || r.folder;
+    S.lastSite = r.name; S.lastSiteAbs = r.dir || null; S.lastSiteDir = r.dir || r.folder;
     if (r.dir && typeof setFocus === 'function') { setFocus('folder', r.dir); setFocus('created', r.path || r.dir); }
     Undo.push('built the ' + r.name + ' website', async () => { const x = await callTool('/tool/undoCreate', { name: r.folder }); if (x.error) throw new Error(x.error); return 'Removed the website folder `' + r.folder + '` (it’s in the trash).'; });
-    if (a.project) return say('✓ Built the frontend for **' + a.project + '** → `' + (r.path || r.file) + '` (' + r.lines + ' lines) and opened it in your browser.\n\nWant changes? Just say them — e.g. **"make the buttons bigger"**, **"use a dark theme"**. Say **"go back to the previous version"** if a change goes wrong.',
+    if (a.project || a.where) return say('✓ Built ' + (a.project ? 'the frontend for **' + a.project + '**' : 'your website') + ' → `' + (r.path || r.file) + '` (' + r.lines + ' lines) and opened it in your browser.\n\nWant changes? Just say them — e.g. **"make the buttons bigger"**, **"use a dark theme"**. Say **"go back to the previous version"** if a change goes wrong.',
       { intent: 'WEBSITE', speak: 'The frontend is ready. I opened it in your browser.', suggestions: ['Make the buttons bigger', 'Use a dark theme', 'Open it in VS Code'],
-        actions: [{ label: 'OPEN AGAIN', fn: () => callTool('/skill/siteOpen', { name: r.name, folder: a.folder }) }, { label: 'OPEN IN VS CODE', fn: () => callTool('/tool/openInEditor', { name: r.dir || r.folder }) }] });
+        actions: [{ label: 'OPEN AGAIN', fn: () => callTool('/skill/siteOpen', { name: r.name, dir: r.dir }) }, { label: 'OPEN IN VS CODE', fn: () => callTool('/tool/openInEditor', { name: r.dir || r.folder }) }] });
     return say('✓ Built your website → `' + r.file + '` (' + r.lines + ' lines) and opened it in your browser.\n\nWant changes? Just say them — e.g. **"make the header bigger"**, **"add a contact section"**, **"use a blue colour scheme"**. Say **"go back to the previous version"** if a change goes wrong.',
       { intent: 'WEBSITE', speak: 'Your website is ready. I opened it in your browser.', suggestions: ['Make the header bigger', 'Add a contact section', 'Open the website in VS Code'],
         actions: [{ label: 'OPEN AGAIN', fn: () => callTool('/skill/siteOpen', { name: r.name }) }, { label: 'OPEN IN VS CODE', fn: () => callTool('/tool/openInEditor', { name: r.folder }) }] });
@@ -44,7 +53,11 @@ const Skills = (() => {
     if (f && sq(f.path.split(/[\\/]/).pop()) === sq(name)) return f.path;
     const r = await callTool('/tool/findFolderAnywhere', { name });
     const paths = (r && r.paths) || [];
-    return paths.find(p => sq(p.split(/[\\/]/).pop()) === sq(name)) || null;
+    const exact = paths.find(p => sq(p.split(/[\\/]/).pop()) === sq(name));
+    if (exact) return exact;
+    // Not by that exact name: a close one ("calc_app", "my-calculator", "calculater") — asked about, never assumed.
+    if (typeof similarTo === 'function') { const sims = await similarTo(name, 'folder'); if (sims.length && sims[0].score >= 0.84) return { path: sims[0].path, close: true }; }
+    return null;
   }
   // "make the header bigger" after a site was built → edit it in place.
   const SITE_WORDS = /\b(website|site|web ?page|page|landing page|section|header|footer|hero|banner|navbar|nav bar|menu|button|buttons|colou?rs?|theme|font|fonts|background|logo|image|images|title|heading|text|card|cards|form|layout|dark mode|light mode|gallery|schedule|events?|contact|about|faq)\b/i;
@@ -52,10 +65,10 @@ const Skills = (() => {
   async function siteEdit(change) {
     if (needAI()) return needAI();
     busyMsg('Updating the website…');
-    const r = await callTool('/skill/siteEdit', { name: S.lastSite, folder: S.lastSiteFolder || undefined, change, model: llm.model });
+    const r = await callTool('/skill/siteEdit', { name: S.lastSite, dir: S.lastSiteAbs || undefined, change, model: llm.model });
     if (r.error) return say('I couldn’t change it: ' + r.error, { intent: 'WEBSITE' });
-    const name = S.lastSite, folder = S.lastSiteFolder || undefined;
-    Undo.push('website change', async () => { const x = await callTool('/skill/siteRevert', { name, folder }); if (x.error) throw new Error(x.error); return 'The website is back to the previous version.'; });
+    const name = S.lastSite, dir = S.lastSiteAbs || undefined;
+    Undo.push('website change', async () => { const x = await callTool('/skill/siteRevert', { name, dir }); if (x.error) throw new Error(x.error); return 'The website is back to the previous version.'; });
     return say('✓ Updated and reopened the website. Say **"undo"** to go back.', { intent: 'WEBSITE', speak: 'Done. I reopened the website.', suggestions: ['Undo'] });
   }
 
@@ -225,14 +238,21 @@ const Skills = (() => {
     if (S.site && S.site.stage === 'folder') {   // "I found Calculator at D:\… — create the frontend there?"
       if (cancelRe.test(t)) { S.site = null; return say('Okay, cancelled.'); }
       if (/^(?:y|yes|yeah|yep|sure|ok(?:ay)?|do it|go ahead|please do|there|that one|correct|right)\b/i.test(t)) S.site.a.folder = S.site.found;
-      else if (!/^(?:n|no|nope|nah|not there|somewhere else|new folder|in jarvis)\b/i.test(t)) return say('Shall I create the frontend in **' + S.site.found + '**? Say **yes**, or **no** to make a new project in ~/jarvis/Projects.', { intent: 'WEBSITE' });
+      else if (!/^(?:n|no|nope|nah|not there|somewhere else|new folder|in jarvis)\b/i.test(t)) return say('Shall I create the frontend in **' + S.site.found + '**? Say **yes**, or **no** and I’ll ask where to save it instead.', { intent: 'WEBSITE' });
       S.site.stage = 'brief';
       return say('Anything specific — features, colours, style? Or say **go ahead** and I’ll design it.', { intent: 'WEBSITE', speak: 'Anything specific, or shall I go ahead?' });
     }
     if (S.site && S.site.stage === 'brief') {   // one optional question for a named project, not three
       if (cancelRe.test(t)) { S.site = null; return say('Okay, cancelled.'); }
-      const a = S.site.a; S.site = null;
+      const a = S.site.a;
       if (!/^(?:go ahead|go|no|nothing|skip|you decide|you choose|just do it|do it|start|build it|proceed|ok(?:ay)?|that's it)\b/i.test(t)) a.sections = t;
+      return siteNext();
+    }
+    if (S.site && S.site.stage === 'where') {   // "Where should I save it?"
+      if (cancelRe.test(t)) { S.site = null; return say('Okay, cancelled.'); }
+      const ans = t.replace(/[.!?]+$/, '').replace(/^(?:save it |put it |in |on |to |at |inside |into )+/i, '').replace(/^(?:the |my )+/i, '').replace(/\s+folder$/i, '').trim();
+      const a = S.site.a; S.site = null;
+      a.where = /^(?:jarvis|jarvis folder|~\/jarvis|default|here|anywhere|you choose|your choice|projects|wherever|go ahead)$/i.test(ans) ? '' : ans;
       return siteBuild(a);
     }
     if (S.site) {
@@ -242,8 +262,7 @@ const Skills = (() => {
       if (!skip && t.length < 2) return siteAsk();
       S.site.a[key] = skip ? '' : t; S.site.step++;
       if (S.site.step < SITE_Q.length) return siteAsk();
-      const a = S.site.a; S.site = null;
-      return siteBuild(a);
+      return siteNext();
     }
     // 3. starts
     const um = t.match(UIP_START);
@@ -263,10 +282,12 @@ const Skills = (() => {
         S.site.a.project = forProject;
         S.site.a.what = 'the frontend (user interface) of the ' + forProject + ' app — ' + sm[2].trim();
         const found = await findProjectFolder(forProject);
+        if (found && found.close) { S.site.stage = 'folder'; S.site.found = found.path; const nm = found.path.split(/[\\/]/).pop();
+          return say('I didn’t find a project called exactly **' + forProject + '**, but **' + nm + '** at `' + found.path + '` looks close. Did you mean that one — shall I create the frontend there? (**yes** / **no**)', { intent: 'WEBSITE', speak: 'Did you mean ' + nm + '?' }); }
         if (found) { S.site.stage = 'folder'; S.site.found = found;
           return say('I found **' + forProject + '** at `' + found + '`. Shall I create the frontend there? (**yes** / **no** — no makes a new project in ~/jarvis/Projects)', { intent: 'WEBSITE', speak: 'I found ' + forProject + '. Shall I create the frontend there?' }); }
         S.site.stage = 'brief';
-        return say('I’ll build a frontend for **' + forProject + '** in ~/jarvis/Projects. Anything specific — features, colours, style? Or say **go ahead**.', { intent: 'WEBSITE', speak: 'Anything specific, or shall I go ahead?' });
+        return say('I’ll build a frontend for **' + forProject + '** (HTML, CSS and JavaScript, saved as real files — no copy-pasting). Anything specific — features, colours, style? Or say **go ahead**.', { intent: 'WEBSITE', speak: 'Anything specific, or shall I go ahead?' });
       }
       if (sm[2] && sm[2].trim().length > 2) { S.site.a.what = sm[2].trim(); S.site.step = 1; }
       else if (/portfolio/i.test(sm[1])) { S.site.a.what = 'my personal portfolio'; S.site.step = 1; }
@@ -279,7 +300,7 @@ const Skills = (() => {
     if (S.coach) { const r = await coachTurn(t); if (r) return r; }
     // 5. change the website that was just built
     if (S.lastSite && SITE_EDIT.test(t) && SITE_WORDS.test(t) && !/\b(to-?do|todo|list|reminder|volume|brightness|timer|alarm)\b/i.test(t)) return siteEdit(t);
-    if (S.lastSite && /^(?:go back to the (?:previous|old|last) version|revert the (?:website|site|page))/i.test(t)) { const x = await callTool('/skill/siteRevert', { name: S.lastSite }); return say(x.error ? 'Couldn’t go back: ' + x.error : '✓ The website is back to the previous version (reopened).'); }
+    if (S.lastSite && /^(?:go back to the (?:previous|old|last) version|revert the (?:website|site|page))/i.test(t)) { const x = await callTool('/skill/siteRevert', { name: S.lastSite, dir: S.lastSiteAbs || undefined }); return say(x.error ? 'Couldn’t go back: ' + x.error : '✓ The website is back to the previous version (reopened).'); }
     if (S.lastSite && /^open (?:the |my )?(?:website|site) in (?:vs ?code|editor)$/i.test(t)) { const x = await callTool('/tool/openInEditor', { name: S.lastSiteDir || ('Projects/' + S.lastSite) }); return say(x.error ? cap(x.error) + '.' : 'Opening the website in **VS Code**.'); }
     return null;
   }

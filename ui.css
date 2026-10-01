@@ -346,3 +346,30 @@ body.dropping::after { border: 1px dashed var(--cyan); border-radius: 10px; back
 /* ---------- "/" skills menu above the chat box ---------- */
 #slashMenu { position: fixed; z-index: 300; display: none; max-height: 300px; overflow-y: auto; background: var(--bg2, #0b1822); border: 1px solid var(--line, #1d3342); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.5); padding: 4px 0; }
 #slashMenu.open { display: block; }
+
+/* ---------- JARVIS Code composer (codepanel.js) ---------- */
+.code-panel { display: none; flex: 1; min-width: 0; flex-direction: column; gap: 6px; padding: 10px 12px 8px; border: 1px solid var(--rule2, #2a3a46); border-radius: 12px; background: var(--bg2, #121619); }
+.controls.coding .code-panel { display: flex; }
+.controls.coding .input-row, .controls.coding .lang-switch { display: none; }
+.code-panel textarea { width: 100%; min-height: 44px; max-height: 220px; resize: none; border: none; outline: none; background: transparent; color: var(--ink); font: inherit; font-size: 15px; line-height: 1.5; }
+.code-panel textarea::placeholder { color: var(--faint); }
+.code-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.code-bar .cbtn, .code-bar .csel { border: none; background: transparent; color: var(--dim, #aab); font: inherit; font-size: 14px; padding: 6px 8px; border-radius: 8px; cursor: pointer; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-bar .csel { -webkit-appearance: none; appearance: none; padding-right: 20px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 10px) 52%, calc(100% - 6px) 52%; background-size: 4px 4px; background-repeat: no-repeat; }
+.code-bar .csel option { background: var(--bg1, #0b0d0f); color: var(--ink); }
+.code-bar .cbtn:hover, .code-bar .csel:hover { background: var(--bg1, #0b0d0f); color: var(--ink); }
+.code-bar .cplus { font-size: 16px; }
+.code-spacer { flex: 1; }
+.code-send { width: 36px; height: 36px; border-radius: 9px; border: none; background: var(--cyan, #6cc4e8); color: #031018; font-size: 18px; font-weight: 700; cursor: pointer; }
+.code-send:disabled { opacity: .4; cursor: default; }
+#codeModeBtn { font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em; white-space: nowrap; }
+.controls.coding { flex-wrap: wrap; }
+.controls.coding .code-panel { flex: 1 1 calc(100% - 64px); }
+.controls.coding #wakeBtn, .controls.coding .wake-wrap { order: 5; }
+.code-bar .cclear { padding: 6px 6px; margin-left: -6px; font-size: 12px; opacity: .7; }
+/* JARVIS Code's own conversation: laid out like the normal chat */
+#codeMessages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 22px; padding: 22px max(22px, calc((100% - 860px) / 2)) 26px; scroll-behavior: smooth; }
+#codeMessages .code-empty { margin: auto; text-align: center; color: var(--dim, #9aa); max-width: 520px; line-height: 1.6; }
+#codeMessages .code-empty b { color: var(--ink); }
+#codeMessages .msg.user .mhead .who { color: var(--cyan, #6cc4e8); }
+@media (max-width: 760px) { #codeMessages { padding: 16px 14px 20px; } }

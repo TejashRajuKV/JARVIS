@@ -124,6 +124,19 @@
           <button class="btn" id="attachBtn" type="button" title="Add a PDF or notes file (or drag it here)" aria-label="Attach a file">📎</button><input type="file" id="attachFile" accept=".pdf,.txt,.md,.csv,.json,.py,.js,.ts,.c,.cpp,.h,.java,.cs,.go,.rs,.html,.css,.sql,.ipynb" hidden>
           <input id="chatInput" type="text" placeholder='Ask anything or give a command…  e.g. "remind me to submit the lab at 5pm"' autocomplete="off">
           <button class="btn primary" id="sendBtn">SEND ▸</button>
+          <button class="btn" id="codeModeBtn" type="button" title="JARVIS Code — build or change a project; JARVIS writes the files">JARVIS CODE</button>
+        </div>
+        <!-- JARVIS Code composer: replaces the chat box while it's on (codepanel.js) -->
+        <div id="codePanel" class="code-panel" role="group" aria-label="JARVIS Code">
+          <textarea id="codeInput" rows="2" placeholder="Describe what to build or change…  e.g. &quot;a calculator website with a dark theme&quot;  (Enter to send · Shift+Enter for a new line)"></textarea>
+          <div class="code-bar">
+            <button class="cbtn" id="codeFolderBtn" type="button" title="Project folder — where JARVIS writes the files"><span class="cplus">＋</span> <span id="codeFolderLabel">New project</span></button><button class="cbtn cclear" id="codeFolderClear" type="button" title="Use a new project instead" aria-label="Clear the project folder" hidden>✕</button>
+            <select id="codeMode" class="csel" title="Build: writes the files · Plan: steps only · Ask: answers questions"><option value="build">Build</option><option value="plan">Plan</option><option value="ask">Ask</option></select>
+            <select id="codeModel" class="csel" title="Which AI model writes the code"></select>
+            <span class="code-spacer"></span>
+            <button class="cbtn" id="codeExitBtn" type="button" title="Back to the normal chat box (Esc)">CHAT</button>
+            <button class="code-send" id="codeSendBtn" type="button" aria-label="Send to JARVIS Code" title="Send (Enter)">↑</button>
+          </div>
         </div>
         <div class="lang-switch" role="group" aria-label="Speech language"><button class="lang-btn" data-lang="en" title="English">EN</button><button class="lang-btn" data-lang="te" lang="te" title="తెలుగు">తె</button><button class="lang-btn" data-lang="kn" lang="kn" title="ಕನ್ನಡ">ಕ</button></div>
         <button id="wakeBtn" title="Toggle hands-free wake word"><span class="wd"></span>WAKE WORD</button>
@@ -142,11 +155,18 @@
           <button class="tab active" data-tab="chat" role="tab">CHAT <em id="msgCount">0</em></button>
           <button class="tab" data-tab="tasks" role="tab">TASKS <em id="taskCount">0</em></button>
           <button class="tab" data-tab="memory" role="tab">MEMORY <em id="memCount">0</em></button>
+          <button class="tab" data-tab="code" role="tab" title="JARVIS Code — its own conversation about your code">JARVIS CODE <em id="codeCount">0</em></button>
         </div>
 
         <div class="tabpane active" data-pane="chat">
           <div id="messages"></div>
           <div class="chat-foot"><button class="linkbtn" id="clearChatBtn">CLEAR CHAT</button><span id="brainLabel">rules + local AI</span></div>
+        </div>
+
+        <!-- JARVIS Code's own conversation (codepanel.js) — separate from the normal chat -->
+        <div class="tabpane" data-pane="code">
+          <div id="codeMessages"></div>
+          <div class="chat-foot"><button class="linkbtn" id="clearCodeBtn">CLEAR</button><span id="codeFootLabel">JARVIS CODE · new project</span></div>
         </div>
 
         <div class="tabpane" data-pane="tasks">
@@ -239,6 +259,7 @@
       <div class="s-row"><label>Online tools<small>WEATHER · WEB ANSWERS · NO API KEYS</small></label><button class="switch" id="onlineToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-row"><label>Home city<small>USED FOR WEATHER</small></label><input type="text" id="cityInput" maxlength="40" placeholder="e.g. Bengaluru"></div>
       <div class="s-row"><label>Smart alerts<small>LOW BATTERY · HIGH RAM · DEADLINES SOON</small></label><button class="switch on" id="alertsToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Charger alerts<small>SAYS WHEN PLUGGED IN OR UNPLUGGED</small></label><button class="switch on" id="chargerAlertsToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Global hotkey<small>CTRL+SHIFT+J · SEND SELECTED TEXT FROM ANY APP</small></label><button class="switch" id="hotkeyToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-note" id="hotkeyNote" style="margin:-4px 0 12px"></div>
       <div class="s-row"><label>Phone alerts<small>REMINDERS VIA THE FREE NTFY APP · SENDS REMINDER TEXT ONLINE</small></label><button class="switch" id="phonePushToggle" role="switch" aria-checked="false"></button></div>
@@ -300,6 +321,7 @@
   <script src="skills-page.js"></script>
   <script src="script.js"></script>
   <script src="palette.js"></script>
+  <script src="codepanel.js"></script>
   <script src="wizard.js"></script>
   <script src="routines.js"></script>
   <script src="agent.js"></script>

@@ -34,6 +34,8 @@ for (const t of ['help me with my resume', 'help me focus', 'help me with this e
   r = await Skills.intercept('events, schedule, register');
   check('site: asks style next', /How should it look/.test(r.text));
   r = await Skills.intercept('skip');
+  check('site: asks where to save before building', /Where should I save it/.test(r.text) && !calls.some(c => c[0] === '/skill/site'), r.text);
+  r = await Skills.intercept('jarvis');
   check('site: builds with the answers', /Built your website/.test(r.text) && calls.at(-1)[0] === '/skill/site' && calls.at(-1)[1].sections === 'events, schedule, register' && calls.at(-1)[1].style === '', calls.at(-1));
   replies['/skill/siteEdit'] = { success: true };
   r = await Skills.intercept('make the header bigger');

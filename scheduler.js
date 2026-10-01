@@ -337,6 +337,7 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
   const Triggers = require('./triggers');
   let prevSnap = null, watching = false, pendingTriggers = [];
   const lastFired = new Map();
+  let lastChargerAnnounced = 0; // debounce for the built-in charger announcements (edges can flutter)
   // Other modules (the global hotkey) reuse the same channel to reach the open tab, or hold an event until one connects.
   app.locals.broadcast = broadcast; app.locals.tabCount = () => clients.size; app.locals.hold = ev => pendingTriggers.push({ ev, at: Date.now() });
   const run = (cmd, args) => new Promise(res => execFile(cmd, args, { windowsHide: true, timeout: 15000, maxBuffer: 4e6 }, (e, o) => res(e ? null : String(o))));
@@ -345,7 +346,9 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
     if (!IS_WIN) return s;
     if (need.power) {
       const o = await run('powershell', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Battery | Select-Object -First 1 EstimatedChargeRemaining,BatteryStatus | ConvertTo-Json -Compress']);
-      try { const j = JSON.parse(o); s.battery = +j.EstimatedChargeRemaining; s.charger = [2, 6, 7, 8, 9].includes(+j.BatteryStatus); } catch { s.battery = null; s.charger = null; }
+      // Plugged in: on AC (2), fully charged on AC (3), or any charging state (6-9). 3 matters: without it,
+      // unplugging a full battery (3 → 1) would look like "not charging → not charging" and stay silent.
+      try { const j = JSON.parse(o); s.battery = +j.EstimatedChargeRemaining; s.charger = [2, 3, 6, 7, 8, 9].includes(+j.BatteryStatus); } catch { s.battery = null; s.charger = null; }
     }
     if (need.apps) {
       const o = await run('tasklist', ['/FO', 'CSV', '/NH']);
@@ -370,8 +373,21 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
   async function watchTick() {
     if (getState()['jarvis.panic'] === true) { prevSnap = null; return; } // panic: no triggers, no sensor polling
     const list = (getState()['jarvis.triggers'] || []).filter(t => t && t.enabled !== false && t.when && t.routineId);
-    if (!list.length) { prevSnap = null; return; }
-    const cur = { ...(prevSnap || {}), ...(await sampleSensors(Triggers.needs(list))) };
+    const settings = getState()['jarvis.settings'] || {};
+    // Built-in charger announcements need no trigger — but honour the same off switches (Smart alerts, panic).
+    const announceCharger = settings.chargerAlerts !== false && settings.alerts !== false;
+    if (!list.length && !announceCharger) { prevSnap = null; return; }
+    const need = Triggers.needs(list);
+    if (announceCharger) need.power = true;
+    const cur = { ...(prevSnap || {}), ...(await sampleSensors(need)) };
+    if (announceCharger) {
+      const edge = Triggers.chargerEdge(prevSnap, cur);
+      if (edge && Date.now() - lastChargerAnnounced > 6e4) {
+        lastChargerAnnounced = Date.now();
+        const m = Triggers.chargerText(edge, cur.battery);
+        await deliver({ type: 'charger', plugged: edge === 'plugged', battery: cur.battery, text: m.body }, 'JARVIS — ' + m.title.toLowerCase(), m.body);
+      }
+    }
     for (const id of Triggers.diffTriggers(prevSnap, cur, list, Date.now(), lastFired, procOf)) { const t = list.find(x => x.id === id); if (t) await fireTrigger(t); }
     prevSnap = cur;
   }

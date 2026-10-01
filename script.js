@@ -96,7 +96,7 @@ const store = (() => {
 
 /* ============ data ============ */
 const settings = Object.assign(
-  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '' },
+  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '' },
   store.get('jarvis.settings', {})
 );
 Persona.setAddressSource(() => {
@@ -181,8 +181,9 @@ function setResults(paths) { ctx.focus.results = (paths || []).filter(Boolean).s
 const joinPath = (dir, name) => /[\\/]$/.test(dir) ? dir + name : dir + (/\\/.test(dir) || /^[a-z]:/i.test(dir) ? '\\' : '/') + name;
 // The newest thing in focus ("open it"): a folder or file shown, found or created in the last 15 minutes.
 function focusNewest() {
+  // (made in the same moment as the folder it went into → the new one is "it")
   const c = ['created', 'file', 'folder'].map(k => focusOf(k) && Object.assign({ kind: k }, focusOf(k))).filter(Boolean);
-  return c.sort((a, b) => b.t - a.t)[0] || null;
+  return c.sort((a, b) => (b.t + (b.kind === 'created' ? 1000 : 0)) - (a.t + (a.kind === 'created' ? 1000 : 0)))[0] || null;
 }
 // Where a request points. "in that directory" / "there" → the folder in focus ({ref:true, path}); "in D drive",
 // "on my desktop", "in C:\x\y", "inside calculator", "in my laptop" → {scope} as said (the server reads it);
@@ -198,7 +199,7 @@ function scopeFrom(original, forCreate) {
   if (inIt.test(o)) { const f = focusOf('created') || focusOf('folder'); return { ref: true, path: f ? f.path : '', rest: o.replace(inIt, '').trim() }; }
   if (REF_RE.test(o)) {
     const fo = focusOf('folder'), cr = focusOf('created');
-    const f = fo && (!cr || fo.t >= cr.t) ? fo : (cr || fo);
+    const f = fo && (!cr || fo.t >= cr.t - 1000) ? fo : (cr || fo);   // same moment → "there" is the folder it went into
     return { ref: true, path: f ? f.path : '', rest: o.replace(REF_RE, '').trim() };
   }
   // The LAST "in/on …" is the place: "list number OF folders IN my laptop" → "my laptop".
@@ -238,6 +239,20 @@ async function openFocusPath(p) {
   const e = await callTool('/tool/openInEditor', { name: p });
   if (!e.error) return { text: 'Opening **' + p + '** in VS Code.', speak: 'Opening it in VS Code.', tool: 'openInEditor' };
   return { text: 'I couldn’t open `' + p + '`: ' + (f.error || r.error) + '.' };
+}
+// "Did you mean…?": names on the laptop close to one that wasn't found (typo, short form, extra words), best first.
+async function similarTo(name, kind) {
+  const r = await callTool('/tool/similar', { name: String(name || '').slice(0, 80), kind }).catch(() => null);
+  return (r && r.suggestions) || [];
+}
+// lead: what wasn't found; then: what to do with the one you pick ('show' | 'open' | 'list' | 'count').
+function didYouMeanReply(name, sims, lead, then) {
+  setResults(sims.map(x => x.path));
+  ctx.pending = { intent: 'DID_YOU_MEAN', paths: sims.map(x => x.path), dirs: sims.map(x => !!x.dir), then: then || 'show' };
+  return { text: lead + '\n\n**Did you mean ' + (sims.length === 1 ? 'this' : 'one of these') + ', ' + Persona.sir() + '?**\n'
+      + sims.map((x, i) => (i + 1) + '. ' + (x.dir ? '📁 ' : '📄 ') + '**' + x.name + '** — `' + x.path + '`').join('\n')
+      + '\n\n_Say **yes** for the first one, a number like **2**, or **no**._',
+    noPersona: true, speak: 'I couldn’t find ' + name + '. Did you mean ' + sims[0].name + '?', suggestions: sims.length > 1 ? ['Yes', '2', 'No'] : ['Yes', 'No'] };
 }
 // A short line for the AI (chat + planner) so it knows what "that folder" / "it" refer to.
 function focusSummary() {
@@ -479,16 +494,24 @@ function updateNetUI() {
 // Changes outside ~/jarvis need your permission (the server answers needsApproval). While a phone command or an
 // unattended routine/trigger is running there is nobody to ask, so the change is refused instead.
 let approvalsBlocked = 0;
+// An approval card waiting for ALLOW/CANCEL. Typed "yes"/"no" answers it too (see handleUser) —
+// otherwise a "yes" becomes a brand-new chat turn and the approved action never runs.
+var pendingApproval = null;
 const APPROVAL_VERB = { create: 'create', 'create the folder': 'create the folder', overwrite: 'overwrite', 'add to': 'add to', delete: 'move to the trash', rename: 'rename', 'copy into': 'copy into', move: 'move', restore: 'restore', 'restore the earlier version of': 'restore the earlier version of', 'move back': 'move back', remove: 'remove' };
+const APPROVAL_YES = /^(y|yes|yeah|yep|yup|ya|sure|ok(?:ay)?|allow|approve[d]?|go ahead|do it|proceed)$/i;
+const APPROVAL_NO = /^(n|no|nope|nah|deny|denied|cancel|never ?mind|forget it|stop)$/i;
 function askApproval(action, paths) {
   if (approvalsBlocked > 0) return Promise.resolve(false);
-  const wasBusy = busy;
+  const wasBusy = typeof busy !== 'undefined' ? busy : false;
   return new Promise(resolve => {
-    busy = false; idleState();
+    if (typeof busy !== 'undefined') { busy = false; }
+    if (typeof idleState === 'function') idleState();
+    const done = ok => { pendingApproval = null; if (typeof busy !== 'undefined') busy = wasBusy; resolve(ok); };
+    pendingApproval = done;
     const list = paths.map(p => '`' + p + '`').join(' and ');
-    jarvisSay({ text: '⚠ JARVIS wants to **' + (APPROVAL_VERB[action] || action) + '** ' + list + '.\nThat is outside `~/jarvis`, so I need your permission.', intent: 'APPROVAL', noPersona: true, noTTS: true,
-      confirm: { yes: 'ALLOW', no: 'CANCEL', onConfirm: () => resolve(true), onCancel: () => resolve(false) } });
-  }).then(ok => { busy = wasBusy; return ok; });
+    jarvisSay({ text: '⚠ JARVIS wants to **' + (APPROVAL_VERB[action] || action) + '** ' + list + '.\nThat is outside `~/jarvis`, so I need your permission. _(You can also just say **yes**.)_', intent: 'APPROVAL', noPersona: true, noTTS: true,
+      confirm: { yes: 'ALLOW', no: 'CANCEL', onConfirm: () => done(true), onCancel: () => done(false) } });
+  }).then(ok => { if (typeof busy !== 'undefined') busy = wasBusy; return ok; });
 }
 // A name that matches several places on the laptop (the server answers { choices }): list them with numbered OPEN
 // buttons; each repeats the request with that full path. Returns null when there's nothing to choose.
@@ -1274,6 +1297,16 @@ if (serverScheduler && 'EventSource' in window) {
     jarvisSay({ text: ev.text, intent: 'TRIGGER', noTTS: true });
     if (typeof Routines !== 'undefined') Routines.runById(ev.routineId);
   });
+  // Charger plugged in / unplugged (announced by the server, needs no trigger): one tab says it out loud.
+  events.addEventListener('charger', e => {
+    const ev = JSON.parse(e.data);
+    if (!ev.lead || settings.chargerAlerts === false) return;
+    const line = ev.plugged ? 'Charger connected' : 'Charger disconnected';
+    const detail = typeof ev.battery === 'number' ? ' — battery at ' + ev.battery + '%' : '';
+    sfx.wake(); toast('🔌 ' + line + detail, true); notify('Charger', line + detail.replace(' — ', ', '));
+    log('ok', 'charger: ' + line + detail);
+    jarvisSay({ text: '🔌 **' + line + '**' + detail + '.', speak: line + ', ' + Persona.Sir() + '.', intent: 'CHARGER_ALERTS' });
+  });
   // A message from the phone (via the ntfy topic): handled by one tab, reply goes back to the phone.
   events.addEventListener('phone', e => {
     const ev = JSON.parse(e.data);
@@ -1634,7 +1667,10 @@ async function fixCode(run, inputText) {
 }
 async function saveToFile(name, content, opts) {
   opts = opts || {};
-  toolStep('writeFile → ' + (opts.where ? opts.where + '/' : '') + name);
+  // An explicit folder (conversation focus, e.g. D:\calculator) wins: join it here so the server
+  // sees one absolute path (which still asks permission when it is outside ~/jarvis).
+  if (opts.folder && !/^[a-z]:[\\/]/i.test(name)) name = joinPath(opts.folder, name);
+  toolStep('writeFile → ' + (opts.where && !opts.folder ? opts.where + '/' : '') + name);
   const r = await callTool('/tool/writeFile', { name, content, append: !!opts.append, overwrite: !!opts.overwrite, where: opts.where || undefined });
   if (r.exists) {
     const again = mode => async () => {
@@ -1650,6 +1686,7 @@ async function saveToFile(name, content, opts) {
 }
 function savedReply(r, content, opts) {
   ctx.lastFile = r.name; bumpStat('filesSaved');
+  if (r.path && typeof setFocus === 'function') { setFocus('file', r.path); setFocus('created', r.path); }
   if (r.created) Undo.push('saved ' + r.name, async () => { const x = await callTool('/tool/undoCreate', { name: r.name }); if (x.error) throw new Error(x.error); return 'Removed `' + r.name + '` (it’s in the trash).'; });
   else if (r.backup) Undo.push((r.appended ? 'added to ' : 'overwrote ') + r.name, async () => { const x = await callTool('/tool/restoreVersion', { backup: r.backup, name: r.name }); if (x.error) throw new Error(x.error); return 'Put back the earlier version of `' + x.name + '`.'; });
   const verb = r.appended ? 'Appended' : r.created === false ? 'Overwrote' : 'Saved';
@@ -2779,17 +2816,54 @@ async function executeTool(p, raw) {
       return { text: 'Noted in `~/jarvis/' + r.name + '`: "' + content + '"', speak: 'Noted.', tool: 'writeFile' };
     }
     case 'WRITE_FILE': {
-      // "… in desktop" / "on my desktop": the place, not part of the file name.
-      const WLOC = /\s+(?:in|on|inside|at)\s+(?:the\s+|my\s+)?(desktop|documents|downloads|pictures|music|videos)(?:\s+folder)?\s*$/i;
-      const wlm = p.original.match(WLOC), where = wlm ? wlm[1].toLowerCase() : '';
-      const worig = p.original.replace(WLOC, '');
+      // Folder: "in that folder" / "there" (the folder in focus), "on my desktop", "in D:\work".
+      const sc = scopeFrom(p.original, true);
+      let folder = '';   // resolved path (conversation focus) — preferred over a named place
+      let wscope = '';
+      if (sc.ref) {
+        if (!sc.path) return { text: 'Which folder do you mean, ' + Persona.sir() + '? Open the folder first and say "create a file there", or name a place like **desktop** or **D drive**.' };
+        folder = sc.path;
+      } else if (sc.scope) {
+        if (sc.scope.split(/\s+/).length > 4 || /\bwhich\b|\bincludes?\b/i.test(sc.scope)) {
+          // "...in that which includes..." — not a place; fall back to the folder in focus, if any.
+          const f = focusOf('created') || focusOf('folder');
+          if (f) folder = f.path;
+        } else wscope = sc.scope;
+      }
+      // Pending answers ("calculator_py") and AI tool calls carry these directly.
+      if (a.folder !== undefined) folder = a.folder;
+      if (a.where !== undefined) wscope = a.where;
+      const langWord = (a.lang || (p.original.match(/\b(python|py|c\+\+|cpp|javascript|js|java|html|css)\b/i) || [])[1] || '').toLowerCase();
+      const CODE_LANGS = { python: 'python', py: 'python', 'c++': 'cpp', cpp: 'cpp', javascript: 'javascript', js: 'javascript', java: 'java', html: 'html', css: 'css' };
+      const lang = CODE_LANGS[langWord] || '';
+      const worig = ((sc.ref || sc.scope) && sc.rest) || p.original;
       const nm = worig.match(/(?:called|named|titled)\s+["']?([\w\- .]+?)["']?(?=\s+(?:with|saying|containing|that says)\b|:|$)/i) || worig.match(/((?:[a-z]:)?[\w\-.\/\\]*[\w\-]\.[a-z0-9+]{1,6})\b/i);
       const cm = worig.match(/(?:with|saying|containing|that says|:)\s+["']?([\s\S]+?)["']?$/i);
       let name = a.name || (nm ? (nm[1] || nm[0]).trim().replace(/^(?:a\s+|the\s+|my\s+)/i, '') : '');
       // a location qualifier caught inside the name ("calculator.html in desktop") is not part of it
       name = name.replace(/\s+(?:in|on|inside|at)\s+(?:the\s+|my\s+)?(desktop|documents|downloads|pictures|music|videos)(?:\s+folder)?\s*$/i, '').trim();
       const content = a.content || (cm ? cm[1] : '');
-      if (!name) return { text: 'What should I call the file? e.g. "create a note called dsa-tips saying …"' };
+      if (name && !/\.[a-z0-9+]{1,6}$/i.test(name) && lang && LANG_EXT[lang]) name = name + LANG_EXT[lang];
+      // Code generation (not an empty file): the request must actually ask for code — "which includes all
+      // operations", "a login function" — plus a code language or extension. A bare "create calc.py" stays an empty file.
+      const CODE_HINT = /\b(code|program|script|logic|operations?|function)\b/i.test(p.original);
+      const needsCode = !content && (a.needsCode || (CODE_HINT && (/\.(py|cpp|c|js|java|html|css)$/i.test(name) || lang)));
+      const where = wscope;
+      if (needsCode && llmReady()) {
+        const target = folder && !/^[a-z]:[\\/]/i.test(name) ? joinPath(folder, name) : name;
+        if (!name) {
+          ctx.pending = { intent: 'WRITE_FILE', folder, where, lang, hint: p.original, needsCode: true };
+          return { text: 'What should I call the ' + (lang ? ({ python: 'Python', cpp: 'C++', javascript: 'JavaScript', java: 'Java', html: 'HTML', css: 'CSS' }[lang] || lang) : 'code') + ' file' + (folder ? ' in `' + folder + '`' : where ? ' in **' + where + '**' : '') + '?' };
+        }
+        const langLabel = { python: 'Python', cpp: 'C++', javascript: 'JavaScript', java: 'Java', html: 'HTML', css: 'CSS' }[lang] || 'code';
+        return { askLLM: 'Write ' + langLabel + ' code for this request. Reply with the complete, runnable code in ONE fenced code block (with a language tag), then at most two short sentences.\n\nRequest: ' + p.original,
+          after: folder ? { save: target } : { save: name, where: where || undefined }, noHistory: true };
+      }
+      if (!name) {
+        ctx.pending = { intent: 'WRITE_FILE', folder, where, lang, hint: p.original };
+        return { text: 'What should I call the file' + (folder ? ' in `' + folder + '`' : where ? ' in **' + where + '**' : '') + '? e.g. "create a note called dsa-tips saying …"' };
+      }
+      if (folder) return saveToFile(name, content ? content + '\n' : '', { folder });
       return saveToFile(name, content ? content + '\n' : '', where ? { where } : undefined);
     }
 
@@ -2804,10 +2878,34 @@ async function executeTool(p, raw) {
     case 'SAVE_CODE': {
       const code = a.code || lastCode();
       if (!code) return { text: 'I do not see any code in our chat yet. Ask me to write some — or say "paste my clipboard into main.py".', suggestions: ['Paste my clipboard into main.py'] };
-      let name = a.name || extractFileName(p.original);
-      if (!name || /^(it|that|this)$/i.test(name)) name = ctx.lastFile && !a.name && /\b(it|that file|the file)\b/.test(s) && !/\bas\b/.test(s) ? ctx.lastFile : '';
-      if (!name) { ctx.pending = { intent: 'SAVE_CODE', code }; const ext = LANG_EXT[code.lang] || '.txt'; return { text: 'What should I name the file?', suggestions: ['main' + ext, 'solution' + ext] }; }
-      return saveToFile(withExt(name, code.lang), code.code + '\n', { what: code.lang || 'code', run: !!(a.run) });
+      const o = p.original;
+      // "by creating a new folder called X" / "in a new folder named X" / "into the X folder": a folder to make for it
+      const fm = o.match(/\b(?:by\s+)?(?:creat(?:e|ing)|mak(?:e|ing)|in|into|inside|under)\s+(?:a\s+|an\s+|the\s+)?(?:new\s+)?(?:folder|directory|dir)\s+(?:called\s+|named\s+)?["']?([\w\-.()]+(?:\s+[\w\-.()]+){0,3}?)["']?(?=\s+(?:on|in|at|inside|under|to)\b|\s+and\b|[\s.!]*$)/i)
+        || o.match(/\b(?:in|into|inside)\s+(?:the\s+|a\s+|new\s+)*["']?([\w\-]+)["']?\s+(?:folder|directory)\b/i);
+      const folder = a.folder !== undefined ? a.folder : (fm ? fm[1].trim() : '');
+      const rest = (fm ? o.replace(fm[0], ' ') : o).replace(/\s+/g, ' ').trim();
+      // where: "on my desktop", "in D drive", "in C:\x", "there"; from the follow-up question; or not said
+      let where = a.where;
+      if (where === undefined) {
+        const sc = scopeFrom(rest, true);
+        if (sc.ref) { if (!sc.path) return { text: 'Which folder do you mean, ' + Persona.sir() + '? Say **desktop**, **D drive** or a full path.' }; where = sc.path; }
+        else if (sc.scope && !/^(?:it|that|this|file|a file)$/i.test(sc.scope)) where = sc.scope;
+      }
+      let name = a.name || extractFileName(rest);
+      if (!name || /^(it|that|this)$/i.test(name)) name = ctx.lastFile && !a.name && !folder && /\b(it|that file|the file)\b/.test(s) && !/\bas\b/.test(s) ? ctx.lastFile : '';
+      const ext = LANG_EXT[code.lang] || '.txt', web = /^(html?|htm)$/i.test(code.lang || '') || /<!doctype html|<html[\s>]/i.test(code.code);
+      if (!name && (folder || web)) name = (web ? 'index' : 'main') + ext;
+      // A new folder or a web page: ask where it should go, instead of silently picking a place.
+      if (where === undefined && (folder || web)) {
+        ctx.pending = { intent: 'SAVE_CODE', code, name, folder, askWhere: true };
+        return { text: 'Where should I save **' + (folder ? folder + '/' : '') + name + '**, ' + Persona.sir() + '? Say **desktop**, **D drive**, a full path like `D:\\Projects`, or **jarvis** for your ~/jarvis folder.',
+          speak: 'Where should I save it?', suggestions: ['Desktop', 'D drive', 'Jarvis folder'] };
+      }
+      if (!name) { ctx.pending = { intent: 'SAVE_CODE', code, name, folder, where }; return { text: 'What should I name the file?', suggestions: ['main' + ext, 'solution' + ext] }; }
+      const target = (folder ? folder + '/' : '') + withExt(name, code.lang);
+      const r = await saveToFile(target, code.code + '\n', { what: code.lang || 'code', run: !!(a.run), where: where || undefined });
+      if (web && /✓/.test(r.text || '')) r.suggestions = ['Open it', 'Open it in VS Code'];
+      return r;
     }
     case 'CLIPBOARD_TO_FILE': {
       toolStep('readClipboard');
@@ -2998,25 +3096,57 @@ async function executeTool(p, raw) {
       const shown = x => x.split(/[\\/]/).pop();
       const tookAs = x => shown(x).toLowerCase().replace(/[\s_-]+/g, ' ') !== name.toLowerCase().replace(/[\s_-]+/g, ' ') ? ' (I took “' + name + '” to mean that)' : '';
       if (!wantsFile) {
+        // Found under a DIFFERENT name ("calculater" → calculator): ask, don't assume.
+        const askIfClose = (paths, how) => {
+          const close = paths.filter(x => tookAs(x));
+          if (!close.length || close.length < paths.length) return null;
+          return didYouMeanReply(name, close.slice(0, 5).map(x => ({ path: x, name: shown(x), dir: true })), 'I don’t see a folder named exactly **' + name + '**' + (how || '') + '.', 'show');
+        };
         const l = await callTool('/tool/locateProject', { name });
-        if (l.success) return { text: '✓ Yes — the folder **' + shown(l.path) + '** is at `' + l.path + '`' + tookAs(l.path) + '.', tool: 'checkExists',
-          suggestions: ['Open vs code in ' + shown(l.path), 'Open the ' + shown(l.path) + ' folder'] };
+        if (l.success && askIfClose([l.path], ' in your projects')) return askIfClose([l.path], ' in your projects');
+        if (l.success) { if (l.path) setFocus('folder', l.path); return { text: '✓ Yes — the folder **' + shown(l.path) + '** is at `' + l.path + '`' + tookAs(l.path) + '.', tool: 'checkExists',
+          suggestions: ['Open vs code in ' + shown(l.path), 'Open the ' + shown(l.path) + ' folder'] }; }
         toolStep('findFolderAnywhere → ' + name);
         const f = await callTool('/tool/findFolderAnywhere', { name });
         const paths = f.paths || [];
-        if (paths.length) return { text: '✓ Yes — found **' + shown(paths[0]) + '** at `' + paths[0] + '`' + tookAs(paths[0]) + (paths.length > 1 ? ' (and ' + plural(paths.length - 1, 'other place') + ')' : '') +
+        if (paths.length && askIfClose(paths, ' on this laptop')) return askIfClose(paths, ' on this laptop');
+        if (paths.length) { setFocus('folder', paths[0]); setResults(paths.slice(0, 30)); return { text: '✓ Yes — found **' + shown(paths[0]) + '** at `' + paths[0] + '`' + tookAs(paths[0]) + (paths.length > 1 ? ' (and ' + plural(paths.length - 1, 'other place') + ')' : '') +
           (paths.length > 1 ? ':\n' + paths.map((x, i) => (i + 1) + '. `' + x + '`').join('\n') : '.'), tool: 'checkExists',
           actions: paths.slice(0, 3).flatMap((pth, i) => {
             const n = paths.length > 1 ? ' ' + (i + 1) : '';
             return [{ label: 'OPEN IN VS CODE' + n, fn: async () => { const o = await callTool('/tool/openInEditor', { name: pth }); jarvisSay({ text: o.error ? cap(o.error) + '.' : 'Opening `' + pth + '` in **VS Code**.', intent: 'CHECK_EXISTS' }); } },
                     { label: 'OPEN FOLDER' + n, fn: async () => { const o = await callTool('/tool/openFolder', { name: pth }); jarvisSay({ text: o.error ? cap(o.error) + '.' : 'Opening `' + pth + '` in your file explorer.', intent: 'CHECK_EXISTS' }); } }];
-          }) };
+          }) }; }
       } else {
         const sf = await callTool('/tool/searchFiles', { query: name.replace(/\.[a-z0-9]{1,5}$/i, '') });
         const hits = (sf.results || []).filter(x => !String(x).endsWith('/'));   // paths; folders end in "/"
         if (hits.length) return { text: '✓ Yes — ' + hits.slice(0, 3).map(x => '`' + x + '`').join(', ') + '.', tool: 'checkExists' };
       }
-      return { text: '✗ No, I can’t find `' + name + '` in `~/jarvis`, your project folders, or the usual places on this laptop (Desktop, Documents, Downloads, other drives).', tool: 'checkExists' };
+      // Not found: say what was really searched, and show near misses ("calculator" → calculator.html, Calculator.lnk…)
+      // so the answer is useful, not just "no".
+      const idx = await fetch(API + '/fileIndex/status').then(x => x.json()).catch(() => ({}));
+      const kind = wantsFile ? 'file' : 'folder';
+      const scope = idx && idx.ready ? 'anywhere on this laptop (I checked all ' + Number(idx.count).toLocaleString() + ' files and folders on every drive, apart from system, hidden and build folders)'
+        : 'in ~/jarvis, your project folders or the usual places (the full laptop list is still being built — ask again in a moment)';
+      // Close names first ("calculater", "calc_app", "my-calculator"): ask "Did you mean…?" instead of a flat no.
+      const sims = await similarTo(name, kind);
+      if (sims.length) return didYouMeanReply(name, sims, '✗ No ' + kind + ' named exactly **' + name + '** ' + scope + '.', 'show');
+      const near = await callTool('/tool/searchFiles', { query: name.replace(/\.[a-z0-9]{1,5}$/i, '').slice(0, 40) }).catch(() => ({}));
+      const nearPaths = (near.paths || []).slice(0, 30), nearShown = (near.results || []).slice(0, 30);
+      const order = nearShown.map((x, i) => ({ x, p: nearPaths[i] || x, dir: /[\\/]$/.test(x) })).sort((u, v) => v.dir - u.dir).slice(0, 6);
+      if (order.length) setResults(order.map(o => o.p));
+      return { text: '✗ No ' + kind + ' named **' + name + '** ' + scope + '.' + (order.length
+          ? '\n\nThese have “' + name + '” in their name:\n' + order.map((o, i) => (i + 1) + '. ' + (o.dir ? '📁 ' : '📄 ') + '`' + o.x + '`').join('\n') + '\n\n_Say "open the first one", or "create a folder called ' + name + ' on my desktop"._'
+          : '\n\nWant me to make it? Say **"create a folder called ' + name + ' on my desktop"** (or in D drive).'),
+        speak: 'No, there is no ' + kind + ' called ' + name + ' on this laptop.', tool: 'checkExists',
+        suggestions: wantsFile ? null : ['Create a folder called ' + name + ' on my desktop'] };
+    }
+    case 'SHOW_PICK': {   // the answer to "Did you mean…?"
+      const pth = a.path, nm = String(pth).split(/[\\/]/).filter(Boolean).pop();
+      setFocus(a.dir ? 'folder' : 'file', pth);
+      if (a.open) return openFocusPath(pth);
+      return { text: '✓ **' + nm + '** is at `' + pth + '`.', speak: 'Got it — ' + nm + '.', tool: 'checkExists',
+        suggestions: a.dir ? ['Open it', 'List files there', 'How many folders are there'] : ['Open it'] };
     }
     case 'WHY_ACTION': return Agent.explainLastAction(p.original);
     case 'LEARN_LIST': return Agent.learnedSummary();
@@ -3341,6 +3471,10 @@ async function executeTool(p, raw) {
           speak: r.path + ' has ' + r.folders + ' folders and ' + r.files + ' files.', suggestions: ['Create a folder there', 'Open it'], tool: 'folderStats' };
       };
       const r = await callTool('/tool/folderStats', { scope });
+      if (r.error && scope && !/[\\/:]/.test(scope) && /can.t find|not found/i.test(r.error)) {
+        const sims = await similarTo(scope, 'folder');
+        if (sims.length) return didYouMeanReply(scope, sims, 'I can’t find a folder called **' + scope + '**.', 'count');
+      }
       return pickPlace(r, scope, async x => shown(await callTool('/tool/folderStats', { scope: x }))) || shown(r);
     }
     case 'RENAME_FILE': {
@@ -3422,6 +3556,10 @@ async function executeTool(p, raw) {
           speak: plural(r.folders.length, 'folder') + (onlyFolders ? '' : ' and ' + plural(r.files.length, 'file')) + '.', tool: 'listFiles' };
       };
       const r = await callTool('/tool/listFiles', { dir });
+      if (r.error && dir && !/[\\/:]/.test(dir) && /can.t find|not found/i.test(r.error)) {   // "list files in calculater" → Did you mean…?
+        const sims = await similarTo(dir, 'folder');
+        if (sims.length) return didYouMeanReply(dir, sims, 'I can’t find a folder called **' + dir + '**.', 'list');
+      }
       return pickPlace(r, dir, async x => shown(await callTool('/tool/listFiles', { dir: x }))) || shown(r);
     }
     case 'READ_FILE': {
@@ -3472,6 +3610,10 @@ async function executeTool(p, raw) {
       if (r.error && candidates.length > 1) {
         const r2 = await callTool('/tool/openFolder', { name: candidates[1] });
         if (!r2.error) return pickPlace(r2, candidates[1], async x => shown(await callTool('/tool/openFolder', { name: x }))) || shown(r2);
+      }
+      if (r.error && name && /can.t find|not found/i.test(r.error)) {   // "open the calculater folder" → Did you mean calculator?
+        const sims = await similarTo(stripped || name, 'folder');
+        if (sims.length) return didYouMeanReply(name, sims, 'I can’t find a folder called **' + name + '**.', 'open');
       }
       return pickPlace(r, name, async x => shown(await callTool('/tool/openFolder', { name: x }))) || shown(r);
     }
@@ -3852,6 +3994,13 @@ async function executeTool(p, raw) {
       } } };
     case 'WINDOW_LAYOUT': return arrangeWindows(s, a);
     case 'CLIP_HISTORY': return clipHistory(s);
+    case 'CHARGER_ALERTS': {
+      const off = /\b(stop|don't|dont|do not|disable[sd]?|turn off|switch off|mute[sd]?|silence[sd]?|off|no)\b/i.test(s);
+      settings.chargerAlerts = !off; saveSettings(); bindSwitchState('#chargerAlertsToggle', 'chargerAlerts');
+      log('info', 'charger alerts ' + (off ? 'off' : 'on'));
+      return off ? { text: 'Charger announcements off, ' + Persona.sir() + ' — I’ll stay quiet when you plug or unplug.', speak: 'Charger announcements off.', tool: 'chargerAlerts' }
+        : { text: 'Done, ' + Persona.sir() + ' — I’ll say when the charger is connected or disconnected.', speak: 'I will announce charger changes.', tool: 'chargerAlerts' };
+    }
 
     default: return conversationReply(p) || { askLLM: true };
   }
@@ -4132,9 +4281,29 @@ function resolvePending(norm) {
   const pd = ctx.pending; ctx.pending = null;
   if (!pd) return null;
   const s = norm.text;
+  // Bare affirmations / refusals ("yes", "no") answer the pending question itself — never a file name.
+  const AFFIRM = /^(y|yes|yeah|yep|yup|ya|sure|ok(?:ay)?|please do|do it|go ahead|proceed|create it|save it|make it|yes (please|sure))$/i;
+  const NEG = /^(n|no|nope|nah|none|cancel|never ?mind|forget it|stop)$/i;
+  const bare = norm.original.trim().replace(/[.!?]+$/, '');
   if (pd.intent === 'FLASH_ANSWER') {
     if (/^(stop|quit|end|exit|cancel)( (the )?(flash ?cards?|review|session|quiz))?$/.test(s)) { if (flashSession) flashSession.i = flashSession.queue.length; return { intent: 'FLASH_END' }; }
     return { intent: 'FLASH_ANSWER', args: { id: pd.id, answer: norm.original }, text: s };
+  }
+  if (pd.intent === 'DID_YOU_MEAN') {   // "yes" / "2" / "the second one" / "no" — anything else is a new request
+    const t = norm.original.trim().toLowerCase().replace(/[.!?]+$/, '').replace(/,?\s*(?:please|sir|jarvis)$/, '');
+    let i = /^(?:y|yes|yeah|yep|yup|ya|sure|correct|right|exactly|that one|that's it|thats it|ok(?:ay)?|(?:the )?first(?: one)?)$/.test(t) ? 0 : null;
+    const num = t.match(/^(?:the\s+)?(?:number\s+|no\.?\s*|#)?(\d)(?:st|nd|rd|th)?(?:\s+one)?$/);
+    if (num) i = +num[1] - 1;
+    const ord = t.match(/^(?:the\s+)?(second|third|fourth|fifth|last)(?:\s+one)?$/);
+    if (ord) i = ORDINAL[ord[1]] === -1 ? pd.paths.length - 1 : ORDINAL[ord[1]] - 1;
+    if (i !== null && pd.paths[i]) {
+      const path = pd.paths[i], dir = !!pd.dirs[i];
+      if (pd.then === 'list' && dir) return { intent: 'LIST_FILES', args: { dir: path }, text: s, original: 'list files' };
+      if (pd.then === 'count' && dir) return { intent: 'COUNT_FOLDERS', args: { scope: path }, text: s, original: 'count folders' };
+      return { intent: 'SHOW_PICK', args: { path, dir, open: pd.then === 'open' }, text: s };
+    }
+    if (/^(?:n|no|nope|nah|none|neither|not that|not those|wrong|none of them|none of these)\b/.test(t)) return { intent: 'CANCELLED' };
+    return null;
   }
   if (/^(cancel|never ?mind|forget it|no|stop)$/.test(s)) return { intent: 'CANCELLED' };
   if (pd.intent === 'REMIND' && NLU.parseWhen(s)) return { intent: 'REMIND', args: { text: pd.text, when: s }, text: s };
@@ -4143,7 +4312,30 @@ function resolvePending(norm) {
   if (pd.intent === 'CREATE_FOLDER' && /^[\w\- .()]{1,60}$/.test(norm.original.trim().replace(/^(?:call it|name it|called|named)\s+/i, '')))
     return { intent: 'CREATE_FOLDER', args: { name: norm.original.trim().replace(/^(?:call it|name it|called|named)\s+/i, ''), base: pd.base }, text: s, original: 'create a folder' };
   if (pd.intent === 'GIT_COMMIT') return { intent: 'GIT_COMMIT', args: {}, text: s, original: 'commit with message ' + norm.original };
-  if (pd.intent === 'SAVE_CODE' && /^[\w\-.\/\\: ]{1,80}$/.test(norm.original.trim())) return { intent: 'SAVE_CODE', args: { code: pd.code, name: extractFileName('as ' + norm.original.trim()) || norm.original.trim() }, text: s };
+  if (pd.intent === 'WRITE_FILE') {
+    if (NEG.test(bare)) return { intent: 'CANCELLED' };
+    const vague = /^(your (wish|choice)|anything|whatever|you (choose|decide|pick|name it)|i (don't|dont) mind|as you (wish|like)|default|surprise me)$/i.test(bare);
+    let name = extractFileName('as ' + norm.original.trim()) || '';
+    if (!name && /^[\w\-() ]{1,60}$/.test(bare) && !vague && !AFFIRM.test(bare)) name = bare.replace(/\s+/g, '_');
+    if (!name) {
+      // "your wish" / "yes" with no name yet: prefer "<project>.<ext>" when the request named a project
+      // ("continue in the calculator project" → calculator.py), else <folder>.<ext>, else main.<ext>.
+      const proj = (pd.hint || '').match(/\bproject\s+([a-z0-9][\w\-]{1,30})/i)
+        || (m => (m && !/^(same|the|my|that|this|current|new|last|whole|entire)$/i.test(m[1]) && m))(pd.hint || '').match(/([a-z0-9][\w\-]{1,30})\s+project\b/i);
+      const base = (proj && (proj[1] || proj[2])) || (pd.folder || '').split(/[\\/]/).filter(Boolean).pop() || 'main';
+      const stem = base.replace(/[^\w\-]/g, '').slice(0, 40) || 'main';
+      name = stem + (LANG_EXT[pd.lang] || '.md');
+    }
+    return { intent: 'WRITE_FILE', args: { name, folder: pd.folder, where: pd.where, lang: pd.lang, hint: pd.hint, needsCode: pd.needsCode }, text: s, original: 'create file ' + name };
+  }
+  if (pd.intent === 'SAVE_CODE' && pd.askWhere) {
+    const ans = norm.original.trim().replace(/[.!?]+$/, '').replace(/^(?:save it |put it |in |on |to |at |inside |into )+/i, '').replace(/^(?:the |my )+/i, '').replace(/\s+folder$/i, '').trim();
+    const where = /^(?:jarvis|jarvis folder|~\/jarvis|default|here|anywhere|you choose|your choice|sandbox|wherever)$/i.test(ans) ? '' : ans;
+    return { intent: 'SAVE_CODE', args: { code: pd.code, name: pd.name, folder: pd.folder, where }, text: s, original: 'save the code' };
+  }
+  if (pd.intent === 'SAVE_CODE' && pd.code && !pd.askWhere && AFFIRM.test(bare))
+    return { intent: 'SAVE_CODE', args: { code: pd.code, name: pd.name || '', folder: pd.folder, where: pd.where }, text: s };
+  if (pd.intent === 'SAVE_CODE' && !AFFIRM.test(bare) && !NEG.test(bare) && /^[\w\-.\/\\: ]{1,80}$/.test(norm.original.trim())) return { intent: 'SAVE_CODE', args: { code: pd.code, name: extractFileName('as ' + norm.original.trim()) || norm.original.trim() }, text: s };
   if ((pd.intent === 'DIRECTIONS' || pd.intent === 'DIRECTIONS_OPEN' || pd.intent === 'DISTANCE') && norm.original.trim().length >= 2) return { intent: pd.intent, args: { from: norm.original.trim(), to: pd.to }, text: s };
   return null;
 }
@@ -4188,7 +4380,7 @@ async function runAfter(after, aiText, p) {
     await deliver({ text: '✓ Result copied to your clipboard (' + plural(lines(code.code), 'line') + ') — press Ctrl+V to paste.', speak: 'Copied to your clipboard.', suggestions: ['Paste that code into my editor'], intent: 'CLIP_TRANSFORM', tool: 'writeClipboard' }, p);
   }
   if (after.save !== undefined) {
-    const res = await executeTool({ intent: 'SAVE_CODE', args: { name: after.save, code, run: after.run }, text: 'save', original: 'save' }, 'save');
+    const res = await executeTool({ intent: 'SAVE_CODE', args: { name: after.save, code, run: after.run, where: after.where, folder: after.folder }, text: 'save', original: 'save' }, 'save');
     await deliver(res, { intent: 'SAVE_CODE', confidence: 1 });
     if (after.run && res && res.saved && RUNNABLE.test(res.saved)) {
       setState('EXECUTING', 'Running…');
@@ -4224,6 +4416,13 @@ async function handleUser(text, source) {
     if (fixed && fixed !== text) { log('info', 'heard "' + text + '" → understood "' + fixed + '"'); text = fixed; }
   }
   if (busy) { inputQueue.push([text, source]); toast('Queued: "' + text.slice(0, 40) + '"'); return; }
+  // A permission card (ALLOW/CANCEL) is still on screen: typed "yes"/"no" presses it. Anything else is a
+  // new request — the card stays up until it is answered or cancelled.
+  if (typeof pendingApproval === 'function' && pendingApproval) {
+    const t = String(text).trim().replace(/[.!?]+$/, '');
+    if (typeof APPROVAL_YES !== 'undefined' && APPROVAL_YES.test(t)) { const done = pendingApproval; pendingApproval = null; addMsg('user', text, { source: source || 'text' }); logChat('user', text, '', source || 'text'); toast('Approved — carrying on…'); done(true); return; }
+    if (typeof APPROVAL_NO !== 'undefined' && APPROVAL_NO.test(t)) { const done = pendingApproval; pendingApproval = null; addMsg('user', text, { source: source || 'text' }); logChat('user', text, '', source || 'text'); done(false); return; }
+  }
   busy = true; const t0 = performance.now();
   // ✏️ edit: the edited message replaces the original and its reply
   if (editing && source === 'text') { const e = editing; editing = null; const i = findUserEntry(e.text, e.t); if (i >= 0 && e.text !== text) deleteExchange(i, true); }
@@ -5139,6 +5338,7 @@ async function updateHotkeyNote() {
 }
 $('#settingsBtn').addEventListener('click', updateHotkeyNote);
 bindSwitch('#alertsToggle', 'alerts', v => log('info', 'smart alerts ' + (v ? 'on' : 'off')));
+bindSwitch('#chargerAlertsToggle', 'chargerAlerts', v => log('info', 'charger alerts ' + (v ? 'on' : 'off')));
 // Phone alerts: the server pushes reminders/deadline alerts to ntfy.sh under a random, unguessable topic.
 function updatePhoneNote() {
   const n = $('#phonePushNote');

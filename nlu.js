@@ -582,6 +582,9 @@ const NLU = (() => {
     ['TRIGGER_CREATE', /^(when|whenever|every time|each time|as soon as|once)\b.*\b(charger|plug(ged)?( in)?|unplug(ged)?|battery|wi-?fi|wifi|connect(ed|s)? to|open(s|ed)?|start(s|ed)?|launch(es|ed)?|close(s|d)?|quit(s)?|exit(s)?)\b.*(,|\bthen\b|\b(run|start|activate|block|play|turn on|switch|enable|open|do|mute|launch|begin)\b)/, .95, 'triggers'],
     ['TRIGGER_LIST', /\b(list|show|what|which|see)\b.*\btriggers?\b|^(my )?triggers$/, .95, 'triggers'],
     ['TRIGGER_DELETE', /\b(delete|remove|clear|cancel|turn off|disable|stop)\b.*\btriggers?\b/, .95, 'triggers'],
+    // Charger announcements ("tell me when the charger is connected", "stop charger alerts"). After the
+    // trigger rules so "when I plug in my charger, …" still builds a trigger routine, not this switch.
+    ['CHARGER_ALERTS', /\b(announce|announcements?|tell me|notify me|let me know|alert( me)?|remind me)\b.{0,50}\b(charger|charging|plugged(\s+in)?|unplugged)\b|\b(charger|charging)\b.{0,50}\b(announce|announcements?|alerts?|notifications?|notify)\b|\b(stop|don't|dont|do not|disable[sd]?|turn off|switch off|mute[sd]?|silence[sd]?)\b.{0,50}\bcharger\b|\b(turn on|switch on|enable[sd]?)\b.{0,50}\bcharger\b.{0,30}\b(alerts?|announcements?)\b/, .94, 'chargerAlerts'],
     // study planner + weekly progress (before the one-day PLAN_DAY rules)
     ['STUDY_PLAN', /^(?!.*\b(today|tonight|this evening|the rest of the day)\b)(?=.*\b(plan|schedule|timetable)\b).*\b(exam|test|prep|preparation|revision|syllabus)\b|^(?!.*\b(today|tonight)\b).*\bstudy (plan|schedule|timetable) for\b|\bprepare( me)? for .+\b(exam|test)\b|^(?=.*\b(exam|test)\b.*\b(on|in|is)\b)(?=.*\btopics?\b).+/, .95, 'studyPlan'],
     ['STUDY_TODAY', /\b(what|which)( topic| subject| chapter)? (should|do) i (study|revise|read|cover|work on)( today| now| next)\b(?!.*\bplan (my|the) day\b)|^(show |see |open )?(me )?(my )?study (plan|schedule)$|\bwhat'?s (on )?(my )?study plan( for)? today\b|\bwhere am i (in|on|with) my (study )?plan\b/, .95, 'studyToday'],
@@ -610,6 +613,9 @@ const NLU = (() => {
     ['WRITE_AND_SAVE', /^(write|create|make|generate|code|give me|build|implement)\b.+\b(and|then) (save|store|put) (it|that|them|the code)? ?(as|to|in|into|inside)\b/, .95, 'saveCode'],
     ['PASTE_TO_EDITOR', /\bpaste\b.*\b(editor|vs ?code|window|there|here|cursor|ide|notepad|active window)\b|\b(type|paste) (it|that|the code) (out|in|for me)\b/, .95, 'pasteToEditor'],
     ['SAVE_CODE', /\b(save|store|put|paste|write|dump|stick|move)\b (that |this |the |your |the last |last |above |above )?(code|program|snippet|answer|solution|script|function|class|output)\b.*\b(as|to|in|into|inside|called|named)\b|^(save|store) (it|that|this) (as|to|in|into) \S+/, .94, 'saveCode'],
+    // "save this file by creating a new folder called calculator_website" / "save this page on my desktop" / "save it
+    // in a new folder": the code JARVIS just wrote (the handler says so if there is none) — not a one-line note.
+    ['SAVE_CODE', /^(?:save|store|keep|put)\s+(?:this|that|it|the above|the|this whole|that whole|the whole)(?:\s+(?:file|code|page|website|web ?page|html|program|script|project|calculator))?\b(?!\s+note).*\b(?:folder|directory|as|in|into|on|inside|called|named)\b|^(?:save|store) (?:this|that|it)(?: file| code| page| website)?$/, .93, 'saveCode'],
     ['COPY_CONTENT', /^copy (that|this|the|your|the last|last|above)( code| program| answer| snippet| script| output| reply| response| solution| function)?( to (my |the )?clipboard)?$|^copy (the )?(contents? of |code (in|from) )?[\w\-./\\ ]+\.[a-z]{1,5}( to (my |the )?clipboard)?$|^copy (the )?(last |that )?(code|answer)$/, .95, 'writeClipboard'],
     // coding AI tools (before OPEN_IN_EDITOR, whose looser "open … in vs code" pattern would otherwise win)
     ['CODE_ASK', looksLikeCodeAsk, .97, 'codeAsk'],

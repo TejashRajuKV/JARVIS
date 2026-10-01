@@ -33,7 +33,8 @@
     '/tool/restartSystem': () => ({ success: true }), '/tool/cancelShutdown': () => ({ success: true }),
     '/tool/screenshot': () => ({ success: true, file: 'shot.png', path: 'C:/Users/you/Desktop/shot.png' }),   // same shape as server.js
     '/tool/openUrl': b => ({ success: true, url: b.url }), '/tool/openFile': b => ({ success: true, name: b.name }),
-    '/tool/openFolder': b => ({ success: true, name: b.name || '~/jarvis' }), '/tool/openKnownFolder': b => ({ success: true, name: b.name }),
+    // like the real server: a folder that isn't anywhere ("calculater") is "can't find"
+    '/tool/openFolder': b => /^calculater$/i.test(b.name || '') ? { error: 'I can\'t find "' + b.name + '" on this laptop' } : { success: true, name: b.name || '~/jarvis' }, '/tool/openKnownFolder': b => ({ success: true, name: b.name }),
     // Like the real server: a name found in several places on the laptop ("agriloop") comes back as choices; a full path opens.
     '/tool/openInEditor': b => /^agriloop$/i.test(b.name || '') ? { choices: ['C:\\Users\\you\\Downloads\\Documents - Copy\\AGRILOOP-1', 'C:\\Users\\you\\Downloads\\Documents - Copy\\AGRILOOP61'], error: 'Several places match' } : { success: true, name: b.name || 'project', path: b.name || 'project', editor: 'VS Code' },
     '/tool/codeAsk': () => ({ success: true, sent: true }), '/tool/gitClone': () => ({ error: 'cloning is faked in tests' }),
@@ -47,6 +48,8 @@
       : !b.city ? { success: true, approximate: true, place: 'India' }
       : { success: true, place: b.city.replace(/\b[a-z]/g, x => x.toUpperCase()) + ', Karnataka', approximate: false, tempC: 28, feelsC: 31, desc: 'Partly cloudy', humidity: 70, windKmph: 12, minC: 21, maxC: 29, rainChance: 70, tomorrow: { minC: 20, maxC: 27, desc: 'Light rain' } },
     '/tool/research': b => ({ success: true, results: [{ title: 'Weather: ' + b.q, url: 'https://example.com/weather', snippet: '24°C, sunny' }], pages: [] }),
+    // "Did you mean…?" (the real one reads the laptop file index): "calculater" is close to a calculator folder.
+    '/tool/similar': b => ({ success: true, suggestions: /calcul|calc/i.test(b.name || '') ? [{ path: 'C:\\Users\\you\\Projects\\calculator', name: 'calculator', dir: true, score: 0.96 }, { path: 'C:\\Users\\you\\Desktop\\calc_app', name: 'calc_app', dir: true, score: 0.86 }] : [] }),
     '/tool/findFolderAnywhere': b => ({ success: true, paths: /agriloop/i.test(b.name) ? ['C:\\Users\\you\\Downloads\\Documents - Copy\\AGRILOOP-1', 'C:\\Users\\you\\Downloads\\Documents - Copy\\AGRILOOP61'] : [] }),
     '/wake/native': b => ({ supported: true, on: !!b.on, listening: !!b.on }), '/wake/front': () => ({ result: 'front' }), '/notify/test': () => ({ success: true }), '/phone/reply': () => ({ success: true }),
   };
@@ -156,6 +159,24 @@
   r = await say('create a frontend design for project zzcalc');
   check('Frontend', '"create a frontend design for project X" starts the builder for that project (no AI chat)', (/frontend for \*?\*?zzcalc|Anything specific/i.test(r.text) && called('/tool/findFolderAnywhere', d => /zzcalc/i.test(d.name || ''))) || (!llmReady() && /AI brain/.test(r.text)), r.text);
   r = await say('cancel');
+  // ---- "Did you mean…?": a name you half-remember is matched to the closest real ones, and you pick
+  r = await say('check whether calculater folder exists in my laptop or not');
+  check('Did you mean', 'a near-miss name gets "Did you mean…?" with the close folders, not a flat no', /Did you mean/.test(r.text) && /calculator/.test(r.text) && /calc_app/.test(r.text), r.text);
+  await handleUser('yes', 'text'); await idle(15000);
+  check('Did you mean', '"yes" picks the first and remembers it ("open it" works next)', ctx.focus.folder && /Projects\\calculator$/.test(ctx.focus.folder.path), JSON.stringify(ctx.focus.folder));
+  r = await say('open the calculater folder');
+  check('Did you mean', 'opening a near-miss folder asks which one', /Did you mean/.test(r.text), r.text);
+  await handleUser('2', 'text'); await idle(15000);
+  check('Did you mean', '"2" opens the second suggestion', called('/tool/openFolder', d => /calc_app$/.test(d.name || '')), JSON.stringify(calls.filter(c => c.endpoint === '/tool/openFolder').slice(-1)));
+  r = await say('check whether calculater folder exists'); await handleUser('no', 'text'); await idle(15000);
+  check('Did you mean', '"no" ends it without acting', !ctx.pending, JSON.stringify(ctx.pending));
+  // ---- "save this file by creating a new folder called X": the code just written, as a real file — asked where first
+  chatLog.push({ role: 'assistant', text: 'Here it is:\n```html\n<!DOCTYPE html>\n<html><body><h1>Calc</h1></body></html>\n```', t: Date.now() });
+  r = await say('okay save this file by creating new folder called calc_site');
+  check('Save code', 'saving code into a new folder asks WHERE first (not a one-line note)', /Where should I save/.test(r.text) && !called('/tool/writeFile', d => /calc_site/.test(d.name || '')), r.text);
+  await handleUser('jarvis', 'text'); await idle(15000);
+  check('Save code', '"jarvis" → calc_site/index.html written with the whole page', called('/tool/writeFile', d => d.name === 'calc_site/index.html' && /DOCTYPE html/.test(d.content || '')),
+    JSON.stringify(calls.filter(c => c.endpoint === '/tool/writeFile').slice(-1)));
   // ---- weather (service faked): answered from the weather service, never by the AI
   {
     const was = { online: settings.online, city: settings.city };

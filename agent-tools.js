@@ -7,7 +7,9 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-module.exports = function agentTools({ APPS, safePath, llm, DEFAULT_MODEL }) {
+module.exports = function agentTools({ APPS, safePath, anyPath, llm, DEFAULT_MODEL }) {
+  // Existence checks are read-only: an absolute laptop path is fine here (blocked locations still excluded).
+  const existsPath = anyPath || safePath;
   // The page's NLU (app names, date parsing) — loaded once so the server validates with the same rules.
   const sandbox = {};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'nlu.js'), 'utf8') + ';this.NLU = NLU;', sandbox);
@@ -310,9 +312,9 @@ Rules:
       const v = validatePlan(parsed);
       res.json(Object.assign(v, { ms_plan: Date.now() - t0 }));
     });
-    // Does a sandbox file/folder exist? (verification of create_folder / write_note / save_code)
+    // Does a file/folder exist? (verification of create_folder / write_note / save_code)
     app.post('/api/agent/exists', (req, res) => {
-      const p = safePath(String(req.body.name || ''));
+      const p = existsPath(String(req.body.name || ''), {});
       if (!p) return res.json({ exists: false, error: 'outside the allowed folders' });
       fs.stat(p, (err, st) => res.json({ exists: !err, dir: !err && st.isDirectory() }));
     });

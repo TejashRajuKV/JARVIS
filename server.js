@@ -344,6 +344,66 @@ if (!process.env.JARVIS_TEST) {
   setTimeout(buildFileIndex, 15000).unref();
   setInterval(buildFileIndex, 30 * 60 * 1000).unref();
 }
+/* "Did you mean…?": names on this laptop that are CLOSE to what was said — a typo ("calculater"), a short form
+   ("calc" → calculator-app), extra words ("calculator project" → calculator), different separators (calc_app,
+   CalcApp). Scored 0–1; library/system-ish places (site-packages, venv, icon packs…) count less. */
+function jaroWinkler(a, b) {
+  if (a === b) return 1;
+  const md = Math.max(0, Math.floor(Math.max(a.length, b.length) / 2) - 1), am = new Array(a.length).fill(false), bm = new Array(b.length).fill(false);
+  let m = 0;
+  for (let i = 0; i < a.length; i++) for (let j = Math.max(0, i - md); j < Math.min(b.length, i + md + 1); j++) if (!bm[j] && a[i] === b[j]) { am[i] = bm[j] = true; m++; break; }
+  if (!m) return 0;
+  let t = 0, k = 0;
+  for (let i = 0; i < a.length; i++) if (am[i]) { while (!bm[k]) k++; if (a[i] !== b[k]) t++; k++; }
+  const jaro = (m / a.length + m / b.length + (m - t / 2) / m) / 3;
+  let l = 0; while (l < 4 && a[l] && a[l] === b[l]) l++;
+  return jaro + l * 0.1 * (1 - jaro);
+}
+const SIM_NOISE = /[\\/](?:site-packages|dist-packages|venv|\.venv|env|lib|libs|vendor|third[_-]?party|packages|@resources|@backup|skins|icons?|winicons|cache|temp|tmp|locales?|fonts?)(?=[\\/])/i;
+function nameSimilarity(want, cand) {
+  // A copy/version suffix isn't part of the name: AGRILOOP-1, notes (2), project copy, app_v2 → agriloop, notes…
+  const bare = String(cand).replace(/(?:[\s_-]*(?:\(\d+\)|-\s*copy|copy|v?\d+(?:\.\d+)*))+$/i, '');
+  return Math.max(nameSimilarity1(want, cand), bare && bare !== cand ? nameSimilarity1(want, bare) * 0.99 : 0);
+}
+function nameSimilarity1(want, cand) {
+  const w = squashName(want), c = squashName(cand);
+  if (!w || !c) return 0;
+  if (c === w) return 1;
+  // Spelling look-alikes count as close when they are a few typos apart (about one per 4 letters: "agri look" →
+  // AGRRILOOP, "calculater" → calculator); further apart ("calculus", "calendar") they don't.
+  const ed = w.length >= 4 && c.length >= 4 ? editDistance(w, c) : 9;
+  let s = ed < 9 ? jaroWinkler(w, c) * (ed <= Math.max(1, Math.floor(Math.max(w.length, c.length) / 4)) ? 1 : 0.85) : 0;
+  if (ed >= 2) s = Math.min(s, 0.85);   // two typos away: offered, but below names that clearly contain what was said
+  if (w.length >= 3 && c.startsWith(w)) s = Math.max(s, 0.86);                    // calc → calculator_app
+  else if (w.length >= 4 && c.includes(w)) s = Math.max(s, 0.84);                  // calculator → my-calculator
+  if (c.length >= 4 && w.startsWith(c)) s = Math.max(s, 0.83);                      // calculatorproject → calculator, calculator → calc
+  const wt = String(want).toLowerCase().split(/[^a-z0-9]+/).filter(x => x.length > 1 && !/^(?:my|the|project|folder|app|files?)$/.test(x));
+  const ct = String(cand).replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(x => x.length > 1);
+  if (wt.length && wt.every(t => ct.some(u => u.startsWith(t.slice(0, 4)) && (u.startsWith(t) || t.startsWith(u) || editDistance(t, u) <= 1)))) s = Math.max(s, 0.85);
+  return s;
+}
+function similarNames(want, { kind, max = 5, min = 0.82 } = {}) {
+  if (!fileIndex.ready) return null;
+  const out = [];
+  for (let i = 0; i < fileIndex.paths.length; i++) {
+    const isDir = fileIndex.dirs[i] === 1;
+    if (kind && (kind === 'folder') !== isDir) continue;
+    const p = fileIndex.paths[i];
+    let s = nameSimilarity(want, path.basename(p));
+    if (s < min - 0.1) continue;
+    if (SIM_NOISE.test(p)) s *= 0.88;
+    if (p.split(/[\\/]/).length > 8) s *= 0.97;
+    if (s >= min) out.push({ path: p, name: path.basename(p), dir: isDir, score: Math.round(s * 100) / 100 });
+  }
+  return out.sort((a, b) => b.score - a.score || a.path.length - b.path.length).slice(0, max);
+}
+app.post('/api/tool/similar', (req, res) => {
+  const name = String(req.body.name || '').trim().slice(0, 80);
+  if (!name) return res.status(400).json({ error: 'Which name?' });
+  const kind = ['folder', 'file'].includes(req.body.kind) ? req.body.kind : null;
+  const r = similarNames(name, { kind, max: Math.min(8, +req.body.max || 5) });
+  res.json(r === null ? { success: true, indexing: true, suggestions: [] } : { success: true, suggestions: r.filter(x => fs.existsSync(x.path)) });
+});
 app.get('/api/fileIndex/status', (req, res) => res.json({ ready: fileIndex.ready, building: fileIndex.building, count: fileIndex.paths.length, perRoot: fileIndex.perRoot, builtAt: fileIndex.builtAt, ms: fileIndex.ms }));
 // "dbms" finds "DBMS Notes.md" / "dbms_notes.txt".
 function fuzzyNoteName(n, w) { const s = squashName(n); return !!w && (s === w || s === w + 'notes' || s === w + 'note'); }
@@ -748,7 +808,7 @@ app.post('/api/tool/directions', async (req, res) => {
 
 /* ---------------- LLM (Ollama) ---------------- */
 // Tools the model may use: generated from the agent registry (agent-tools.js), which also validates every call.
-const agentTools = require('./agent-tools')({ APPS, safePath, llm, DEFAULT_MODEL });
+const agentTools = require('./agent-tools')({ APPS, safePath, anyPath, llm, DEFAULT_MODEL });
 agentTools.routes(app);
 const TOOL_CATALOGUE = agentTools.catalogue() + '\nIf the user asks you to WRITE code AND save/run it in the same message, first answer with the code block normally; JARVIS will save it for them.';
 
@@ -889,6 +949,9 @@ app.post('/api/chat', async (req, res) => {
   const last = clean[clean.length - 1];
   const withImage = !!(image && last && last.role === 'user' && await llm.hasVision(model || DEFAULT_MODEL));
   let numPredict = { concise: 350, balanced: 700, detailed: 1400 }[context.responseLen] || 700;
+  // Code (a whole page, a program) needs room: 700 tokens cut a calculator page off half-way through its HTML.
+  const askText = String((last && last.content) || '') + ' ' + String((clean[clean.length - 3] || {}).content || '');
+  if (/\b(code|html|css|javascript|program|script|website|web ?page|frontend|front end|calculator|app|function|class|implement|write (?:a|the|me))\b/i.test(askText)) numPredict = Math.max(numPredict, 3500);
   const lim = cleanLimit(context.limit);
   if (lim) numPredict = Math.min(numPredict, lim.unit === 'word' ? lim.n * 2 + 40 : lim.n * (lim.unit === 'point' ? 50 : 45) + 40);
 
@@ -1057,9 +1120,10 @@ app.post('/api/tool/writeFile', (req, res) => {
   if (where && where.error) return res.status(404).json({ error: where.error });
   let p;
   if (where) {
-    const base = path.basename(name);
-    if (!base || /[\\/:*?"<>|]|^\.+$/.test(base)) return res.status(400).json({ error: 'Invalid file name' });
-    p = anyPath(path.join(where.path, base), { forWrite: true });
+    // a plain name, or "new-folder/file.html" (the folder is made too) — never ".." or a drive inside it
+    const parts = name.split(/[\\/]+/).filter(Boolean);
+    if (!parts.length || parts.length > 3 || parts.some(x => /[:*?"<>|]|^\.+$/.test(x))) return res.status(400).json({ error: 'Invalid file name' });
+    p = anyPath(path.join(where.path, ...parts), { forWrite: true });
   } else {
     const hasDir = /[/\\]/.test(name) || path.isAbsolute(name);
     const existing = path.isAbsolute(name) ? null : findAllowed(name, { kind: 'file', exact: true });
@@ -1094,6 +1158,8 @@ app.post('/api/tool/createFolder', (req, res) => {
   if (where && (!nm || /[\\/:*?"<>|]|^\.+$/.test(nm))) return res.status(400).json({ error: 'Invalid folder name' });
   const p = where ? anyPath(path.join(where.path, nm), { forWrite: true }) : anyPath(nm, { forWrite: true });
   if (!p || p === SANDBOX) return res.status(400).json({ error: 'Invalid folder name' });
+  // Nothing changes when the folder is already there — report that without asking permission first.
+  try { if (fs.existsSync(p) && fs.statSync(p).isDirectory()) return res.json({ success: true, name: rel(p), path: p, existed: true }); } catch {}
   if (!approvedChange(req, res, 'create the folder', p)) return;
   try {
     const existed = fs.existsSync(p);
@@ -1293,7 +1359,8 @@ const rag = require('./rag')(app, { allRoots, SKIP_DIRS, rel, isInternal, pdfPag
 rag.startWatcher(); // new/changed files are picked up automatically (still cheap; explicit reindex stays available)
 
 // Website generator, DSA coach and viva practice (skills.js).
-require('./skills')(app, { llm, DEFAULT_MODEL, SANDBOX, openPath, rel, findAllowed, anyPath, approvedChange });
+require('./skills')(app, { llm, DEFAULT_MODEL, SANDBOX, openPath, rel, findAllowed, anyPath, approvedChange, whereDir });
+require('./jarviscode')(app, { llm, DEFAULT_MODEL, SANDBOX, anyPath, approvedChange, whereDir, rel, TRASH });
 
 // Checks only — JARVIS never installs a missing compiler or extension, it just reports what it found.
 const TOOLCHAIN = {

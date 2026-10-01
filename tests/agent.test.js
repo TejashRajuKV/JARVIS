@@ -46,6 +46,8 @@ const ROUTING = {
     'start a focus session then block distractions', 'open leetcode and start a 45 minute focus session', 'search google for dsa roadmap and add dsa roadmap to my to-do list',
     'switch to gold theme and switch to friday', 'set volume to 20 then dark mode', 'open chrome and search google for weather',
     'create a folder called os and create a folder called dbms', 'maximize vs code and minimize chrome',
+    'create a folder called dsa and create a html file called calc.html',
+    'open my test folder in desktop and create a html file called calc.html',
     'set volume to 30 and tell me a joke', 'mute and what time is it',
     // two settings with no verb between them — joined, one of them used to be silently dropped
     'volume 30 and dark mode', 'brightness 40 and bluetooth off'],

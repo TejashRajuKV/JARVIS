@@ -18,7 +18,7 @@ const NOT_TESTABLE = {
   'POST /api/tool/showDesktop': 'minimises your windows', 'POST /api/tool/mediaKey': 'presses media keys',
   'POST /api/tool/pasteKeys': 'types into the focused app', 'POST /api/tool/writeClipboard': 'overwrites your clipboard',
   'POST /api/tool/readClipboard': 'reads your clipboard', 'POST /api/sys/clipHistory': 'reads your clipboard history',
-  'POST /api/tool/screenshot': 'captures your screen', 'POST /api/sys/screenRead': 'OCRs your screen',
+  'POST /api/tool/screenshot': 'captures your screen', 'POST /api/sys/screenRead': 'OCRs your screen', 'POST /api/sys/pickFolder': 'opens the Windows folder picker on your screen',
   'POST /api/sys/browserTab': 'presses Ctrl+<n> / Ctrl+Tab in your browser',
   'POST /api/sys/displayOff': 'turns the display off', 'POST /api/sys/window': 'moves your windows',
   'POST /api/tool/openApplication': 'launches apps', 'POST /api/tool/openUrl': 'opens the browser',
@@ -90,6 +90,15 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     check('Security', 'the sandbox is the isolated temp home, not your ~/jarvis', (await get('/api/tool/sandboxInfo')).json.root === SB);
     check('Files', 'the laptop file index stays off in tests', (await get('/api/fileIndex/status')).json.ready === false);
     check('Files', 'counting folders before the index is built says so (no made-up number)', (await post('/api/tool/folderStats', { scope: 'my laptop' })).json.indexing === true);
+    check('Files', '"did you mean" needs a name', (await post('/api/tool/similar', {})).status === 400);
+    check('JARVIS Code', 'generate needs a request', (await post('/api/code/generate', {})).status === 400);
+    check('JARVIS Code', 'generate with the AI offline: a clean error, nothing written', (await post('/api/code/generate', { prompt: 'make a calculator' })).status >= 400);
+    check('JARVIS Code', 'apply refuses an empty file list', (await post('/api/code/apply', { files: [] })).status === 400);
+    { const x = await post('/api/code/apply', { name: 'jc-test', files: [{ path: '../escape.txt', content: 'x' }, { path: 'C:\\evil.txt', content: 'x' }] });
+      check('JARVIS Code', 'apply drops paths that leave the project (nothing valid → 400)', x.status === 400, x.status + ' ' + x.text); }
+    { const x = await post('/api/code/apply', { name: 'jc-test', files: [{ path: 'index.html', content: '<h1>hi</h1>' }, { path: 'css/style.css', content: 'h1{}' }] });
+      check('JARVIS Code', 'apply writes the files into ~/jarvis/Projects/<name> (no permission needed there)', x.status === 200 && x.json.written.length === 2 && fs.existsSync(path.join(SB, 'Projects', 'jc-test', 'css', 'style.css')), x.status + ' ' + x.text); }
+    check('Files', '"did you mean" before the index is built: no guesses', (await post('/api/tool/similar', { name: 'calculater' })).json.indexing === true);
     check('Files', 'counting folders in an unknown place is a plain 404', (await post('/api/tool/folderStats', { scope: 'zz-no-such-folder-zz' })).status === 404);
     check('Security', 'malformed JSON gets a short JSON error, not a stack trace',
       await fetch(S.base + '/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: S.base }, body: '{bad' }).then(async r => r.status === 400 && /Invalid JSON/.test(await r.text())));
@@ -415,6 +424,10 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
       const newDir = path.join(desk, 'zone-dir');
       z = await post('/api/tool/createFolder', { name: newDir });
       check('Access', 'creating a Desktop folder asks first', z.status === 409 && !fs.existsSync(newDir), z.json);
+      z = await post('/api/tool/createFolder', { name: newDir, approved: true });
+      check('Access', 'approved Desktop folder creation happens', z.json.success && fs.existsSync(newDir), z.json);
+      z = await post('/api/tool/createFolder', { name: newDir });
+      check('Access', 're-creating an existing Desktop folder needs no approval', z.status === 200 && z.json.existed === true, z.json);
       z = await post('/api/tool/deleteItem', { name: renamed });
       check('Access', 'deleting on the Desktop asks first', z.status === 409 && z.json.needsApproval && fs.existsSync(renamed), z.json);
       z = await post('/api/tool/deleteItem', { name: renamed, approved: true });

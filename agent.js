@@ -77,7 +77,11 @@ const Agent = (() => {
     const ps = parts(s);
     if (ps.length >= 2 && ps.length <= 8) {
       const classified = ps.map(x => { const n = NLU.normalize(x, settings.wakeWord); const p = NLU.classify(n, ctx); p.original = n.original; p.step = x; return p; });
-      if (WHOLE.has(classified[0].intent) || WHOLE.has(NLU.classify(NLU.normalize(text, settings.wakeWord), ctx).intent)) return { kind: 'simple' };
+      // A WHOLE command's content may itself list actions ("take a note: a, then b", "when X, do Y").
+      // But when the FIRST chunk is already a complete command of its own ("create a folder… and create a file…"),
+      // the split is genuine — only veto via the full text when the first chunk is not a command at all.
+      const fullIntent = NLU.classify(NLU.normalize(text, settings.wakeWord), ctx).intent;
+      if (WHOLE.has(classified[0].intent) || (!known(classified[0]) && WHOLE.has(fullIntent))) return { kind: 'simple' };
       // "open vs code and the directory should be dsa sprint folder" is one command (VS Code at that folder).
       if (NLU.editorFolder(s)) return { kind: 'simple' };
       const actions = classified.filter(p => isAction(NLU.normalize(p.step).text) || known(p));

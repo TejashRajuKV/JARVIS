@@ -51,7 +51,7 @@ const FEATURES = [
   ['Laptop', 'SYS_LOCK', ['lock the screen', 'lock my laptop']], ['Laptop', 'SYS_SLEEP', ['sleep', 'put the computer to sleep']],
   ['Laptop', 'SYS_SHUTDOWN', ['shut down', 'turn off the computer']], ['Laptop', 'SYS_RESTART', ['restart', 'reboot the laptop']],
   ['Laptop', 'SYS_CANCEL_SHUTDOWN', ['cancel the shutdown', "don't restart"]],
-  ['Laptop', 'SYS_BATTERY', ['battery', 'am i charging']], ['Laptop', 'SYS_CPU', ['cpu usage', 'how busy is the processor']],
+  ['Laptop', 'SYS_BATTERY', ['battery', 'am i charging']], ['Laptop', 'CHARGER_ALERTS', ['tell me when the charger is connected', 'stop charger announcements']], ['Laptop', 'SYS_CPU', ['cpu usage', 'how busy is the processor']],
   ['Laptop', 'SYS_RAM', ['ram usage', 'how much memory is free']], ['Laptop', 'SYS_DISK', ['disk space', 'how much storage is left']],
   ['Laptop', 'SYS_OS', ['what os am i on', 'windows version']], ['Laptop', 'SYS_ALL', ['system info', "how's my laptop doing"]],
   ['Laptop', 'SYS_NETWORK', ["what's my ip", 'which wifi am i connected to']], ['Laptop', 'SYS_PROCESSES', ["what's running", "what's eating my ram"]],

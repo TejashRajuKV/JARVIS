@@ -90,6 +90,21 @@ const Triggers = (() => {
     return String(action || '').replace(/^(?:please\s+)?(?:run|start|activate|launch|do|trigger|begin|switch to|turn on|enable)\s+(?:my |the )?/i, '').replace(/\s+(?:routine|protocol)$/i, '').trim();
   }
 
-  return { TYPES, needs, diffTriggers, describeWhen, parseEvent, parseTriggerText, routineNameFrom };
+  // Built-in charger announcements (no trigger needed): edge between two looks, never the first look.
+  // → 'plugged' | 'unplugged' | null. Unknown readings (null, e.g. a desktop with no battery) never fire.
+  function chargerEdge(prev, cur) {
+    if (!prev || !cur) return null;
+    if (prev.charger === false && cur.charger === true) return 'plugged';
+    if (prev.charger === true && cur.charger === false) return 'unplugged';
+    return null;
+  }
+  // Words JARVIS uses for the announcement. Battery % appended when the reading has it.
+  function chargerText(edge, battery) {
+    const pct = typeof battery === 'number' ? ' — battery at ' + battery + '%' : '';
+    if (edge === 'plugged') return { title: 'Charger connected', body: 'Charger connected' + pct + '.' };
+    return { title: 'Charger disconnected', body: 'Charger disconnected' + pct + '.' };
+  }
+
+  return { TYPES, needs, diffTriggers, describeWhen, parseEvent, parseTriggerText, routineNameFrom, chargerEdge, chargerText };
 })();
 if (typeof module !== 'undefined') module.exports = Triggers;

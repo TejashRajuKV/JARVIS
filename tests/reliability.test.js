@@ -22,6 +22,10 @@ for (const [want, phrases] of Object.entries(SAME)) for (const t of phrases) {
   check('Intents', '"' + t + '" → ' + want, got === want, got);
 }
 // …and things that must NOT be caught by them
+for (const t of ['okay save this file by creating new folder called calculator_website', 'save it on my desktop', 'save this page in a new folder named calc', 'save this file', 'save the code in a folder called site on desktop']) {
+  const got = intent(t);
+  check('Intents', '"' + t + '" → SAVE_CODE (writes the code JARVIS just gave, not a note)', got === 'SAVE_CODE', got);
+}
 for (const [t, not] of [['how many people live in india', 'COUNT_FOLDERS'], ['what is a folder', 'CREATE_FOLDER'], ['open calculator', 'COUNT_FOLDERS']]) {
   const got = intent(t);
   check('Intents', '"' + t + '" is not ' + not, got !== not, got);
@@ -52,6 +56,21 @@ check('Speech', 'the first guess is kept when no other is clearly better', Speec
 // after repair, the misheard request reaches the right place
 check('Speech', 'repaired "creative front and for calculator app" is a frontend request', /frontend/.test(SpeechFix.fix('creative front and for calculator app')));
 
+/* ---------- "Did you mean…?": which names count as close (server.js nameSimilarity) ---------- */
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const grab = (a, b) => src.slice(src.indexOf(a), src.indexOf(b, src.indexOf(a)));
+  const code = grab('const squashName', 'function sameName') + grab('function jaroWinkler', 'const SIM_NOISE') + grab('function nameSimilarity(', 'function similarNames');
+  const sim = new Function(code + '; return nameSimilarity;')();
+  const CLOSE = [['calculator', 'Calculater'], ['calculator', 'calc_app'], ['calculator', 'CalcApp'], ['calculator', 'my-calculator'], ['calculator', 'calculator project'],
+    ['calc', 'calculator'], ['agriloop', 'AGRRILOOP'], ['agriloop', 'AGRILOOP-1'], ['dsa sprint', 'dsa_sprint'], ['dsa sprint', 'dss print'], ['python project', 'pythonProject'], ['agri look', 'AGRILOOP-1'], ['agri look', 'AGRRILOOP'], ['notes', 'notes (2)']];
+  const FAR = [['calculator', 'calendar'], ['calculator', 'calculus'], ['calculator', 'tools'], ['agriloop', 'airplane'], ['notes', 'photos'], ['dsa sprint', 'sprint planning']];
+  for (const [w, c] of CLOSE) check('Did you mean', '"' + w + '" ≈ "' + c + '"', sim(w, c) >= 0.82, sim(w, c));
+  check('Did you mean', 'a one-typo match ranks above a two-typo one (calculater > calculation)', sim('calculator', 'Calculater') > sim('calculator', 'calculation'));
+  check('Did you mean', 'a name that contains it ranks above a two-typo word (Forest-Competition-Simulator > forecast)', sim('forest', 'Forest-Competition-Simulator') > sim('forest', 'forecast'));
+  for (const [w, c] of FAR) check('Did you mean', '"' + w + '" is not "' + c + '"', sim(w, c) < 0.82, sim(w, c));
+}
+
 /* ---------- "create a frontend for my calculator project" ---------- */
 const calls = []; const replies = {};
 Object.assign(global, {
@@ -75,10 +94,20 @@ eval(fs.readFileSync(path.join(__dirname, '..', 'skills-page.js'), 'utf8') + ';g
   check('Frontend', 'go ahead → built inside that project folder', last && last[1].folder === 'D:\\Projects\\Calculator' && /Built the frontend for \*\*calculator\*\*/.test(r.text), [last, r.text]);
   Skills.state.site = null;
   r = await Skills.intercept('create a frontend for my zzweather project');
-  check('Frontend', 'no such project → offers to build it in ~/jarvis/Projects, one question', /in ~\/jarvis\/Projects/.test(r.text) && Skills.state.site && Skills.state.site.stage === 'brief', r.text);
+  check('Frontend', 'no such project → one question about the design', /Anything specific/.test(r.text) && Skills.state.site && Skills.state.site.stage === 'brief', r.text);
   r = await Skills.intercept('dark theme with big buttons');
+  check('Frontend', 'then it asks WHERE to save (never picks silently)', /Where should I save it/.test(r.text) && /zzweather/.test(r.text), r.text);
+  r = await Skills.intercept('on my desktop');
   const last2 = calls.filter(c => c[0] === '/skill/site').pop();
-  check('Frontend', 'the answer becomes the brief', last2 && last2[1].sections === 'dark theme with big buttons' && !last2[1].folder, last2);
+  check('Frontend', 'the answers become the brief and the place', last2 && last2[1].sections === 'dark theme with big buttons' && last2[1].where === 'desktop' && !last2[1].folder, last2);
+  Skills.state.site = null;
+  r = await Skills.intercept('Create a frontend website for a calculator');
+  check('Frontend', '"Create a frontend website for a calculator" (the failing demo) starts the builder', r && /I found \*\*calculator\*\*/i.test(r.text), r && r.text);
+  r = await Skills.intercept('no'); r = await Skills.intercept('go ahead');
+  check('Frontend', 'not in the project folder → asks where', /Where should I save it/.test(r.text), r.text);
+  r = await Skills.intercept('D drive');
+  const last3 = calls.filter(c => c[0] === '/skill/site').pop();
+  check('Frontend', '"D drive" → saved there as real files', last3 && last3[1].where === 'D drive' && /Built/.test(r.text), [last3, r.text]);
   Skills.state.site = null;
   r = await Skills.intercept('build a website for my college fest');
   check('Frontend', 'a normal website request still asks its usual questions', /What should be on it/.test(r.text), r.text);

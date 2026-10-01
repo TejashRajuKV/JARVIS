@@ -55,5 +55,11 @@ check('disabled trigger never fires', fire(snap({ charger: false }), snap({ char
 check('missing sensor data → no fire, no crash', fire(snap({ apps: null }), snap({ apps: null }), [{ id: 'n', when: { type: 'app_opened', app: 'notepad' } }]).length === 0);
 check('describeWhen reads naturally', T.describeWhen({ type: 'battery_below', n: 20 }) === 'the battery drops below 20%' && T.describeWhen({ type: 'app_opened', app: 'vscode' }, 'VS Code') === 'VS Code is opened');
 
+/* ---------- built-in charger announcements ---------- */
+check('chargerEdge: unplug/plug edges', T.chargerEdge(snap({ charger: true }), snap({ charger: false })) === 'unplugged' && T.chargerEdge(snap({ charger: false }), snap({ charger: true })) === 'plugged');
+check('chargerEdge: first look and steady state never fire', T.chargerEdge(null, snap({ charger: true })) === null && T.chargerEdge(snap({ charger: true }), snap({ charger: true })) === null && T.chargerEdge(snap({ charger: false }), snap({ charger: false })) === null);
+check('chargerEdge: unknown readings never fire', T.chargerEdge(snap({ charger: null }), snap({ charger: true })) === null && T.chargerEdge(snap({ charger: true }), snap({ charger: null })) === null);
+check('chargerText: with and without battery %', T.chargerText('plugged', 42).body === 'Charger connected — battery at 42%.' && T.chargerText('unplugged', null).body === 'Charger disconnected.');
+
 console.log(`triggers: ${total - fail}/${total}`);
 process.exitCode = fail ? 1 : 0;

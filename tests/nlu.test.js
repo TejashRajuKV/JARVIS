@@ -96,6 +96,14 @@ const CASES = [
   ['stop the agriloop backend', 'STOP_PROCESS'], ["stop agriloop's frontend", 'STOP_PROCESS'],
   // these must not be swallowed by the new project rules
   ['start a focus session', 'FOCUS_START'], ['start vs code', 'OPEN_APPLICATION'], ['stop the timer', 'CANCEL_TIMERS'],
+  // charger announcements (must not steal trigger routines or battery questions)
+  ['tell me when the charger is connected', 'CHARGER_ALERTS'], ['stop charger announcements', 'CHARGER_ALERTS'],
+  ['turn on charger alerts', 'CHARGER_ALERTS'], ['announce when my charger is unplugged', 'CHARGER_ALERTS'],
+  ['when i plug in my charger start study mode', 'TRIGGER_CREATE'], ['am i charging', 'SYS_BATTERY'],
+  // file creation with a file-type word ("html file", "python file") is still file creation
+  ['create a html file called calculator.html', 'WRITE_FILE'], ['create a new python file called calc.py', 'WRITE_FILE'],
+  ['create a python file in that folder with all calculator operations', 'WRITE_FILE'],
+  ['create a folder called test folder in desktop', 'CREATE_FOLDER'], ['make a test folder', 'CREATE_FOLDER'],
 ];
 // Telugu / Kannada typed in English letters: [text, language, intent after fromRoman]
 const ROMAN = [

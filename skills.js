@@ -86,7 +86,7 @@ Output ONLY JSON: {"score": <0-10>, "feedback": "<one or two short sentences>", 
 If the answer is empty, "I don't know" or off-topic, score 0-2. Spelling/grammar from speech recognition must not lower the score.`;
 
 /* ---------- routes ---------- */
-module.exports = function setupSkills(app, { llm, DEFAULT_MODEL, SANDBOX, openPath, rel, findAllowed, anyPath, approvedChange }) {
+module.exports = function setupSkills(app, { llm, DEFAULT_MODEL, SANDBOX, openPath, rel, findAllowed, anyPath, approvedChange, whereDir }) {
   const model = req => String((req.body && req.body.model) || DEFAULT_MODEL);
   const fail = (res, e) => res.status(502).json({ error: (e && e.message) || String(e) });
   const SITES = path.join(SANDBOX, 'Projects');
@@ -94,7 +94,8 @@ module.exports = function setupSkills(app, { llm, DEFAULT_MODEL, SANDBOX, openPa
   // A frontend for one of YOUR projects ("frontend for my calculator project"): <project>/frontend/index.html.
   // folder must be an existing folder JARVIS may use; writing outside ~/jarvis still needs your OK (approvedChange).
   const projectDir = folder => { const p = anyPath ? anyPath(String(folder || '')) : null; return p && fs.existsSync(p) && fs.statSync(p).isDirectory() ? path.join(p, 'frontend') : null; };
-  const dirOf = b => b && b.folder ? projectDir(b.folder) : siteDir(b && b.name);
+  // dir: the exact folder a site was built in (anywhere you chose); folder: a project's frontend; else ~/jarvis/Projects/<name>
+  const dirOf = b => b && b.dir && anyPath ? anyPath(String(b.dir)) : b && b.folder ? projectDir(b.folder) : siteDir(b && b.name);
 
   // Website generator: brief → ~/jarvis/Projects/<name>/index.html, opened in the browser.
   app.post('/api/skill/site', async (req, res) => {
@@ -104,9 +105,12 @@ module.exports = function setupSkills(app, { llm, DEFAULT_MODEL, SANDBOX, openPa
     const brief = 'Website: ' + what + '\nSections / content: ' + String(b.sections || 'choose sensible sections').slice(0, 600)
       + '\nStyle: ' + String(b.style || 'clean, modern, professional').slice(0, 300) + '\nAudience: ' + String(b.audience || 'general visitors').slice(0, 200);
     const name = slugify(b.name || what);
-    const target = b.folder ? projectDir(b.folder) : siteDir(name);
-    if (!target) return res.status(404).json({ error: 'I can’t find that project folder any more.' });
-    if (b.folder && approvedChange && !approvedChange(req, res, 'create the frontend in', path.join(target, 'index.html'))) return;
+    // where: the place you chose ("desktop", "D drive", "D:\\Projects") → <place>/<name>/index.html
+    const place = !b.folder && b.where && whereDir ? whereDir(String(b.where)) : null;
+    if (place && place.error) return res.status(404).json({ error: place.error });
+    const target = b.folder ? projectDir(b.folder) : place ? anyPath(path.join(place.path, name), { forWrite: true }) : siteDir(name);
+    if (!target) return res.status(404).json({ error: b.folder ? 'I can’t find that project folder any more.' : 'I can’t save there (that place is off-limits).' });
+    if ((b.folder || place) && approvedChange && !approvedChange(req, res, 'create the website in', path.join(target, 'index.html'))) return;
     let html;
     try {
       const out = await llm.complete({ model: model(req), system: SITE_SYSTEM, messages: [{ role: 'user', content: brief }], temperature: 0.4, maxTokens: 7000, numCtx: 12288, timeoutMs: 600000 });
@@ -126,7 +130,7 @@ module.exports = function setupSkills(app, { llm, DEFAULT_MODEL, SANDBOX, openPa
     const b = req.body || {};
     const file = path.join(dirOf(b) || siteDir(b.name), 'index.html');
     if (!fs.existsSync(file)) return res.status(404).json({ error: 'I can’t find that website any more.' });
-    if (b.folder && approvedChange && !approvedChange(req, res, 'change the frontend in', file)) return;
+    if ((b.folder || b.dir) && approvedChange && !approvedChange(req, res, 'change the website in', file)) return;
     const change = String(b.change || '').trim().slice(0, 500);
     if (!change) return res.status(400).json({ error: 'What should I change?' });
     const cur = fs.readFileSync(file, 'utf8');
@@ -149,7 +153,7 @@ module.exports = function setupSkills(app, { llm, DEFAULT_MODEL, SANDBOX, openPa
   });
   app.post('/api/skill/siteRevert', (req, res) => {
     const dir = dirOf(req.body || {}) || siteDir((req.body || {}).name), file = path.join(dir, 'index.html'), prev = path.join(dir, 'index.previous.html');
-    if ((req.body || {}).folder && approvedChange && !approvedChange(req, res, 'change the frontend in', file)) return;
+    if (((req.body || {}).folder || (req.body || {}).dir) && approvedChange && !approvedChange(req, res, 'change the website in', file)) return;
     if (!fs.existsSync(prev)) return res.status(404).json({ error: 'There’s no earlier version to go back to.' });
     const cur = fs.existsSync(file) ? fs.readFileSync(file) : null;
     fs.copyFileSync(prev, file); if (cur) fs.writeFileSync(prev, cur);
