@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="boot-cinema.css">
   <link rel="stylesheet" href="hud-overlay.css">
   <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="transitions.css">
 </head>
 <body data-state="boot">
   <canvas id="bgCanvas"></canvas>
@@ -275,6 +276,8 @@
       <div class="s-row"><label>Qwen NLU assist<small>WHEN RULES ARE UNSURE, ASK QWEN 3.5 4B LOCALLY TO PARSE INTENT · OFFLINE</small></label><button class="switch" id="qwenNluToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-row"><label>Holographic HUD<small>FLOATING TRANSLUCENT PANELS · CLOCK · STATS · LOG · QUICK CMD</small></label><button class="switch" id="hudOverlayToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-row"><label>Port scan watch<small>WATCH FOR NEW LISTENING PORTS EVERY 60s · ALERTS ON SUSPICIOUS ACTIVITY</small></label><button class="switch" id="portwatchToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-row"><label>Face recognition greeting<small>WEBCAM SINGLE-SHOT ON IDLE · GREETS YOU BY NAME · DESCRIPTOR ONLY, NO IMAGE STORED</small></label><button class="switch" id="faceGreetToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-row"><label>Hand gesture control<small>WEBCAM + MEDIAPIPE HANDS · UI-ONLY (TOGGLE/DISMISS/SCROLL) · NO TOOL FIRING</small></label><button class="switch" id="gestureToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-note" style="margin:8px 0 4px;font-size:10px;color:var(--faint)">ALERT THRESHOLDS · change these to tune when JARVIS warns you</div>
       <div class="s-row"><label>Low battery at<small>% BELOW WHICH I WARN</small></label><input type="number" id="thrBatteryLow" min="5" max="50" value="20"></div>
       <div class="s-row"><label>Critical battery at<small>% BELOW WHICH I ESCALATE</small></label><input type="number" id="thrBatteryCrit" min="1" max="30" value="10"></div>
@@ -353,5 +356,8 @@
   <script src="hud-overlay.js"></script>
   <script src="dashboard.js"></script>
   <script src="learn.js"></script>
+  <script src="transitions.js"></script>
+  <script src="face-greet.js"></script>
+  <script src="gesture.js"></script>
 </body>
 </html>

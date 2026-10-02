@@ -2361,6 +2361,31 @@ require('./ocr')(app, { IS_WIN, IS_MAC });
 require('./portwatch')(app, { IS_WIN, IS_MAC });
 require('./tts')(app);
 
+/* ---------------- Face recognition greeting (Phase 3.11) ----------------
+   Additive endpoints for storing/loading the enrolled face descriptor.
+   The descriptor is a 128-dimensional Float32Array (512 bytes) — never an
+   image. Stored in .config.json next to the existing `hello` key, so the
+   same localhost-only origin discipline applies. */
+app.get('/api/facegreet/status', (req, res) => {
+  const fg = config.faceGreet || null;
+  res.json({ success: true, enrolled: !!fg, descriptor: fg ? 'present' : null });
+});
+app.post('/api/facegreet/enroll', (req, res) => {
+  const d = req.body && req.body.descriptor;
+  if (!Array.isArray(d) || d.length !== 128) return res.status(400).json({ error: 'descriptor must be an array of 128 numbers' });
+  // Validate all elements are finite numbers
+  if (!d.every(v => typeof v === 'number' && isFinite(v))) return res.status(400).json({ error: 'descriptor contains non-numeric values' });
+  config.faceGreet = d;
+  saveConfig();
+  console.log('[facegreet] descriptor enrolled (128 floats)');
+  res.json({ success: true, enrolled: true });
+});
+app.delete('/api/facegreet/enroll', (req, res) => {
+  delete config.faceGreet;
+  saveConfig();
+  res.json({ success: true, enrolled: false });
+});
+
 // Malformed JSON bodies etc. → short JSON error instead of an HTML stack trace.
 app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.type === 'entity.parse.failed' ? 'Invalid JSON body' : 'Server error' });

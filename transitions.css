@@ -1,0 +1,127 @@
+/* ===========================================================================
+ *  transitions.css — Cinematic state-change transitions
+ *  ---------------------------------------------------------------------------
+ *  Pure additive CSS layered on top of the existing style.css. Activates the
+ *  moment the page loads (no toggle needed — these are universal polish).
+ *
+ *  What this adds:
+ *    1. @property declarations for --core1, --core2, --ring, --glow so the
+ *       orb's color MORPHS on state change instead of flipping instantly.
+ *       (Modern browsers animate custom properties when registered via
+ *       @property; older browsers fall back to the instant swap gracefully.)
+ *    2. A one-shot "wake pulse" keyframe applied to .orb-wrap when transitioning
+ *       IDLE → LISTENING (the "JARVIS is waking up" moment).
+ *    3. A retriggerable fade on #stateMsg so the status text slides in fresh
+ *       each time setState() changes it (via the .state-msg-fade class).
+ *    4. Staggered chat-message reveal: new messages fade up with a tiny delay
+ *       based on their position, so a burst of replies feels cinematic.
+ *    5. A subtle "power-up" sweep across the orb when entering EXECUTING state.
+ *
+ *  All transitions respect prefers-reduced-motion (the global kill-switch at
+ *  style.css:367 disables all animations + transitions).
+ * =========================================================================== */
+
+/* ---- 1. Register custom properties for animated color interpolation ----
+   Without @property, CSS variables are not animatable — they swap instantly.
+   With @property, the browser interpolates between values over the transition
+   duration, so the orb color MORPHS (e.g. cyan → amber → green) instead of
+   flipping. Falls back to instant swap in browsers without @property support. */
+@property --core1 { syntax: '<color>'; inherits: true; initial-value: #d2f8ff; }
+@property --core2 { syntax: '<color>'; inherits: true; initial-value: #1899c2; }
+@property --ring { syntax: '<color>'; inherits: true; initial-value: #3fd9ff; }
+@property --glow { syntax: '<color>'; inherits: true; initial-value: rgba(63,217,255,0.38); }
+
+/* Apply transitions to the elements that consume these variables.
+   The orb's core uses --core1/--core2 in a radial gradient; the ring strokes
+   use --ring; the glow filter uses --glow. Transitioning the variables
+   themselves (rather than the gradient) lets the color morph smoothly. */
+.orb-wrap, .core-pulse, #orbSvg, #orbSvg circle, #orbSvg polygon {
+  transition: --core1 0.6s ease, --core2 0.6s ease, --ring 0.6s ease, --glow 0.6s ease,
+              filter 0.5s ease, background 0.5s ease;
+}
+
+/* ---- 2. Wake-up pulse on IDLE → LISTENING ----
+   Applied via a one-shot class (.orb-wake) added by transitions.js when the
+   state changes from IDLE to LISTENING. The keyframe scales the orb up
+   briefly then settles — like JARVIS "opening its eyes". */
+@keyframes orbWake {
+  0%   { transform: scale(0.94); filter: brightness(0.85); }
+  35%  { transform: scale(1.04); filter: brightness(1.25); }
+  60%  { transform: scale(0.99); filter: brightness(1.1); }
+  100% { transform: scale(1);    filter: brightness(1); }
+}
+.orb-wrap.orb-wake { animation: orbWake 0.7s cubic-bezier(.2,.8,.2,1) 1; }
+
+/* ---- 3. State message fade-in on text change ----
+   transitions.js toggles the .state-msg-fade class on #stateMsg whenever
+   setState() writes new text. The fadeUp keyframe (already defined in
+   style.css:364) is retriggred by removing + reflowing + re-adding the class. */
+#stateMsg.state-msg-fade { animation: fadeUp 0.35s ease-out 1; }
+
+/* ---- 4. Staggered chat-message reveal ----
+   Each new .msg element gets a tiny entrance delay based on its index
+   among siblings (capped at 5 so long bursts don't drag). This makes a
+   JARVIS reply feel like it's "materializing" rather than just appearing. */
+#messages > .msg { animation: msgReveal 0.4s ease-out 1 both; }
+#messages > .msg:nth-child(1)  { animation-delay: 0ms; }
+#messages > .msg:nth-child(2)  { animation-delay: 30ms; }
+#messages > .msg:nth-child(3)  { animation-delay: 60ms; }
+#messages > .msg:nth-child(4)  { animation-delay: 90ms; }
+#messages > .msg:nth-child(5)  { animation-delay: 120ms; }
+#messages > .msg:nth-child(n+6) { animation-delay: 0ms; }  /* cap */
+@keyframes msgReveal {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---- 5. Power-up sweep on EXECUTING ----
+   A horizontal light sweep across the orb when JARVIS starts executing a
+   tool. Applied via the .orb-exec-sweep class by transitions.js. */
+@keyframes execSweep {
+  0%   { opacity: 0; transform: translateX(-100%) skewX(-20deg); }
+  50%  { opacity: 0.8; }
+  100% { opacity: 0; transform: translateX(100%) skewX(-20deg); }
+}
+.orb-wrap .exec-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.35) 50%, transparent 100%);
+  pointer-events: none;
+  animation: execSweep 0.8s ease-out 1;
+  z-index: 5;
+}
+
+/* ---- 6. Error shake ----
+   When JARVIS enters ERROR state, the orb does a quick horizontal shake
+   (subtle — not annoying). Applied via .orb-shake class. */
+@keyframes orbShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+.orb-wrap.orb-shake { animation: orbShake 0.4s ease-out 1; }
+
+/* ---- 7. Smooth state-chip color morph ----
+   The #stateChip already has transition:.3s (style.css:141), but the
+   background-color and border-color aren't explicitly transitioned in
+   some browsers. Make it explicit. */
+#stateChip { transition: color 0.3s ease, border-color 0.3s ease, background 0.3s ease; }
+
+/* ---- Reduced motion: kill all the new animations ---- */
+@media (prefers-reduced-motion: reduce) {
+  .orb-wrap, .core-pulse, #orbSvg, #orbSvg circle, #orbSvg polygon {
+    transition: none;
+  }
+  .orb-wrap.orb-wake,
+  .orb-wrap.orb-shake,
+  .orb-wrap .exec-sweep,
+  #stateMsg.state-msg-fade,
+  #messages > .msg { animation: none !important; }
+  @property --core1 { syntax: '<color>'; inherits: true; initial-value: #d2f8ff; }
+  @property --core2 { syntax: '<color>'; inherits: true; initial-value: #1899c2; }
+  @property --ring  { syntax: '<color>'; inherits: true; initial-value: #3fd9ff; }
+  @property --glow  { syntax: '<color>'; inherits: true; initial-value: rgba(63,217,255,0.38); }
+}
