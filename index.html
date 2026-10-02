@@ -273,6 +273,15 @@
       <div class="s-row"><label>Boot cinema<small>ARC REACTOR ANIMATION BEHIND THE BOOT SCREEN</small></label><button class="switch on" id="bootCinemaToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Qwen NLU assist<small>WHEN RULES ARE UNSURE, ASK QWEN 3.5 4B LOCALLY TO PARSE INTENT · OFFLINE</small></label><button class="switch" id="qwenNluToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-row"><label>Holographic HUD<small>FLOATING TRANSLUCENT PANELS · CLOCK · STATS · LOG · QUICK CMD</small></label><button class="switch" id="hudOverlayToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-row"><label>Port scan watch<small>WATCH FOR NEW LISTENING PORTS EVERY 60s · ALERTS ON SUSPICIOUS ACTIVITY</small></label><button class="switch" id="portwatchToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-note" style="margin:8px 0 4px;font-size:10px;color:var(--faint)">ALERT THRESHOLDS · change these to tune when JARVIS warns you</div>
+      <div class="s-row"><label>Low battery at<small>% BELOW WHICH I WARN</small></label><input type="number" id="thrBatteryLow" min="5" max="50" value="20"></div>
+      <div class="s-row"><label>Critical battery at<small>% BELOW WHICH I ESCALATE</small></label><input type="number" id="thrBatteryCrit" min="1" max="30" value="10"></div>
+      <div class="s-row"><label>High RAM at<small>% AT OR ABOVE WHICH I WARN</small></label><input type="number" id="thrRamHigh" min="50" max="99" value="92"></div>
+      <div class="s-row"><label>Sustained CPU at<small>% HELD FOR THIS LONG TRIGGERS AN ALERT</small></label><input type="number" id="thrCpuSustained" min="50" max="99" value="95"><input type="number" id="thrCpuSec" min="10" max="600" value="60" title="seconds"></div>
+      <div class="s-row"><label>Low disk at<small>GB FREE BELOW WHICH I WARN</small></label><input type="number" id="thrDiskLow" min="0.1" max="100" step="0.1" value="2"></div>
+      <div class="s-row"><label>Deadline warning<small>HOURS BEFORE THE DEADLINE I WARN</small></label><input type="number" id="thrDeadlineH" min="1" max="72" value="3"></div>
+      <div class="s-row"><label>Re-alert every<small>MINUTES BETWEEN REPEAT ALERTS</small></label><input type="number" id="thrReAlert" min="5" max="1440" value="30"></div>
     </div>
     <div class="s-sec">
       <h3>BACKUP &amp; RESTORE</h3>

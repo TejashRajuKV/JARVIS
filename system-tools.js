@@ -25,6 +25,8 @@ module.exports = function setupSystemTools(app, { IS_WIN, APPS }) {
         });
     });
   }
+  // Expose ps() so other modules (ocr.js) can reuse the same PowerShell wrapper.
+  app.locals.ps = ps;
 
   const WINRT_AWAIT = `
 Add-Type -AssemblyName System.Runtime.WindowsRuntime

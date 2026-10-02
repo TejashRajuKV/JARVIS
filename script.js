@@ -2010,16 +2010,35 @@ function alertOnce(key, everyMs, msg, suggestions) {
   jarvisSay({ text, intent: 'ALERT', suggestions, alert: true });
 }
 let lastBatteryCheck = 0;
+// CPU sustained-load tracking: records the timestamp when CPU first crossed the
+// cpuSustained threshold. If it stays above for cpuSustainedSec, an alert fires.
+let cpuSustainedSince = 0;
 async function smartAlerts() {
   if (!settings.alerts || state === 'BOOT') return;
   const now = Date.now();
+  // ---- RAM high (existing, now uses Thresholds) ----
   if (Thresholds.isRamHigh(sys.ram)) alertOnce('ram', Thresholds.reAlertMinutes * 6e4, '⚠ Memory is at **' + sys.ram + '%** — things may slow down. Close something heavy?', ['What are the top processes?']);
+  // ---- Disk low (NEW — proactive, not just diagnostics) ----
+  if (Thresholds.isDiskLow(sys.diskFree)) alertOnce('disk', Thresholds.reAlertMinutes * 6e4, '💾 Storage is low — only **' + sys.diskFree + ' GB** free on the system drive. Want me to find large files?', ['What is taking up disk space?']);
+  // ---- CPU sustained load (NEW — fires only after cpuSustainedSec seconds above cpuSustained) ----
+  if (sys.cpu >= Thresholds.cpuSustained) {
+    if (!cpuSustainedSince) cpuSustainedSince = now;
+    else if (now - cpuSustainedSince >= Thresholds.cpuSustainedSec * 1000) {
+      alertOnce('cpu', Thresholds.reAlertMinutes * 6e4, '🔥 Processor has been at **' + sys.cpu + '%** for over ' + Thresholds.cpuSustainedSec + 's — something may be stuck. Want the top processes?', ['What are the top processes?']);
+    }
+  } else {
+    cpuSustainedSince = 0; // reset when CPU drops below threshold
+  }
+  // ---- Battery (existing, now uses Thresholds + escalation tiers) ----
   if (backend.online && now - lastBatteryCheck > Thresholds.batteryPollS * 1000) {
     lastBatteryCheck = now;
     const b = await callTool('/tool/batteryStatus');
-    if (Thresholds.isBatteryLow(b.level, b.status)) alertOnce('battery', Thresholds.reAlertMinutes * 6e4, '🔋 Battery is at **' + b.level + '%** — plug in soon.');
+    if (Thresholds.isBatteryCritical(b.level, b.status)) alertOnce('battery_crit', Thresholds.reAlertMinutes * 6e4 / 2, '🚨 Battery is at **' + b.level + '%** — plug in NOW, ' + Persona.sir() + '.');
+    else if (Thresholds.isBatteryLow(b.level, b.status)) alertOnce('battery', Thresholds.reAlertMinutes * 6e4, '🔋 Battery is at **' + b.level + '%** — plug in soon.');
   }
+  // ---- Deadlines (existing, now uses Thresholds) ----
   if (!serverScheduler) for (const d of deadlines) if (!d.done && d.due > now && d.due - now <= Thresholds.deadlineWindowH * 36e5) alertOnce('dl' + d.id, Infinity, '⏳ **' + d.title + '** is due at ' + fmtTime(d.due) + ' — about ' + Math.max(1, Math.round((d.due - now) / 36e5)) + 'h left.', ['Start a focus session', 'Block distractions']);
+  // ---- Evening nudge (existing, now uses Thresholds) ----
   const h = new Date().getHours(), pend = todos.filter(t => !t.done).length;
   if (h === Thresholds.eveningHour && pend) alertOnce('evening' + new Date().toDateString(), Infinity, '🌙 You have ' + plural(pend, 'to-do') + ' left today. One more focus session, or call it a day?', ['What is on my to-do list?', 'Start a focus session']);
 }
@@ -5714,6 +5733,55 @@ $('#cityInput').addEventListener('change', e => { settings.city = e.target.value
 $('#focusMin').value = settings.focusMin; $('#breakMin').value = settings.breakMin;
 $('#focusMin').addEventListener('change', e => { settings.focusMin = clamp(+e.target.value || 25, 5, 120); e.target.value = settings.focusMin; saveSettings(); });
 $('#breakMin').addEventListener('change', e => { settings.breakMin = clamp(+e.target.value || 5, 1, 60); e.target.value = settings.breakMin; saveSettings(); });
+// ---- Alert threshold inputs (Phase 1.6) ----
+// Each input reads/writes through Thresholds.set() so the values flow into
+// settings.thresholds and persist across reloads.
+(function wireThresholdInputs() {
+  const snap = Thresholds.snapshot();
+  const bind = (id, key, min, max, def) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = snap[key];
+    el.addEventListener('change', () => {
+      let v = Number(el.value);
+      if (!isFinite(v)) v = def;
+      v = Math.max(min, Math.min(max, v));
+      el.value = v;
+      Thresholds.set({ [key]: v });
+      log('info', 'threshold ' + key + ' set to ' + v);
+    });
+  };
+  bind('thrBatteryLow',   'batteryLow',     5,  50,  20);
+  bind('thrBatteryCrit',  'batteryCritical', 1, 30,  10);
+  bind('thrRamHigh',      'ramHigh',       50,  99,  92);
+  bind('thrCpuSustained', 'cpuSustained',   50,  99,  95);
+  bind('thrCpuSec',       'cpuSustainedSec', 10, 600, 60);
+  bind('thrDiskLow',      'diskLowGB',      0.1, 100, 2);
+  bind('thrDeadlineH',    'deadlineWindowH', 1,  72,  3);
+  bind('thrReAlert',      'reAlertMinutes',  5, 1440, 30);
+})();
+// ---- Port scan watch toggle (Phase 1.6) ----
+(function wirePortwatchToggle() {
+  const btn = document.getElementById('portwatchToggle');
+  if (!btn) return;
+  // Read the current state from the server on first paint.
+  fetch((window.API || '') + '/portwatch/status').then(r => r.json()).then(s => {
+    btn.classList.toggle('on', !!s.enabled);
+    btn.setAttribute('aria-checked', String(!!s.enabled));
+  }).catch(() => {});
+  btn.addEventListener('click', async () => {
+    const turnOn = !btn.classList.contains('on');
+    btn.classList.toggle('on', turnOn);
+    btn.setAttribute('aria-checked', String(turnOn));
+    try {
+      const r = await fetch((window.API || '') + '/portwatch/enable', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: turnOn }),
+      }).then(r => r.json());
+      if (r.unavailable) { toast('Port watch unavailable on this platform'); btn.classList.remove('on'); btn.setAttribute('aria-checked', 'false'); }
+      else log('ok', 'Port scan watch ' + (turnOn ? 'enabled' : 'disabled'));
+    } catch (e) { log('warn', 'Port watch toggle failed: ' + e.message); btn.classList.toggle('on', !turnOn); }
+  });
+})();
 // "Require Windows Hello" is owned by the server (.config.json), not settings: turning it off needs an approval.
 async function renderHelloToggle() {
   const st = await Hello.refresh(), el = $('#helloToggle'), note = $('#helloNote');
