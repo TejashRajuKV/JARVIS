@@ -686,6 +686,10 @@ async function refreshSystem() {
     cpu: d.cpuUsage, ram: d.memoryUsagePercent, ramUsed: d.usedMemoryGB, ramTotal: d.totalMemoryGB,
     diskUsed: d.disk.usedPercent || 0, diskFree: d.disk.freeGB, uptime: d.uptimeMin, osName: d.osName, cpuModel: d.cpuModel, cpus: d.cpus
   });
+  // Feed pattern learning baselines (Phase 2.9).
+  if (typeof Learn !== 'undefined') {
+    try { Learn.sample('cpu', sys.cpu); Learn.sample('ram', sys.ram); } catch (e) {}
+  }
   renderTele();
   return true;
 }
@@ -2043,6 +2047,24 @@ async function smartAlerts() {
   if (h === Thresholds.eveningHour && pend) alertOnce('evening' + new Date().toDateString(), Infinity, '🌙 You have ' + plural(pend, 'to-do') + ' left today. One more focus session, or call it a day?', ['What is on my to-do list?', 'Start a focus session']);
 }
 setInterval(() => { smartAlerts().catch(() => {}); }, 60e3);
+
+/* ============ pattern learning suggestions (Phase 2.9) ============ */
+// Every 5 minutes (and only when idle), check if Learn.suggest() found a pattern
+// strong enough to surface. If yes, offer it as a non-intrusive toast + chat message.
+setInterval(() => {
+  if (busy || state === 'BOOT' || state === 'EXECUTING' || state === 'SPEAKING') return;
+  if (typeof Learn === 'undefined') return;
+  try {
+    const s = Learn.suggest();
+    if (!s) return;
+    // Only surface suggestions for patterns with 3+ occurrences in the current hour.
+    if (s.count < Learn.MIN_SAMPLES_FOR_SUGGESTION) return;
+    const label = s.kind === 'apps' ? 'open ' + s.label : s.kind === 'cmds' ? s.label.replace(/_/g, ' ').toLowerCase() : 'start a focus session for ' + s.label;
+    const msg = '📊 I noticed you have done **' + label + '** ' + s.count + ' times around this hour. Want me to make it a routine?';
+    jarvisSay({ text: msg, intent: 'LEARN_SUGGEST', suggestions: ['Yes, make it a routine', 'No, not now'], noPersona: false, noTTS: true,
+      confirm: { yes: 'YES', no: 'NOT NOW', onConfirm: () => { Learn.acceptSuggestion(s); toast('Got it — I will suggest a routine next time you ask.'); }, onCancel: () => Learn.dismissSuggestion(s) } });
+  } catch (e) {}
+}, 5 * 60 * 1000); // every 5 minutes
 
 /* ============ languages, themes, persona ============ */
 function setLanguage(l) {
@@ -4832,7 +4854,19 @@ async function handleUser(text, source) {
       const pre = Agent.preSingle(p);          // before-state for the open/close check, requested in parallel
       result = await executeTool(p, cmdText);
       engine('core', false);
-      if (result && !result.askLLM) { ctx.lastIntent = p.intent; ctx.lastCmd = result.confirm || ctx.pending || /\?\s*$/.test(String(result.text || '')) ? null : { text: cmdText, t: Date.now() }; Agent.watchSingle(p, pre); }
+      if (result && !result.askLLM) {
+        ctx.lastIntent = p.intent; ctx.lastCmd = result.confirm || ctx.pending || /\?\s*$/.test(String(result.text || '')) ? null : { text: cmdText, t: Date.now() }; Agent.watchSingle(p, pre);
+        // Pattern learning (Phase 2.9): record the intent + any app/site name.
+        if (typeof Learn !== 'undefined') {
+          try {
+            Learn.event('cmd', p.intent);
+            if (p.intent === 'OPEN_APPLICATION' || p.intent === 'CLOSE_APPLICATION') {
+              const appName = (p.args && p.args.app) || (p.text && p.text.replace(/^(open|close|launch|kill|quit|exit|shut|terminate|end)\s+/, '').trim()) || 'unknown';
+              Learn.event('app', appName);
+            }
+          } catch (e) {}
+        }
+      }
       log('agent', '⏱ understand ' + Math.round(tUnderstood - t0) + 'ms · run ' + Math.round(performance.now() - tUnderstood) + 'ms');
     }
 
@@ -5759,6 +5793,21 @@ $('#breakMin').addEventListener('change', e => { settings.breakMin = clamp(+e.ta
   bind('thrDiskLow',      'diskLowGB',      0.1, 100, 2);
   bind('thrDeadlineH',    'deadlineWindowH', 1,  72,  3);
   bind('thrReAlert',      'reAlertMinutes',  5, 1440, 30);
+  bind('thrBarHot',       'barHotPct',       50, 99,  75);
+  bind('thrBarCrit',      'barCritPct',      50, 100, 90);
+  // Telemetry poll interval is stored in ms (3000) but the UI is in seconds.
+  const pollEl = document.getElementById('thrPollMs');
+  if (pollEl) {
+    pollEl.value = Math.round(Thresholds.pollMs / 1000);
+    pollEl.addEventListener('change', () => {
+      let v = Number(pollEl.value);
+      if (!isFinite(v)) v = 3;
+      v = Math.max(1, Math.min(60, v));
+      pollEl.value = v;
+      Thresholds.set({ pollMs: v * 1000 });
+      log('info', 'telemetry poll interval set to ' + v + 's — takes effect on next reload');
+    });
+  }
 })();
 // ---- Port scan watch toggle (Phase 1.6) ----
 (function wirePortwatchToggle() {

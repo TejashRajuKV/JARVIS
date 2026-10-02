@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="ui.css">
   <link rel="stylesheet" href="boot-cinema.css">
   <link rel="stylesheet" href="hud-overlay.css">
+  <link rel="stylesheet" href="dashboard.css">
 </head>
 <body data-state="boot">
   <canvas id="bgCanvas"></canvas>
@@ -282,6 +283,9 @@
       <div class="s-row"><label>Low disk at<small>GB FREE BELOW WHICH I WARN</small></label><input type="number" id="thrDiskLow" min="0.1" max="100" step="0.1" value="2"></div>
       <div class="s-row"><label>Deadline warning<small>HOURS BEFORE THE DEADLINE I WARN</small></label><input type="number" id="thrDeadlineH" min="1" max="72" value="3"></div>
       <div class="s-row"><label>Re-alert every<small>MINUTES BETWEEN REPEAT ALERTS</small></label><input type="number" id="thrReAlert" min="5" max="1440" value="30"></div>
+      <div class="s-row"><label>Telemetry bar hot at<small>% AT WHICH THE BAR TURNS AMBER</small></label><input type="number" id="thrBarHot" min="50" max="99" value="75"></div>
+      <div class="s-row"><label>Telemetry bar critical at<small>% AT WHICH THE BAR TURNS RED</small></label><input type="number" id="thrBarCrit" min="50" max="100" value="90"></div>
+      <div class="s-row"><label>Telemetry refresh<small>SECONDS BETWEEN TELEMETRY POLLS</small></label><input type="number" id="thrPollMs" min="1" max="60" value="3"></div>
     </div>
     <div class="s-sec">
       <h3>BACKUP &amp; RESTORE</h3>
@@ -347,5 +351,7 @@
   <script src="nlu-qwen.js"></script>
   <script src="boot-cinema.js"></script>
   <script src="hud-overlay.js"></script>
+  <script src="dashboard.js"></script>
+  <script src="learn.js"></script>
 </body>
 </html>

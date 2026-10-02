@@ -2035,6 +2035,57 @@ app.get('/api/tool/systemInfo', (req, res) => {
   });
 });
 
+/* ---------------- enriched telemetry for the animated diagnostics dashboard ----------------
+   Uses the systeminformation npm package (cross-platform, zero deps) for:
+   - CPU temperature (per-core where available)
+   - GPU model(s) and VRAM
+   - Network throughput (rx_sec / tx_sec per interface)
+   - Top N processes by CPU and by RAM
+   - Battery (ac voltage, cycle count where available)
+   The existing /api/tool/systemInfo stays untouched; this is an additive endpoint
+   the dashboard overlay polls every 2s. Falls back gracefully if systeminformation
+   is not installed (returns null fields with a 'pro' flag = false). */
+let si = null;
+try { si = require('systeminformation'); } catch (e) { /* package not installed */ }
+const PROC_CACHE = { cpu: [], mem: [], at: 0 };
+async function topProcesses(limit = 6) {
+  if (!si) return { cpu: [], mem: [] };
+  const now = Date.now();
+  if (now - PROC_CACHE.at < 1500) return PROC_CACHE; // throttle: process list is expensive
+  try {
+    const procs = await si.processes();
+    const arr = procs.list || [];
+    const cpu = [...arr].sort((a, b) => (b.cpu || 0) - (a.cpu || 0)).slice(0, limit).map(p => ({ name: p.name, pid: p.pid, cpu: +(p.cpu || 0).toFixed(1), mem: +(p.mem || 0).toFixed(1) }));
+    const mem = [...arr].sort((a, b) => (b.mem || 0) - (a.mem || 0)).slice(0, limit).map(p => ({ name: p.name, pid: p.pid, cpu: +(p.cpu || 0).toFixed(1), mem: +(p.mem || 0).toFixed(1) }));
+    PROC_CACHE.cpu = cpu; PROC_CACHE.mem = mem; PROC_CACHE.at = now;
+    return { cpu, mem };
+  } catch { return { cpu: [], mem: [] }; }
+}
+app.get('/api/sys/dashboard', async (req, res) => {
+  if (!si) return res.json({ success: true, pro: false, message: 'systeminformation package not installed — run npm install systeminformation' });
+  // Run the cheap calls in parallel; topProcesses has its own throttle.
+  const [cpuTemp, graphics, netStats, procs, battery] = await Promise.all([
+    si.cpuTemperature().catch(() => ({})),
+    si.graphics().catch(() => ({ controllers: [] })),
+    si.networkStats().catch(() => []),
+    topProcesses(6),
+    si.battery().catch(() => ({})),
+  ]);
+  // Filter to physical network interfaces (skip loopback) with rx_sec or tx_sec > 0.
+  const nets = (netStats || []).filter(n => n.iface && !/^lo$/i.test(n.iface)).map(n => ({
+    iface: n.iface, rx_sec: n.rx_sec || 0, tx_sec: n.tx_sec || 0, rx_total: n.rx_bytes || 0, tx_total: n.tx_bytes || 0,
+  }));
+  res.json({
+    success: true, pro: true,
+    cpuTemp: cpuTemp && cpuTemp.main != null ? cpuTemp.main : null,
+    cpuTempCores: cpuTemp && Array.isArray(cpuTemp.cores) ? cpuTemp.cores : [],
+    gpus: (graphics && graphics.controllers || []).map(g => ({ model: g.model, vram: g.vram, vendor: g.vendor })),
+    networks: nets,
+    procs: procs,
+    battery: battery && battery.hasbattery ? { percent: battery.percent, isCharging: battery.ischarging, cycleCount: battery.cyclecount || null, voltage: battery.voltage || null } : null,
+  });
+});
+
 app.post('/api/tool/batteryStatus', (req, res) => {
   if (IS_WIN) {
     execFile('powershell', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Battery | Select-Object EstimatedChargeRemaining,BatteryStatus | ConvertTo-Json'], { windowsHide: true }, (err, stdout) => {

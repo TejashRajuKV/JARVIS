@@ -1,0 +1,247 @@
+/* ===========================================================================
+ *  dashboard.css — Animated diagnostics dashboard overlay
+ *  ---------------------------------------------------------------------------
+ *  Pure additive. Activates only when <body class="dash-on"> is set by
+ *  dashboard.js. The default <body> (without the class) is unchanged.
+ *
+ *  Layout: a fullscreen overlay with a 4-quadrant grid:
+ *    - top-left:     CPU% big number + sparkline + temperature + per-core bars
+ *    - top-right:    Memory + Disk (two side-by-side panels with sparklines)
+ *    - bottom-left:  Network throughput (rx/tx sparklines per interface)
+ *    - bottom-right: Top processes (sortable: by CPU / by RAM)
+ *  Plus a header bar with uptime, GPU info, battery, and a close button.
+ * =========================================================================== */
+
+#dashOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 95;  /* above HUD (70) and toast (80), below settings drawer (100) */
+  background: rgba(2, 7, 12, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: none;
+  flex-direction: column;
+  padding: 20px;
+  gap: 14px;
+  font-family: var(--mono);
+  color: var(--ink);
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+}
+body.dash-on #dashOverlay { display: flex; opacity: 1; }
+
+/* ---- header bar ---- */
+#dashHeader {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-hi);
+}
+#dashHeader h2 {
+  font-family: var(--disp);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.4em;
+  color: var(--cyan-hi);
+  text-shadow: 0 0 16px rgba(var(--rgb), 0.6);
+  flex: none;
+}
+#dashHeader .dash-meta {
+  display: flex;
+  gap: 18px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--dim);
+  flex: 1;
+}
+#dashHeader .dash-meta b { color: var(--cyan-hi); font-weight: 600; }
+#dashClose {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--dim);
+  border: 1px solid var(--line-hi);
+  border-radius: 6px;
+  padding: 6px 14px;
+  background: rgba(var(--rgb), 0.06);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+#dashClose:hover { color: var(--cyan-hi); border-color: var(--cyan); }
+
+/* ---- 4-quadrant grid ---- */
+#dashGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+}
+.dash-panel {
+  background: linear-gradient(180deg, rgba(9, 26, 41, 0.7), rgba(4, 13, 22, 0.85));
+  border: 1px solid var(--line-hi);
+  border-radius: 10px;
+  padding: 16px 18px;
+  position: relative;
+  overflow: hidden;
+}
+.dash-panel .dash-title {
+  font-family: var(--disp);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  color: var(--cyan-hi);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  text-shadow: 0 0 10px rgba(var(--rgb), 0.5);
+}
+.dash-panel .dash-title .aux {
+  float: right;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--faint);
+  text-shadow: none;
+  font-weight: 400;
+}
+
+/* ---- big number + sparkline layout ---- */
+.dash-big {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.dash-big .num {
+  font-family: var(--disp);
+  font-weight: 800;
+  font-size: 44px;
+  line-height: 1;
+  color: var(--cyan-hi);
+  text-shadow: 0 0 18px rgba(var(--rgb), 0.55);
+  font-variant-numeric: tabular-nums;
+  transition: color 0.4s;
+}
+.dash-big .num.warn { color: var(--amber); text-shadow: 0 0 18px rgba(255, 184, 77, 0.5); }
+.dash-big .num.crit { color: var(--red); text-shadow: 0 0 18px rgba(255, 95, 107, 0.5); }
+.dash-big .unit {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--dim);
+}
+.dash-spark {
+  width: 100%;
+  height: 60px;
+  margin-top: 8px;
+}
+
+/* ---- per-core bars (CPU panel) ---- */
+.dash-cores {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  height: 24px;
+  align-items: flex-end;
+}
+.dash-cores i {
+  flex: 1;
+  background: linear-gradient(180deg, var(--cyan), var(--cyan-lo));
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  transition: height 0.4s ease-out;
+  box-shadow: 0 0 6px rgba(var(--rgb), 0.4);
+}
+.dash-cores i.hot { background: linear-gradient(180deg, var(--amber), #9d5a0e); }
+.dash-cores i.crit { background: linear-gradient(180deg, var(--red), #8d1f2a); }
+
+/* ---- dual stat panel (Memory + Disk) ---- */
+.dash-dual {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  height: 100%;
+}
+.dash-dual .col .dash-big .num { font-size: 32px; }
+.dash-dual .col .dash-spark { height: 50px; }
+.dash-dual .col { display: flex; flex-direction: column; }
+
+/* ---- network panel ---- */
+.dash-net-rows { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.dash-net-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 70px;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+}
+.dash-net-row .iface { color: var(--cyan-hi); letter-spacing: 0.1em; }
+.dash-net-row .spark { height: 28px; }
+.dash-net-row .vals { font-size: 10px; color: var(--dim); text-align: right; font-variant-numeric: tabular-nums; }
+.dash-net-row .vals b { color: var(--green); }   /* rx (download) */
+.dash-net-row .vals i { color: var(--amber); font-style: normal; }  /* tx (upload) */
+
+/* ---- processes panel ---- */
+.dash-proc-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.dash-proc-tab {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.dash-proc-tab.active { color: var(--cyan-hi); border-color: var(--cyan); background: rgba(var(--rgb), 0.1); }
+.dash-proc-list { font-size: 11px; line-height: 1.7; }
+.dash-proc-row {
+  display: grid;
+  grid-template-columns: 1fr 60px 60px;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px dashed rgba(var(--rgb), 0.08);
+}
+.dash-proc-row:last-child { border-bottom: none; }
+.dash-proc-row .name { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-proc-row .cpu { color: var(--cyan-hi); text-align: right; font-variant-numeric: tabular-nums; }
+.dash-proc-row .mem { color: var(--violet); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---- GPU + battery footer ---- */
+.dash-footer {
+  display: flex;
+  gap: 24px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.dash-footer b { color: var(--cyan-hi); font-weight: 600; }
+.dash-footer .gpu { color: var(--ink); }
+
+/* ---- loading state ---- */
+.dash-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--faint);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+}
+
+/* ---- responsive ---- */
+@media (max-width: 900px) {
+  #dashGrid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); }
+  .dash-big .num { font-size: 32px; }
+}
+
+/* ---- reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  #dashOverlay { transition: none; }
+  .dash-cores i, .dash-big .num { transition: none; }
+}
