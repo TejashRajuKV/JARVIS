@@ -25,7 +25,7 @@ function fakeRun() {
   const n = W.createNativeWake({ isWin: true, broadcast: e => events.push(e), run: f.run, now: () => t });
   n.set(true);
   check('Windows listener', 'switching on starts one listener', f.spawned.length === 1 && /powershell/i.test(f.spawned[0].cmd));
-  check('Windows listener', 'it listens only for the wake phrases', f.spawned[0].env.JARVIS_WAKE === 'jarvis,hey jarvis,ok jarvis,okay jarvis', f.spawned[0].env.JARVIS_WAKE);
+  check('Windows listener', 'it listens only for the wake phrases (jarvis + romanised transliterations)', f.spawned[0].env.JARVIS_WAKE === 'jarvis,hey jarvis,ok jarvis,okay jarvis,jaarvis,hey jaarvis,ok jaarvis,okay jaarvis,jarwis,hey jarwis,ok jarwis,okay jarwis,jarvas,hey jarvas,ok jarvas,okay jarvas,jarviz,hey jarviz,ok jarviz,okay jarviz', f.spawned[0].env.JARVIS_WAKE);
   n.set(true);
   check('Windows listener', 'switching on twice doesn’t start a second one', f.spawned.length === 1);
   f.spawned[0].p.say({ ready: 'en-US' });
@@ -68,6 +68,141 @@ function fakeRun() {
   const n = W.createNativeWake({ isWin: true, broadcast: () => {}, run: f.run });
   n.set(true, { persona: 'friday' });
   check('Windows listener', 'FRIDAY persona listens for "Friday" too', /friday/.test(f.spawned[0].env.JARVIS_WAKE) && /jarvis/.test(f.spawned[0].env.JARVIS_WAKE));
+  // Strengthening: FRIDAY persona should also include the romanised transliterations
+  // (a Telugu/Kannada speaker using FRIDAY should still match "jaarvis" etc).
+  check('Windows listener', 'FRIDAY persona also includes romanised transliterations (jaarvis)', /jaarvis/.test(f.spawned[0].env.JARVIS_WAKE), f.spawned[0].env.JARVIS_WAKE);
+  n.stop();
+}
+
+// ---- Strengthening: extended tests for wake-word edge cases ----
+
+{ // unknown sensitivity value is ignored, listener keeps default 0.6
+  const f = fakeRun();
+  const n = W.createNativeWake({ isWin: true, broadcast: () => {}, run: f.run });
+  n.set(true, { sensitivity: 'gibberish' });
+  check('Mic sensitivity', 'unknown sensitivity value is ignored (listener keeps default 0.6)', f.spawned[0].env.JARVIS_MINCONF === '0.6', f.spawned[0].env.JARVIS_MINCONF);
+  n.stop();
+}
+
+{ // chunked JSON across many tiny pieces is reassembled
+  const events = []; let t = 1e6;
+  const f = fakeRun();
+  const n = W.createNativeWake({ isWin: true, broadcast: e => events.push(e), run: f.run, now: () => t });
+  n.set(true);
+  const pieces = '{"wake":"jaarvis","conf":0.9}'.split('');
+  for (const c of pieces) f.spawned[0].p.stdout.emit('data', c);
+  // No newline yet — should NOT fire until newline arrives
+  check('Windows listener', 'no fire until newline arrives (chunked JSON)', events.length === 0);
+  f.spawned[0].p.stdout.emit('data', '\n');
+  check('Windows listener', 'fire after newline on chunked JSON', events.length === 1 && events[0].text === 'jaarvis');
+  n.stop();
+}
+
+{ // romanised transliteration 'jaarvis' fires wake event (Telugu/Kannada speaker)
+  const events = []; let t = 1e6;
+  const f = fakeRun();
+  const n = W.createNativeWake({ isWin: true, broadcast: e => events.push(e), run: f.run, now: () => t });
+  n.set(true);
+  f.spawned[0].p.say({ ready: 'en-US' });
+  f.spawned[0].p.say({ wake: 'jaarvis', conf: 0.85 });
+  check('Romanised wake', '"jaarvis" fires wake event (Telugu/Kannada speaker)', events.length === 1 && events[0].text === 'jaarvis');
+  t += 3000;
+  f.spawned[0].p.say({ wake: 'jarwis', conf: 0.85 });
+  check('Romanised wake', '"jarwis" fires wake event', events.length === 2 && events[1].text === 'jarwis');
+  n.stop();
+}
+
+{ // duplicate wake within 2 seconds is suppressed; later one fires
+  const events = []; let t = 1000000;
+  const f = fakeRun();
+  const n = W.createNativeWake({ isWin: true, broadcast: e => events.push(e), run: f.run, now: () => t });
+  n.set(true);
+  f.spawned[0].p.say({ ready: 'en-US' });
+  f.spawned[0].p.say({ wake: 'jarvis', conf: 0.9 });
+  check('Deduplication', 'first wake fires', events.length === 1);
+  t += 500;
+  f.spawned[0].p.say({ wake: 'jarvis', conf: 0.9 });
+  check('Deduplication', 'second wake within 2s is suppressed', events.length === 1);
+  t += 2500; // 3 seconds total since the first wake
+  f.spawned[0].p.say({ wake: 'jarvis', conf: 0.9 });
+  check('Deduplication', 'third wake after 2s fires', events.length === 2);
+  n.stop();
+}
+
+// ---- Calibration feature: confidence samples → suggested preset ----
+{ // With fewer than 3 samples, calibration returns "need more data"
+  const events = []; let t = 1e6;
+  const f = fakeRun();
+  const n = W.createNativeWake({ isWin: true, broadcast: e => events.push(e), run: f.run, now: () => t });
+  n.set(true);
+  f.spawned[0].p.say({ ready: 'en-US' });
+  f.spawned[0].p.say({ wake: 'jarvis', conf: 0.7 });
+  const cal = n.calibration();
+  check('Calibration', 'with 1 sample: no suggestion yet', cal.suggestion === null && /need at least 3/.test(cal.reason));
+  check('Calibration', 'sample count is 1', cal.samples === 1);
+  n.stop();
+}
+
+{ // With 3 high-confidence samples (all > 0.6), suggest Normal
+  const events = []; let t = 1e6;
+  const f = fakeRun();
+  const n = W.createNativeWake({ isWin: true, broadcast: e => events.push(e), run: f.run, now: () => t });
+  n.set(true);
+  f.spawned[0].p.say({ ready: 'en-US' });
+  for (const c of [0.75, 0.80, 0.85]) { f.spawned[0].p.say({ wake: 'jarvis', conf: c }); t += 3000; }
+  const cal = n.calibration();
+  check('Calibration', '3 samples, p25 = 0.75 → suggest Normal', cal.suggestion === 'normal', cal);
+  check('Calibration', 'median is reported', cal.median === 0.8);
+  n.stop();
+}
+
+{ // With 3 mid-range samples (0.52–0.6), suggest High
+  const events = []; let t = 1e6;
+  const f = fakeRun();
+  const n = W.createNativeWake({ isWin: true, broadcast: e => events.push(e), run: f.run, now: () => t });
+  n.set(true);
+  f.spawned[0].p.say({ ready: 'en-US' });
+  for (const c of [0.55, 0.58, 0.62]) { f.spawned[0].p.say({ wake: 'jarvis', conf: c }); t += 3000; }
+  const cal = n.calibration();
+  check('Calibration', '3 samples, p25 = 0.55 → suggest High', cal.suggestion === 'high', cal);
+  n.stop();
+}
+
+{ // With 3 low samples (0.45–0.52), suggest Max
+  const events = []; let t = 1e6;
+  const f = fakeRun();
+  const n = W.createNativeWake({ isWin: true, broadcast: e => events.push(e), run: f.run, now: () => t });
+  n.set(true);
+  f.spawned[0].p.say({ ready: 'en-US' });
+  for (const c of [0.46, 0.50, 0.55]) { f.spawned[0].p.say({ wake: 'jarvis', conf: c }); t += 3000; }
+  const cal = n.calibration();
+  check('Calibration', '3 samples, p25 = 0.46 → suggest Max', cal.suggestion === 'max', cal);
+  n.stop();
+}
+
+{ // Calibration samples are capped at 20 (oldest dropped)
+  const events = []; let t = 1e6;
+  const f = fakeRun();
+  const n = W.createNativeWake({ isWin: true, broadcast: e => events.push(e), run: f.run, now: () => t });
+  n.set(true);
+  f.spawned[0].p.say({ ready: 'en-US' });
+  for (let i = 0; i < 25; i++) { f.spawned[0].p.say({ wake: 'jarvis', conf: 0.5 + (i % 10) / 100 }); t += 3000; }
+  check('Calibration', 'after 25 wakes, sample count is capped at 20', n.calibration().samples === 20, n.calibration().samples);
+  // oldest (0.50, 0.51, 0.52, 0.53, 0.54) should be dropped — so the lowest remaining is 0.55
+  check('Calibration', 'oldest samples were dropped (FIFO)', n._confSamples()[0] === 0.55, n._confSamples().slice(0, 3));
+  n.stop();
+}
+
+{ // Status response includes calibration data
+  const events = []; let t = 1e6;
+  const f = fakeRun();
+  const n = W.createNativeWake({ isWin: true, broadcast: e => events.push(e), run: f.run, now: () => t });
+  n.set(true);
+  f.spawned[0].p.say({ ready: 'en-US' });
+  f.spawned[0].p.say({ wake: 'jarvis', conf: 0.75 });
+  const st = n.status();
+  check('Status', 'status() includes calibration object', typeof st.calibration === 'object');
+  check('Status', 'status.calibration.samples is 1', st.calibration.samples === 1);
   n.stop();
 }
 

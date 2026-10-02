@@ -48,20 +48,54 @@ if ([J.W]::IsIconic($h)) { [void][J.W]::ShowWindow($h, 9) }
 [void][J.W]::SetForegroundWindow($h)
 [Console]::Out.WriteLine('front')`;
 
-// English wake phrases the Windows recogniser can match (it can't read Telugu/Kannada script).
+// Wake phrases the Windows recogniser can match. The recogniser reads Latin letters only
+// (it can't match native Telugu/Kannada script), so we add romanised forms of the
+// Telugu "జార్విస్" (jarvis) and Kannada "ಜಾರ್ವಿಸ್" (jarvis) — they're already pronounced
+// the same, so a Telugu/Kannada speaker saying the wake word in English will match.
+// (The browser-side Voice.createUtterance + Lang.wakeWords() still matches the native
+// scripts when JARVIS is in the foreground.)
 function wakePhrases(persona) {
   const names = persona === 'friday' ? ['friday', 'jarvis'] : ['jarvis'];
-  return names.flatMap(n => [n, 'hey ' + n, 'ok ' + n, 'okay ' + n]);
+  // Latin transliterations of the Telugu/Kannada wake words (same pronunciation).
+  // Native script: జార్విస్ / ಜಾರ್ವಿಸ್ — both romanise to "jarvis", but Indian-English
+  // speakers often say it with a longer first vowel ("jaarvis") or with a 'v'→'w' shift.
+  const EXTRA_ROMANISED = ['jaarvis', 'jarwis', 'jarvas', 'jarviz'];
+  return names.flatMap(n => [n, 'hey ' + n, 'ok ' + n, 'okay ' + n])
+    .concat(EXTRA_ROMANISED.flatMap(w => [w, 'hey ' + w, 'ok ' + w, 'okay ' + w]));
 }
 
 function createNativeWake({ isWin, broadcast, run = spawn, now = () => Date.now(), minConf = 0.6 }) {
   let proc = null, want = false, persona = 'jarvis', ready = '', error = '', lastWake = 0, restarts = 0, buf = '';
+  // Calibration: keep the last 20 wake confidence readings so the page can
+  // suggest a sensitivity preset based on real-world accuracy.
+  const confSamples = [];
+  const MAX_SAMPLES = 20;
+  function recordConf(c) {
+    if (typeof c !== 'number' || !isFinite(c)) return;
+    confSamples.push(c);
+    while (confSamples.length > MAX_SAMPLES) confSamples.shift();
+  }
+  function calibration() {
+    if (confSamples.length < 3) return { samples: confSamples.length, suggestion: null, reason: 'need at least 3 wake events to calibrate — say the wake word a few times' };
+    const sorted = [...confSamples].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const low = sorted[Math.floor(sorted.length * 0.25)];
+    const high = sorted[Math.floor(sorted.length * 0.75)];
+    // Suggest the preset whose threshold sits below the user's 25th percentile (so 75%+ of wakes fire).
+    // normal=0.6, high=0.52, max=0.45 — pick the lowest threshold the user actually needs.
+    let suggestion, reason;
+    if (low >= 0.6) { suggestion = 'normal'; reason = 'your quietest wake (' + low.toFixed(2) + ') is well above 0.6 — Normal is plenty'; }
+    else if (low >= 0.52) { suggestion = 'high'; reason = 'your quietest wake (' + low.toFixed(2) + ') sits between 0.52 and 0.6 — High hears you better'; }
+    else if (low >= 0.45) { suggestion = 'max'; reason = 'your quietest wake (' + low.toFixed(2) + ') needs Max sensitivity'; }
+    else { suggestion = 'max'; reason = 'your quietest wake (' + low.toFixed(2) + ') is below 0.45 — Max is required; consider a better microphone'; }
+    return { samples: confSamples.length, median: +median.toFixed(2), p25: +low.toFixed(2), p75: +high.toFixed(2), suggestion, reason };
+  }
   function onLine(line) {
     let j; try { j = JSON.parse(line); } catch { return; }
     if (j.ready) { ready = j.ready; error = ''; restarts = 0; }
     if (j.error) error = j.error;
     // One "Jarvis" can come out as two results ("hey" + "jarvis"): one event per 2 seconds.
-    if (j.wake && now() - lastWake > 2000) { lastWake = now(); broadcast({ type: 'wake', text: j.wake, conf: j.conf }); }
+    if (j.wake && now() - lastWake > 2000) { lastWake = now(); recordConf(j.conf); broadcast({ type: 'wake', text: j.wake, conf: j.conf }); }
   }
   function start() {
     if (proc || !isWin) return;
@@ -87,8 +121,8 @@ function createNativeWake({ isWin, broadcast, run = spawn, now = () => Date.now(
     if (on) { want = true; restarts = 0; start(); } else stop();
     return status();
   }
-  const status = () => ({ supported: !!isWin, on: want, listening: !!ready, recogniser: ready, error, lastWake });
-  return { set, status, stop, _onLine: onLine, _phrases: wakePhrases };
+  const status = () => ({ supported: !!isWin, on: want, listening: !!ready, recogniser: ready, error, lastWake, calibration: calibration() });
+  return { set, status, stop, calibration, _onLine: onLine, _phrases: wakePhrases, _confSamples: () => [...confSamples] };
 }
 
 module.exports = function setupNativeWake(app, { IS_WIN }) {

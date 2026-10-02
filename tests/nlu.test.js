@@ -120,6 +120,32 @@ const ROMAN = [
   ['25 into 4 entha', 'te', 'CALCULATE'], ['gold theme haaku', 'kn', 'THEME_SET'], ['briefing kodu', 'kn', 'BRIEFING'], ['timers cancel cheyyi', 'te', 'CANCEL_TIMERS'],
   ['recursion ante enti', 'te', 'CONVERSATION'],
 ];
+
+// ---- Strengthening: negation rewriting ----
+// "don't open chrome" → CLOSE_APPLICATION (rewritten to "close chrome")
+// Each entry: [input, expectedIntent, optionalNegatedFlag]
+const NEGATION_CASES = [
+  ["don't open chrome", 'CLOSE_APPLICATION', true],
+  ['do not open chrome', 'CLOSE_APPLICATION', true],
+  ['never open spotify', 'CLOSE_APPLICATION', true],
+  ['stop opening discord', 'CLOSE_APPLICATION', true],   // -ing form
+  ["don't launch firefox", 'CLOSE_APPLICATION', true],
+  ['never start zoom', 'CLOSE_APPLICATION', true],
+  ["don't run vs code", 'CLOSE_APPLICATION', true],
+  // Without negation — control cases that should NOT be rewritten
+  ['open chrome', 'OPEN_APPLICATION', false],
+  ['close chrome', 'CLOSE_APPLICATION', false],
+];
+
+// ---- Strengthening: fuzzy fix should also re-check medium-confidence matches ----
+// These are commands where the original first-pass produced a less-confident match
+// (the old code only re-checked on bare/CONVERSATION). They should still work.
+const FUZZY_STRENGTHEN_CASES = [
+  // (existing typos like 'crome', 'spotfy' already covered — these test the new path)
+  ['opn notepad', 'OPEN_APPLICATION'],          // typo in the verb
+  ['clse calculator', 'CLOSE_APPLICATION'],     // typo in the verb
+  ['opn the calculator', 'OPEN_APPLICATION'],
+];
 // English that must never be read as Telugu/Kannada.
 const NOT_ROMAN = ['I love lo-fi music', 'open vs code ide', 'what is the time', 'add milk to my list', 'set a reminder for tmr', 'play kannada songs', 'who is odu'];
 
@@ -128,6 +154,18 @@ for (const [text, want] of CASES) {
   const got = NLU.classify(NLU.normalize(text, 'jarvis'), {}).intent;
   if (got !== want) { fail++; console.log(`FAIL  ${text.padEnd(62)} got ${got}, want ${want}`); }
 }
+// Strengthening: negation rewriting tests
+for (const [text, want, expectNegated] of NEGATION_CASES) {
+  const r = NLU.classify(NLU.normalize(text, 'jarvis'), {});
+  if (r.intent !== want) { fail++; console.log(`FAIL  [negation] ${text.padEnd(62)} got ${r.intent}, want ${want}`); continue; }
+  if (expectNegated === true && !r._negated) { fail++; console.log(`FAIL  [negation] ${text.padEnd(62)} should have _negated=true but did not`); }
+  if (expectNegated === false && r._negated === true) { fail++; console.log(`FAIL  [negation] ${text.padEnd(62)} should NOT have _negated=true but does`); }
+}
+// Strengthening: fuzzy fix on medium-confidence matches
+for (const [text, want] of FUZZY_STRENGTHEN_CASES) {
+  const r = NLU.classify(NLU.normalize(text, 'jarvis'), {});
+  if (r.intent !== want) { fail++; console.log(`FAIL  [fuzzy] ${text.padEnd(62)} got ${r.intent}, want ${want}`); }
+}
 for (const [text, lang, want] of ROMAN) {
   const l = NLU.romanLang(text);
   const got = l ? NLU.classify(NLU.normalize(NLU.fromRoman(text, l), 'jarvis'), {}).intent : 'not detected';
@@ -135,6 +173,6 @@ for (const [text, lang, want] of ROMAN) {
 }
 // "who is odu" may be flagged at the loose threshold, but it is not a command, so handleUser ignores it (it needs score ≥ 3 then).
 for (const text of NOT_ROMAN) if (NLU.romanLang(text, 3)) { fail++; console.log(`FAIL  ${text.padEnd(62)} wrongly read as Telugu/Kannada`); }
-const total = CASES.length + ROMAN.length + NOT_ROMAN.length;
+const total = CASES.length + ROMAN.length + NOT_ROMAN.length + NEGATION_CASES.length + FUZZY_STRENGTHEN_CASES.length;
 console.log(`${total - fail}/${total} passed`);
 process.exit(fail ? 1 : 0);

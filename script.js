@@ -669,7 +669,8 @@ const CODE_TOOL_LABELS = { vscode: 'VS Code (Copilot)', kiro: 'Kiro', trae: 'Tra
 const sys = { cpu: 0, ram: 0, ramUsed: 0, ramTotal: 0, diskUsed: 0, diskFree: 0, uptime: 0, osName: '', cpuModel: '', cpus: 0 };
 function bar(id, pct) {
   const el = $(id); el.style.width = clamp(pct, 0, 100) + '%';
-  el.classList.toggle('hot', pct >= 75 && pct < 90); el.classList.toggle('crit', pct >= 90);
+  const cls = Thresholds.barClass(pct);
+  el.classList.toggle('hot', cls === 'hot'); el.classList.toggle('crit', cls === 'crit');
 }
 function renderTele() {
   bar('#cpuBar', sys.cpu); $('#cpuVal').textContent = sys.cpu + '%';
@@ -2012,15 +2013,15 @@ let lastBatteryCheck = 0;
 async function smartAlerts() {
   if (!settings.alerts || state === 'BOOT') return;
   const now = Date.now();
-  if (sys.ram >= 92) alertOnce('ram', 30 * 6e4, '⚠ Memory is at **' + sys.ram + '%** — things may slow down. Close something heavy?', ['What are the top processes?']);
-  if (backend.online && now - lastBatteryCheck > 2 * 6e4) {
+  if (Thresholds.isRamHigh(sys.ram)) alertOnce('ram', Thresholds.reAlertMinutes * 6e4, '⚠ Memory is at **' + sys.ram + '%** — things may slow down. Close something heavy?', ['What are the top processes?']);
+  if (backend.online && now - lastBatteryCheck > Thresholds.batteryPollS * 1000) {
     lastBatteryCheck = now;
     const b = await callTool('/tool/batteryStatus');
-    if (b.level !== null && b.level !== undefined && b.level <= 20 && b.status !== 'Charging') alertOnce('battery', 30 * 6e4, '🔋 Battery is at **' + b.level + '%** — plug in soon.');
+    if (Thresholds.isBatteryLow(b.level, b.status)) alertOnce('battery', Thresholds.reAlertMinutes * 6e4, '🔋 Battery is at **' + b.level + '%** — plug in soon.');
   }
-  if (!serverScheduler) for (const d of deadlines) if (!d.done && d.due > now && d.due - now <= 3 * 36e5) alertOnce('dl' + d.id, Infinity, '⏳ **' + d.title + '** is due at ' + fmtTime(d.due) + ' — about ' + Math.max(1, Math.round((d.due - now) / 36e5)) + 'h left.', ['Start a focus session', 'Block distractions']);
+  if (!serverScheduler) for (const d of deadlines) if (!d.done && d.due > now && d.due - now <= Thresholds.deadlineWindowH * 36e5) alertOnce('dl' + d.id, Infinity, '⏳ **' + d.title + '** is due at ' + fmtTime(d.due) + ' — about ' + Math.max(1, Math.round((d.due - now) / 36e5)) + 'h left.', ['Start a focus session', 'Block distractions']);
   const h = new Date().getHours(), pend = todos.filter(t => !t.done).length;
-  if (h === 21 && pend) alertOnce('evening' + new Date().toDateString(), Infinity, '🌙 You have ' + plural(pend, 'to-do') + ' left today. One more focus session, or call it a day?', ['What is on my to-do list?', 'Start a focus session']);
+  if (h === Thresholds.eveningHour && pend) alertOnce('evening' + new Date().toDateString(), Infinity, '🌙 You have ' + plural(pend, 'to-do') + ' left today. One more focus session, or call it a day?', ['What is on my to-do list?', 'Start a focus session']);
 }
 setInterval(() => { smartAlerts().catch(() => {}); }, 60e3);
 
@@ -2129,12 +2130,12 @@ async function runDiagnostics() {
   await checkLLM();
   const rows = []; let warn = 0;
   const add = (ok, label, val) => { if (!ok) warn++; rows.push((ok ? '✓' : '⚠') + ' **' + label + '** — ' + val); };
-  if (bat && bat.level !== null && bat.level !== undefined) add(!(bat.level <= 20 && bat.status !== 'Charging'), 'Power', bat.level + '% · ' + String(bat.status).toLowerCase());
+  if (bat && bat.level !== null && bat.level !== undefined) add(!Thresholds.isBatteryLow(bat.level, bat.status), 'Power', bat.level + '% · ' + String(bat.status).toLowerCase());
   else add(true, 'Power', 'mains (no battery reported)');
   if (sysOk) {
-    add(sys.cpu < 90, 'Processor', sys.cpu + '% · ' + sys.cpus + ' threads');
-    add(sys.ram < 90, 'Memory', sys.ram + '% (' + sys.ramUsed + ' / ' + sys.ramTotal + ' GB)');
-    add(sys.diskFree === null || sys.diskFree >= 2, 'Storage', sys.diskFree + ' GB free on the system drive');
+    add(!Thresholds.isCpuHigh(sys.cpu), 'Processor', sys.cpu + '% · ' + sys.cpus + ' threads');
+    add(!Thresholds.isRamWarn(sys.ram), 'Memory', sys.ram + '% (' + sys.ramUsed + ' / ' + sys.ramTotal + ' GB)');
+    add(!Thresholds.isDiskLow(sys.diskFree), 'Storage', sys.diskFree + ' GB free on the system drive');
   } else add(false, 'Telemetry', 'backend offline');
   add(!!(wifi && wifi.ssid), 'Network', wifi && wifi.ssid ? wifi.ssid + ' · signal ' + wifi.signal : 'no Wi-Fi connection');
   add(llmReady(), 'AI core', llmReady() ? llm.model + ' online' + (latN ? ' · avg ' + Math.round(latSum / latN) + ' ms per turn' : '') : 'Ollama offline');
@@ -2817,7 +2818,7 @@ async function executeTool(p, raw) {
       toolStep('batteryStatus');
       const r = await callTool('/tool/batteryStatus');
       if (r.level === null || r.level === undefined) return { text: 'No battery detected — looks like a desktop or it is not reporting.' };
-      const low = r.level <= 20 && r.status !== 'Charging' ? ' That is low — plug in soon.' : '';
+      const low = Thresholds.isBatteryLow(r.level, r.status) ? ' That is low — plug in soon.' : '';
       return { text: 'Battery is at **' + r.level + '%** and ' + r.status.toLowerCase() + '.' + low, tool: 'batteryStatus' };
     }
     case 'SYS_PROCESSES': {

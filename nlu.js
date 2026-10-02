@@ -849,15 +849,53 @@ const NLU = (() => {
   }
   function classify(norm, ctx) {
     const r = classifyRules(norm, ctx);
-    // Also re-check the "bare app name" fallback: "clse chrome" contains "chrome", but it means close.
-    if ((r.intent !== 'CONVERSATION' && !r.bare) || norm.text.split(' ').length > 8) return r;
+    // Strengthening: if the first pass returned CONVERSATION or a low-confidence rule match,
+    // try fuzzyFix on the input and re-classify. The original code only re-checked on bare/
+    // CONVERSATION results — meaning a confident-but-wrong match (e.g. "opn crome" → matched
+    // OPEN_APPLICATION with the wrong app) was never re-examined. Now we re-check whenever
+    // the result is unsure (confidence < 0.92) OR the bare fallback fired OR it's CONVERSATION.
+    // The 0.92 threshold is chosen so high-confidence rules (.95+) skip the second pass entirely
+    // (preserving speed), while genuinely uncertain matches get a second look.
+    const unsure = r.intent === 'CONVERSATION' || r.bare || (r.confidence != null && r.confidence < 0.92);
+    if (!unsure || norm.text.split(' ').length > 8) return r;
     const fixed = fuzzyFix(norm.text);
     if (!fixed) return r;
     const r2 = classifyRules(Object.assign({}, norm, { text: fixed }), ctx);
-    return r2.intent !== 'CONVERSATION' && !r2.bare && r2.confidence >= .85 ? Object.assign(r2, { corrected: fixed }) : r;
+    // Only override the original result if the fuzzy-fix produced a meaningfully better match:
+    // a non-CONVERSATION intent with confidence >= 0.85 AND higher than the original.
+    if (r2.intent !== 'CONVERSATION' && !r2.bare && r2.confidence >= .85 && r2.confidence > (r.confidence || 0)) {
+      return Object.assign(r2, { corrected: fixed });
+    }
+    return r;
   }
 
   function classifyRules(norm, ctx) {
+    if (presence(norm)) return { intent: 'PRESENCE', confidence: .98, tool: null, args: {}, text: norm.text };
+    // "hi jarvis" / "good morning jarvis": the wake word was stripped, so recover the greeting from the raw text.
+    const rawGreet = String(norm.original || '').toLowerCase().replace(/[.!,?]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (new RegExp(`^(hi|hello|hey|yo|hii+|hola|namaste|sup|good (morning|afternoon|evening))( there)? ${esc(norm.wake || 'jarvis')}$`).test(rawGreet)) return { intent: 'GREETING', confidence: .97, tool: null, args: {}, text: rawGreet };
+    let s = norm.text;
+    ctx = ctx || {};
+    // ---- Negation rewriting (Strengthening) ----
+    // "don't open chrome" / "do not open chrome" / "never open chrome" → strip the negation,
+    // remember the polarity, and rewrite the verb so the CLOSE rule picks it up. We only
+    // rewrite OPEN→CLOSE here (the common case); other intents (volume/brightness/timer)
+    // typically have "cancel" or "stop" as a separate command already, so this is a surgical
+    // fix for the most common "I said open but meant don't open" confusion.
+    // We attach a `_negated: true` flag so the inspector and downstream tools can see it.
+    // The verb alternation handles -ing forms too: "stop opening discord" → "close discord".
+    let negated = false;
+    const negMatch = s.match(/^(?:please\s+)?(?:don['']?t|do\s+not|never|stop|quit)\s+(open|launch|start|run|fire\s+up|boot\s+up|boot|pull\s+up|bring\s+up|load)(?:ing)?\s+(.*)/i);
+    if (negMatch) {
+      s = 'close ' + negMatch[2].trim();
+      negated = true;
+    }
+    // Run the original classifier on the (possibly rewritten) text.
+    const result = classifyRulesInner(Object.assign({}, norm, { text: s }), ctx);
+    if (negated) result._negated = true;
+    return result;
+  }
+  function classifyRulesInner(norm, ctx) {
     if (presence(norm)) return { intent: 'PRESENCE', confidence: .98, tool: null, args: {}, text: norm.text };
     // "hi jarvis" / "good morning jarvis": the wake word was stripped, so recover the greeting from the raw text.
     const rawGreet = String(norm.original || '').toLowerCase().replace(/[.!,?]+/g, ' ').replace(/\s+/g, ' ').trim();
