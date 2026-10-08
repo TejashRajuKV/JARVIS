@@ -98,6 +98,17 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     check('Face greeting', 'status: not enrolled in a fresh install', (await get('/api/facegreet/status')).json.enrolled === false);
     check('Face greeting', 'enrolling needs exactly 128 numbers', (await post('/api/facegreet/enroll', { descriptor: [1, 2, 3] })).status === 400 && (await post('/api/facegreet/enroll', { descriptor: Array(128).fill('x') })).status === 400);
     check('Face greeting', 'a 128-number descriptor enrolls, then status shows it', (await post('/api/facegreet/enroll', { descriptor: Array.from({ length: 128 }, (_, i) => i / 128) })).json.enrolled === true && (await get('/api/facegreet/status')).json.enrolled === true);
+    // matching happens on the server; the stored fingerprint never leaves it
+    { const stored = Array.from({ length: 128 }, (_, i) => i / 128);
+      await del('/api/facegreet/enroll');   // (an earlier check enrolled one)
+      check('Face greeting', 'match: not enrolled → enrolled false, no match', (await post('/api/facegreet/match', { descriptor: stored })).json.enrolled === false);
+      await post('/api/facegreet/enroll', { descriptor: stored });
+      const same = (await post('/api/facegreet/match', { descriptor: stored.map(v => v + 0.001) })).json;
+      check('Face greeting', 'match: the same face (tiny difference) matches, with a distance', same.match === true && same.enrolled === true && same.distance < 0.5, same);
+      const other = (await post('/api/facegreet/match', { descriptor: stored.map(v => v + 0.2) })).json;
+      check('Face greeting', 'match: a different face (distance well over 0.5) does not match', other.match === false && other.distance > 0.5, other);
+      check('Face greeting', 'match: the answer never contains the stored descriptor', !/\[/.test(JSON.stringify(same)) && !('descriptor' in same));
+      check('Face greeting', 'match needs exactly 128 finite numbers', (await post('/api/facegreet/match', { descriptor: [1, 2] })).status === 400 && (await post('/api/facegreet/match', { descriptor: Array(128).fill(NaN) })).status === 400); }
     check('Face greeting', 'DELETE removes it', (await del('/api/facegreet/enroll')).json.enrolled === false && (await get('/api/facegreet/status')).json.enrolled === false);
     // app lock (applock.js; the full unlock ceremony is tests/applock.test.js)
     { const st = (await get('/api/lock/status')).json; check('App lock', 'off in a fresh install; reports whether Windows Hello is set up', st.enabled === false && st.active === false && st.locked === false && st.helloEnrolled === false, st); }

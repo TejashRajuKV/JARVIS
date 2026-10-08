@@ -18,7 +18,8 @@ const { check, done } = suite('ocr');
       check('Status', 'response has tesseract field', typeof r.json.tesseract === 'string', r.json.tesseract);
       check('Status', 'response has crossPlatform boolean', typeof r.json.crossPlatform === 'boolean', r.json.crossPlatform);
       // On the test server (Linux), winrt should be false.
-      check('Status', 'on Linux, winrt is false', r.json.winrt === false, r.json.winrt);
+      // (Windows OCR can only exist on Windows; on this Windows laptop it may legitimately be true)
+      check('Status', 'winrt is false everywhere except Windows', process.platform === 'win32' || r.json.winrt === false, r.json.winrt);
       check('Status', 'crossPlatform is true (Tesseract lazy-loads)', r.json.crossPlatform === true, r.json.crossPlatform);
     }
 

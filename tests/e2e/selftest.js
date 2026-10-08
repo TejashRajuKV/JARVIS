@@ -208,6 +208,14 @@
     r = await say('what is the latest node.js version');
     check('Decider', 'Online tools off + fresh facts → asks to turn it on (never stale memory silently)', /Online tools/.test(r.text) && /ENABLE ONLINE TOOLS/.test(r.text) && /ANSWER FROM MEMORY/.test(r.text), r.text);
     settings.online = was; }
+  // ---- greetings answer in kind: "good evening" gets an evening reply whatever the clock says
+  r = await say('good evening jarvis');
+  check('Greetings', '"good evening" gets an evening reply (not "Morning")', /\bevening\b/i.test(r.text) && !/\bmorning\b/i.test(r.text), r.text);
+  r = await say('good morning');
+  check('Greetings', '"good morning" gets a morning reply', /\bmorning\b/i.test(r.text), r.text);
+  r = await say('good afternoon');
+  check('Greetings', '"good afternoon" gets an afternoon reply', /\bafternoon\b/i.test(r.text), r.text);
+  check('Greetings', 'window.API is set (face greeting, Qwen assist and the port-watch switch build their addresses from it)', window.API === '/api', window.API);
   // ---- "save this file by creating a new folder called X": the code just written, as a real file — asked where first
   chatLog.push({ role: 'assistant', text: 'Here it is:\n```html\n<!DOCTYPE html>\n<html><body><h1>Calc</h1></body></html>\n```', t: Date.now() });
   r = await say('okay save this file by creating new folder called calc_site');

@@ -2386,6 +2386,18 @@ app.post('/api/facegreet/enroll', (req, res) => {
   console.log('[facegreet] descriptor enrolled (128 floats)');
   res.json({ success: true, enrolled: true });
 });
+// The comparison happens HERE: the stored descriptor never leaves the server (the status route only says "present").
+// The page sends what the camera sees right now; the answer is just match / distance.
+const FACE_MATCH_THRESHOLD = 0.5;   // Euclidean distance below this = the same person (same as face-greet.js)
+app.post('/api/facegreet/match', (req, res) => {
+  const d = req.body && req.body.descriptor, stored = config.faceGreet;
+  if (!Array.isArray(d) || d.length !== 128 || !d.every(v => typeof v === 'number' && isFinite(v))) return res.status(400).json({ error: 'descriptor must be an array of 128 numbers' });
+  if (!Array.isArray(stored) || stored.length !== 128) return res.json({ success: true, enrolled: false, match: false });
+  let sum = 0;
+  for (let i = 0; i < 128; i++) { const x = d[i] - stored[i]; sum += x * x; }
+  const distance = Math.sqrt(sum);
+  res.json({ success: true, enrolled: true, match: distance < FACE_MATCH_THRESHOLD, distance: Math.round(distance * 1000) / 1000 });
+});
 app.delete('/api/facegreet/enroll', (req, res) => {
   delete config.faceGreet;
   saveConfig();

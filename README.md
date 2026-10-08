@@ -72,7 +72,7 @@ Everything below works today. The phrases are examples you can type or say; the 
 **🗣 Talk to it**
 - **Type or speak.** Hold the mic or `Space`, or say the wake word ("Jarvis") hands-free — even while you're in another tab or app. Replies are shown, streamed and spoken (browser voices or neural voices).
 - **Three languages.** English, Telugu and Kannada — in their own script or typed in English letters ("volume penchu", "timer pettu"). Replies come back in your language.
-- **Two personalities.** JARVIS (calm, dry British wit) and FRIDAY (brisk, warm). It calls you sir / ma'am / boss / your name.
+- **Two personalities.** JARVIS (calm, dry British wit) and FRIDAY (brisk, warm). It calls you sir / ma'am / boss / your name. Greetings answer in kind — "good evening" gets an evening reply, plain "hi" follows the clock — and, if you switch it on, it can greet you by name when the camera sees you ([Looks, camera & extras](#looks-camera--extras-optional)).
 - **It copes with messy input.** Typos ("opn crome"), filler ("umm can you please… for me"), number words ("brightness to fifty"), mixed languages, and **misheard speech** ("front and" → frontend; "ugly loop folder" → your `AGRILOOP` folder; "b drive" → D drive).
 - **It asks instead of guessing.** A half-heard command gets **"Did you mean…?"**; a half-remembered folder name gets the closest real folders to choose from.
 - **It remembers.** Your name and facts ("remember that my exam is on Friday"), the whole conversation (rolling summary), and **what you were just doing** — "create a folder *there*", "open *it*", "open *the second one*", "in *the same project*", "and then list the files".
@@ -401,6 +401,21 @@ A coding mode with **its own conversation**, separate from the normal chat. Clic
 - **Global hotkey (Ctrl+Shift+J):** turn it on in Settings, select text in *any* app and press the hotkey — **Explain / Summarise / Rewrite / Translate / Fix code** or ask your own question. Your previous clipboard text is restored.
 - **Smart alerts:** low battery, very high RAM, deadline within 3 hours, leftover to-dos at 9 pm.
 - **Charger alerts:** JARVIS says when the charger is plugged in or unplugged (with the battery level) — no trigger needed; **Settings → Charger alerts** turns it off, and panic mode pauses it.
+
+### Looks, camera & extras (optional)
+
+Added in later versions; each has its own switch in **Settings → Behaviour** (or a header button). Nothing here changes what the commands do.
+
+- **Cinematic boot** *(on by default)* — an arc-reactor animation behind the boot screen. **Transitions** add small one-shot effects when JARVIS wakes, works or hits an error (all respect your "reduce motion" setting).
+- **Holographic HUD** *(off)* — floating translucent panels (clock, system stats…); the **HUD** button in the header toggles it. **Esc** closes the overlay.
+- **DIAG dashboard** — the **DIAG** header button opens an animated diagnostics overlay with live sparklines: CPU, RAM, network, top processes, and (with the optional `systeminformation` package: `npm install`) CPU temperature, GPU and battery details.
+- **Qwen NLU assist** *(off)* — when the rules aren't sure what you meant, ask the local Qwen model to read the command. It may only choose from a fixed list of known commands, and if it fails or is less sure than the rules, the rules' answer stands. (`POST /api/nlu/parse`.)
+- **Face recognition greeting** *(off)* — one webcam snapshot when JARVIS goes idle; if it's you, "Welcome back, sir. Good evening." (at most every 5 minutes). Switch it on in Settings and look at the camera for the 3-sample enrollment. Only a 128-number face fingerprint is kept (in `~/jarvis/.config.json`, never an image), and the **comparison is done by the server**, so the stored fingerprint never leaves it. *The face model (`face-api.js`) is downloaded from a public CDN the first time you switch it on — so it needs the internet once.*
+- **Hand gestures** *(off)* — UI-only, never commands: open palm toggles listening, pinch dismisses a card, swipes scroll the chat, thumbs-up answers *yes* to an approval card, a fist stops speech. *Loads MediaPipe from a public CDN on first use.*
+- **Pattern learning** — notices habits locally ("you open VS Code every morning — run it automatically?") from app-open and command frequency per hour and battery / RAM baselines; no chat text, file contents or window titles.
+- **Port-scan watch** — checks the listening ports every 60 s and alerts when a **new** one appears (an unexpected server, or something phoning home). Switch in Settings.
+- **Better OCR** — `/api/ocr/image` reads text from any image (Windows OCR when it's a screen capture, Tesseract as the fallback, loaded only when needed).
+- **Central thresholds** (`thresholds.js`) — low-battery, high-RAM, deadline window and similar alert levels live in one place and can be overridden in Settings.
 
 ### Phone — alerts and commands
 
@@ -821,6 +836,8 @@ When **Settings → Show how I understood you** is on (or you ask "how did you u
 | `skills.js`, `skills-page.js` | Website generator (any folder, or a project's frontend), UI design prompt (TCREI), DSA coach, viva practice, code fixer (server + chat side) |
 | `backup.js` | Export/import, encryption of secrets, snapshots |
 | `hello.js` | Windows Hello (WebAuthn) approvals |
+| `thresholds.js`, `boot-cinema.js/.css`, `transitions.js/.css`, `hud-overlay.js/.css`, `dashboard.js/.css`, `learn.js`, `nlu-qwen.js`, `face-greet.js`, `gesture.js` | Optional extras (see *Looks, camera & extras*): central alert thresholds, boot animation, state-change effects, HUD overlay, DIAG dashboard, pattern learning, Qwen NLU assist, face greeting (server-side match), hand gestures |
+| `portwatch.js`, `ocr.js` | Server modules: new-listening-port watcher · OCR from any image (Windows OCR with a Tesseract fallback) |
 | `applock.js`, `lock.html`, `lock-client.js` | The app lock: the server gate that keeps JARVIS closed until Windows Hello is verified · the standalone lock page · the page's side (reload when locked, activity pings for the auto-lock) |
 | `autostart.js` | "Start with Windows": creates/removes the Startup link |
 | `phoneauth.js` | Authenticator codes (TOTP) for phone commands |
@@ -868,7 +885,7 @@ Opt-in checks on the real laptop — sets volume and brightness and opens/closes
 npm run test:live
 ```
 
-33 suites check every feature, not just the phrases:
+43 suites check every feature, not just the phrases:
 
 | Suite | Checks | What it covers |
 |---|---|---|
@@ -889,6 +906,7 @@ npm run test:live
 | `skills.test.js` | 38 | Page generation safety, coach, viva grading, code fixer |
 | `hello.test.js` | 31 | Windows Hello verification and guarded routes |
 | `applock.test.js` | 54 | The app lock on a real server with a software-signed Windows Hello key: every way round the gate (path spellings, forged / replayed / wrong-purpose signatures, other ports' cookies), unlock, lock now, turning it off, idle expiry on a fake clock, the no-lock-out guarantee |
+| `thresholds` · `facegreet` · `gesture` · `learn` · `ocr` · `portwatch` · `transitions` · `dashboard` | 56 · 33 · 22 · 26 · 15 · 18 · 18 · — | The optional extras: alert thresholds, face-greeting routes (enroll, validation, server-side match) and module, gesture recognition logic, pattern learning, OCR routes, the port watcher, transition effects, the dashboard endpoint (the dashboard suite needs the optional `systeminformation` package — `npm install` — and fails without it) |
 | `triggers.test.js` | 35 | Trigger parsing, edges, cooldowns, charger announcements |
 | `rag.test.js` | 28 | File search with page numbers, hybrid + semantic fusion, .docx/.pptx/.xlsx |
 | `doctext.test.js` | 26 | Office file text extraction (zero dependencies) |

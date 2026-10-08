@@ -327,6 +327,9 @@ const micBtn = $('#micBtn'), wakeBtn = $('#wakeBtn'), chatInput = $('#chatInput'
 const messages = $('#messages'), logBox = $('#logStream'), memoryList = $('#memoryList'), timerChips = $('#timerChips');
 const bgCanvas = $('#bgCanvas'), waveCanvas = $('#waveCanvas');
 const API = location.protocol.startsWith('http') ? '/api' : 'http://localhost:3000/api';
+// face-greet.js, nlu-qwen.js and the port-watch switch build their addresses from window.API — a plain `const` is not
+// a window property, so without this they all called "/facegreet/…", "/nlu/parse", "/portwatch/…" (404).
+window.API = API;
 
 /* ============ log / toast / sfx ============ */
 let logN = 0;
@@ -1601,7 +1604,9 @@ function conversationReply(p) {
       let extra = '';
       if (due.length) extra = ' A reminder: **' + due[0].title + '** is due ' + dueLabel(due[0].due) + '.';
       else if (next && next.at - Date.now() < 3 * 36e5) extra = ' Your next class, **' + next.c.name + '**, is at ' + fmtTime(next.at) + '.';
-      return { text: Persona.greeting(h) + extra + (extra || Math.random() < .5 ? ' How may I help?' : '') };
+      // "good evening" gets an evening reply whatever the clock says; plain "hi" uses the time of day
+      const said = (String(p.original || '').toLowerCase().match(/good\s+(morning|afternoon|evening)/) || [])[1];
+      return { text: (said ? Persona.say(said) : Persona.greeting(h)) + extra + (extra || Math.random() < .5 ? ' How may I help?' : '') };
     }
     case 'HOW_ARE_YOU': return { text: Persona.say('howareyou', { cpu: sys.cpu }), noLocalize: true };
     case 'IDENTITY': {

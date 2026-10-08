@@ -178,15 +178,17 @@ window.FaceGreet = (function () {
   async function onIdle() {
     if (!enabled || !enrolled || detecting) return;
     try {
-      const enrolledDesc = await loadEnrolled();
-      if (!enrolledDesc) return;
       const detection = await detectOnce();
       if (!detection) return;  // no face found — no greeting
-      const dist = euclideanDistance(detection.descriptor, new Float32Array(enrolledDesc));
-      if (typeof log === 'function') log('info', 'face match distance: ' + dist.toFixed(3));
-      if (dist < MATCH_THRESHOLD) {
-        greet();
-      }
+      // The server compares it with the enrolled fingerprint (which never leaves the server) and answers match / distance.
+      const r = await fetch((window.API || '') + '/facegreet/match', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descriptor: Array.from(detection.descriptor) }),
+      });
+      const m = await r.json();
+      if (!m || !m.enrolled) return;
+      if (typeof log === 'function') log('info', 'face match distance: ' + Number(m.distance).toFixed(3));
+      if (m.match) greet();
     } catch (e) {
       // Silent — don't bother the user with detection failures
     }
