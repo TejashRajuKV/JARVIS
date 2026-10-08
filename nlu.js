@@ -725,6 +725,8 @@ const NLU = (() => {
 
     // system power
     ['SYS_CANCEL_SHUTDOWN', /\b(cancel|abort|stop|don'?t)\b.*\b(shut ?down|restart|reboot)\b/, .97, 'cancelShutdown'],
+    // "lock yourself" / "lock the app": JARVIS's own lock (applock.js) — not the Windows screen
+    ['LOCK_JARVIS', /^(?:lock|secure)(?: up| down)? (?:yourself|the app|this app|the assistant|your app)(?: now)?$/, .97, 'lockJarvis'],
     ['SYS_LOCK', /\block\b.*\b(screen|system|computer|pc|laptop|it|workstation)\b|^lock( up)?$/, .96, 'lockSystem'],
     ['SYS_SLEEP', /\bput (the |my )?(computer|laptop|pc|system) to sleep\b|\b(sleep|hibernate|suspend)\b.*\b(computer|system|pc|laptop|mode)\b|^(go to sleep|sleep)$/, .94, 'sleepSystem'],
     ['SYS_SHUTDOWN', /\b(shut ?down|power off|turn off|switch off)\b.*\b(computer|system|pc|laptop|machine)\b|^shut ?down$/, .95, 'shutdownSystem'],
@@ -874,6 +876,10 @@ const NLU = (() => {
     // "hi jarvis" / "good morning jarvis": the wake word was stripped, so recover the greeting from the raw text.
     const rawGreet = String(norm.original || '').toLowerCase().replace(/[.!,?]+/g, ' ').replace(/\s+/g, ' ').trim();
     if (new RegExp(`^(hi|hello|hey|yo|hii+|hola|namaste|sup|good (morning|afternoon|evening))( there)? ${esc(norm.wake || 'jarvis')}$`).test(rawGreet)) return { intent: 'GREETING', confidence: .97, tool: null, args: {}, text: rawGreet };
+    // "lock jarvis": the wake word was stripped ("lock jarvis" → "lock" → lock the WINDOWS screen), so read the raw text.
+    // Locks JARVIS itself (the app lock, Settings → Data); "lock the screen" / "lock my laptop" still lock Windows.
+    if (new RegExp(`^(?:please )?(?:lock|secure)(?: up| down)? (?:${esc(norm.wake || 'jarvis')}|jarvis|friday|yourself|the app|this app|the assistant|your app)(?: now)?$`).test(rawGreet))
+      return { intent: 'LOCK_JARVIS', confidence: .97, tool: 'lockJarvis', args: {}, text: 'lock jarvis' };
     let s = norm.text;
     ctx = ctx || {};
     // ---- Negation rewriting (Strengthening) ----

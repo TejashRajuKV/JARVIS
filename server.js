@@ -39,6 +39,11 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '3mb' }));
+// App lock (applock.js): while it is on and not unlocked, every /api request is refused and the page is replaced by a
+// standalone lock page. Mounted before the static files so even index.html is held back. Needs a Windows Hello key.
+let helloApi = null;
+const appLock = require('./applock')({ getConfig: () => config, saveConfig: () => saveConfig(), getHello: () => helloApi, PORT, rootDir: __dirname });
+app.use(appLock.gate);
 // no-cache = the browser re-checks each file on load (a cheap 304 when unchanged), so an updated JARVIS is never
 // run with yesterday's scripts still cached.
 app.use(express.static(__dirname, { index: 'index.html', dotfiles: 'ignore', setHeaders: res => res.setHeader('Cache-Control', 'no-cache') }));
@@ -66,7 +71,8 @@ llm.routes(app);
 
 // Windows Hello approvals (hello.js). Mounted before every route so its guard sees shutdown/delete/wipe first.
 // Stored in .config.json, not appState, so a /api/state write can't turn it off.
-require('./hello')(app, { getConfig: () => config, saveConfig, ALLOWED_ORIGINS });
+helloApi = require('./hello')(app, { getConfig: () => config, saveConfig, ALLOWED_ORIGINS });
+appLock.routes(app);   // after hello's guard, so turning the lock on/off needs a fresh Windows Hello approval
 
 /* ---------------- phone access over Tailscale ---------------- */
 // `tailscale serve` publishes this port as https://<laptop>.<tailnet>.ts.net to the user's own devices only,

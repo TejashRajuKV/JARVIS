@@ -312,6 +312,9 @@
       <div class="s-note" style="margin-bottom:12px">Chat, memory, tasks &amp; settings are saved on this PC (<em>~/jarvis/.jarvis-state.json</em>), shared by every browser you open JARVIS in. Files live in <em id="sandboxNote">~/jarvis</em>. Nothing is sent to the cloud unless Online tools, Online translation or Neural voice is on.</div>
       <div class="s-row"><label>Require Windows Hello<small>FINGERPRINT · FACE · PIN FOR SHUTDOWN, RESTART, SLEEP &amp; DELETING</small></label><button class="switch" id="helloToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-note" id="helloNote" hidden></div>
+      <div class="s-row"><label>Lock JARVIS<small>OPENS ONLY AFTER WINDOWS HELLO · FINGERPRINT, FACE OR YOUR WINDOWS HELLO PIN</small></label><button class="switch" id="appLockToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-row" id="appLockOpts" hidden><label>Auto-lock<small>WHEN YOU HAVEN'T USED JARVIS FOR A WHILE</small></label><select id="appLockIdle"><option value="0">NEVER</option><option value="5">AFTER 5 MIN</option><option value="15">AFTER 15 MIN</option><option value="30">AFTER 30 MIN</option><option value="60">AFTER 1 HOUR</option></select><button class="btn" id="appLockNow" type="button">LOCK NOW</button></div>
+      <div class="s-note" id="appLockNote" hidden></div>
       <div class="s-row"><label>Start with Windows<small>JARVIS RUNS QUIETLY IN THE BACKGROUND AFTER EVERY REBOOT</small></label><button class="switch" id="autostartToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-note" id="autostartNote" style="margin:-4px 0 12px"></div>
       <div class="s-row"><label>Stop JARVIS<small>ENDS THE BACKGROUND SERVER · THE DESKTOP ICON STARTS IT AGAIN</small></label><button class="btn danger" id="quitBtn">STOP</button></div>
@@ -331,6 +334,7 @@
   <div id="toasts"></div>
 
   <script src="api/state.js"></script>
+  <script src="lock-client.js"></script>
   <script src="thresholds.js"></script>
   <script src="speechfix.js"></script>
   <script src="places.js"></script>

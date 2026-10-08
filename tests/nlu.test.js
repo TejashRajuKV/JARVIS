@@ -23,6 +23,9 @@ const CASES = [
   ['save that code as bfs.py', 'SAVE_CODE'], ['run bfs.py', 'RUN_FILE'], ['open it in vs code', 'OPEN_IN_EDITOR'], ['upcoming contests', 'CONTESTS'],
   ['make flashcards on normalization', 'FLASH_MAKE'], ['plan my day', 'PLAN_DAY'], ['block distractions', 'BLOCK_DISTRACTIONS'],
   ['HI JARVIS ARE YOU THERE', 'PRESENCE'], ['jarvis?', 'PRESENCE'], ['good job', 'PRAISE'], ["i'm home", 'HOME'], ['thanks jarvis', 'THANKS'],
+  // "lock jarvis" is JARVIS's own lock; the Windows screen lock keeps its phrases
+  ['lock jarvis', 'LOCK_JARVIS'], ['lock yourself', 'LOCK_JARVIS'], ['lock the app', 'LOCK_JARVIS'], ['secure jarvis', 'LOCK_JARVIS'],
+  ['lock the screen', 'SYS_LOCK'], ['lock my laptop', 'SYS_LOCK'], ['lock', 'SYS_LOCK'], ['lock it', 'SYS_LOCK'],
   // routines
   ['create a routine called exam prep: open vs code, open leetcode, start a 45 minute focus session', 'ROUTINE_CREATE'],
   ['make a routine called gaming that opens steam and discord', 'ROUTINE_CREATE'],

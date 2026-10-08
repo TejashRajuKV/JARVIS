@@ -38,7 +38,7 @@ const NOT_TESTABLE = {
 
 // Every route declared in the server files, as "METHOD /path" with :params, for the gate.
 const ROUTE_FILES = ['server.js', 'system-tools.js', 'agent-tools.js', 'rag.js', 'skills.js', 'scheduler.js', 'backup.js', 'codetools.js',
-  'hotkey.js', 'hello.js', 'llm.js', 'update.js', 'tts.js', 'autostart.js', 'wakeword.js'];
+  'hotkey.js', 'hello.js', 'applock.js', 'llm.js', 'update.js', 'tts.js', 'autostart.js', 'wakeword.js'];
 const ROUTES = [];
 for (const f of ROUTE_FILES) {
   const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -91,6 +91,20 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     check('Files', 'the laptop file index stays off in tests', (await get('/api/fileIndex/status')).json.ready === false);
     check('Files', 'counting folders before the index is built says so (no made-up number)', (await post('/api/tool/folderStats', { scope: 'my laptop' })).json.indexing === true);
     check('Files', '"did you mean" needs a name', (await post('/api/tool/similar', {})).status === 400);
+    // routes added by the Qwen-assist / dashboard / face-greeting commits
+    check('NLU assist', 'POST /api/nlu/parse needs text', (await post('/api/nlu/parse', {})).status === 400);
+    check('NLU assist', 'with the AI offline it fails cleanly (the page keeps the rule engine answer)', (await post('/api/nlu/parse', { text: 'open chrome' })).status >= 400);
+    { const d = await get('/api/sys/dashboard'); check('Dashboard', 'GET /api/sys/dashboard answers (or says the optional package is missing)', d.status === 200 && d.json.success === true, d.text.slice(0, 160)); }
+    check('Face greeting', 'status: not enrolled in a fresh install', (await get('/api/facegreet/status')).json.enrolled === false);
+    check('Face greeting', 'enrolling needs exactly 128 numbers', (await post('/api/facegreet/enroll', { descriptor: [1, 2, 3] })).status === 400 && (await post('/api/facegreet/enroll', { descriptor: Array(128).fill('x') })).status === 400);
+    check('Face greeting', 'a 128-number descriptor enrolls, then status shows it', (await post('/api/facegreet/enroll', { descriptor: Array.from({ length: 128 }, (_, i) => i / 128) })).json.enrolled === true && (await get('/api/facegreet/status')).json.enrolled === true);
+    check('Face greeting', 'DELETE removes it', (await del('/api/facegreet/enroll')).json.enrolled === false && (await get('/api/facegreet/status')).json.enrolled === false);
+    // app lock (applock.js; the full unlock ceremony is tests/applock.test.js)
+    { const st = (await get('/api/lock/status')).json; check('App lock', 'off in a fresh install; reports whether Windows Hello is set up', st.enabled === false && st.active === false && st.locked === false && st.helloEnrolled === false, st); }
+    check('App lock', 'cannot be turned on without Windows Hello (nothing to unlock with)', (await post('/api/lock/enable', { idleMin: 15 })).status === 400);
+    check('App lock', 'unlock while the lock is off is harmless', (await post('/api/lock/unlock', {})).json.unlocked === true);
+    check('App lock', 'ping and lock-now answer even when the lock is off', (await post('/api/lock/ping', {})).status === 200 && (await post('/api/lock/lock', {})).status === 200);
+    check('App lock', 'disable is a no-op when it was never on', (await post('/api/lock/disable', {})).json.enabled === false);
     { const v = await post('/api/tool/toolVersion', { tool: 'node' }); check('Laptop', 'the Node.js version installed here (what JARVIS runs on)', v.json.found === true && v.json.version === process.version.slice(1), v.text); }
     check('Laptop', 'version checks only for a fixed list of tools', (await post('/api/tool/toolVersion', { tool: 'rm -rf' })).status === 400);
     { const r = await post('/api/tool/recentFiles', {}); check('Files', 'newest files in ~/jarvis, newest first', r.status === 200 && Array.isArray(r.json.files) && r.json.files.every((f, i, a) => !i || a[i - 1].modified >= f.modified), r.text); }

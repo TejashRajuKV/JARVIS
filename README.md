@@ -128,6 +128,7 @@ Everything below works today. The phrases are examples you can type or say; the 
 
 **🔐 Safe, private, yours**
 - A **server-side permission list** (never the AI) decides what runs; risky things ask first; the most dangerous can require **Windows Hello**; Windows, Program Files and AppData are never touched.
+- **App lock:** switch on *Lock JARVIS* and it opens only after **Windows Hello** (fingerprint, face or your Windows Hello PIN); it re-locks when idle, on "lock jarvis", and at every restart.
 - Runs on `127.0.0.1` only. With a local model nothing leaves the laptop; cloud models, online translation and neural voices are opt-in.
 - Encrypted backups, daily snapshots, a restorable trash, and one shared copy of your data in `~/jarvis`.
 
@@ -470,6 +471,7 @@ Open **SETTINGS** (top right).
 | **Backup & restore** | Export · Import · Include my API keys · snapshots | See [Undo, backup & your data](#undo-backup--your-data). |
 | **Project folders** | Add/remove folders | Used for preparing environments, starting backends and frontends, git, and searching your notes. JARVIS can open files anywhere without adding them here. |
 | **Data** | Require Windows Hello | Fingerprint/face/PIN for shutdown, restart, sleep, deleting files, clearing the sandbox, erasing data and importing backups. |
+| | **Lock JARVIS** · Auto-lock · LOCK NOW | Opens JARVIS only after Windows Hello (needs *Require Windows Hello* first). Auto-lock after Never / 5 / 15 / 30 / 60 min idle. Turning it on/off needs a Windows Hello approval. Say "lock jarvis" to lock now. |
 | | Erase all local data | Clears the shared data (a snapshot is taken first). |
 | | Start with Windows · Stop JARVIS | Run JARVIS in the background at every sign-in; end the background server. |
 | | Updates · Check | Compares your version with the latest GitHub release — only when you click, and only if Online tools is on. |
@@ -484,6 +486,7 @@ Open **SETTINGS** (top right).
 - **The update check is click-to-run** (Settings → Data → Updates): GitHub is asked only then, and only while Online tools is on.
 - **The server decides what's allowed, never the AI.** Every tool has an argument schema and a permission tier: *safe* (runs), *confirm* (asks first with the reason), *explicit* (its own confirmation every time, never in routines), or refused. Invented tools, `../` paths, "volume 999", shell commands — rejected before anything runs.
 - **Windows Hello approvals** (optional): the server itself verifies a fresh signed challenge from your fingerprint/face/PIN before shutdown, restart, sleep, deleting files, clearing the sandbox, erasing data or importing a backup.
+- **App lock (optional): JARVIS opens only after Windows Hello.** Settings → Data → **Lock JARVIS**. While locked, the *server* refuses every `/api` request (your chat, memory, tasks and every tool) and shows a standalone **lock page** instead of the app — the app's code doesn't even load, so it isn't just a cover over the page. Unlocking is a signed **Windows Hello** check (fingerprint, face, or your **Windows Hello PIN** — the PIN you use to sign in to Windows) verified by the server, the same mechanism as the shutdown/delete approvals. JARVIS can't read or check your Windows account *password* itself; Windows Hello is how a web app asks Windows to confirm it's you. It locks again after the chosen idle time (Never / 5 / 15 / 30 / 60 min), on **"lock jarvis"** / **LOCK NOW**, and whenever JARVIS restarts. Turning the lock on or off needs a fresh Windows Hello approval. Unlocking works **at the laptop only** (Windows Hello is localhost-only), so the phone/Tailscale page stays locked. Reminders, triggers and phone alerts keep running in the background while locked. It needs "Require Windows Hello" to be set up first, and it can never lock you out: if the Windows Hello key is removed from `~/jarvis/.config.json` (the documented recovery), the lock simply stands down.
 - **Three access zones for files.** *Home* (`~/jarvis`): free to use. *Laptop* (everywhere else): JARVIS can open and read, but **any change asks ALLOW / CANCEL first**, and phone commands or unattended routines can never approve one. *Blocked*: Windows, Program Files, ProgramData, your whole AppData, key folders (`.ssh`, `.aws`, …), the Recycle Bin, JARVIS's own config and its program folder — refused even if you click ALLOW. Deletes go to `~/jarvis/.trash` (also across drives) and JARVIS keeps the previous version of anything it overwrites, so "undo" works.
 - **No shell injection:** apps open by exact Windows IDs, prompts to coding agents are passed as data (stdin or an encoded literal), never as shell text.
 - **Secrets stay put:** API keys and the phone key live in `~/jarvis/.config.json`, are shown only masked, can't be read through JARVIS's own file tools, and are included in backups only when you choose (encrypted with your password).
@@ -773,6 +776,28 @@ When **Settings → Show how I understood you** is on (or you ask "how did you u
 
 **A new kind of place:** add the word to a group in `places.js`. **A new decision route:** `Decider.decide` branch + `LABEL` + a branch in `handleUser` + `decider.test.js`.
 
+### 11.15 App lock — `applock.js`, `lock.html`, `lock-client.js`
+
+```
+ browser ──► GET /  ──► gate (applock.js, mounted BEFORE the static files and every route)
+                         │
+        unlocked? ───────┤  yes: no lock set up, or a valid session cookie ─► the normal app
+        (lock on + a Hello key + a live session cookie)
+                         │  no:   GET /  →  lock.html (standalone: no app code loads)
+                         │        /api/* →  401 { locked: true }   (except the few routes needed to unlock)
+                         ▼
+   lock.html ─► POST /api/hello/challenge {purpose:"unlock"} ─► navigator.credentials.get() ─► Windows Hello
+             ─► POST /api/lock/unlock {signed assertion} ─► hello.js verifyChallenge() ─► Set-Cookie jarvis_session_<port>
+             ─► reload ─► the real app
+```
+- **The gate** (`applock.js` `gate`) runs first. It is active only when `config.appLock.enabled` **and** a Windows Hello key exists (so removing the Hello key can never lock you out). A request passes with a valid session cookie. Otherwise `GET /` and `/index.html` get `lock.html`, anything under `/api` is `401 { locked: true }` (paths are normalised like Express routes them — `/API/STATE.JS`, `/api//state.js`, `/api/state.js/` are all refused), and only `GET /api/health`, `GET /api/lock/status`, `GET /api/hello/status`, `POST /api/hello/challenge` and `POST /api/lock/unlock` stay reachable. App scripts, styles and images are not data, so they're still served.
+- **Unlocking reuses the existing Windows Hello code.** `hello.js` exposes `verifyChallenge(body, purpose)` (a single-use challenge, a signature checked against the enrolled key, `userVerification` required, origin and relying party pinned to `localhost`); `/api/hello/verify` and `/api/lock/unlock` both call it. An approval for another purpose (say, shutdown) can't be used to unlock. Failed attempts are rate-limited (8 per minute).
+- **Sessions** are random 256-bit tokens kept **in memory only** (`Map` in `applock.js`), sent as an `HttpOnly; SameSite=Strict` cookie named for the port. A server restart clears them — JARVIS is locked after every start.
+- **Auto-lock:** the page (`lock-client.js`) pings `POST /api/lock/ping` on real use (typing, clicking, a spoken command — throttled to once per 20 s); background polling does not count. A session idle longer than the chosen time is dropped; the page notices (status check every 30 s, or any `401`) and reloads into the lock page. `lock-client.js` also wraps `fetch` so any `401 { locked: true }` reloads.
+- **Turning it on/off** (`POST /api/lock/enable` / `disable`) is a *guarded* route in `hello.js` (purpose `lock`): it needs a fresh Windows Hello approval token, like shutdown and delete. Enabling also signs the person who enabled it in.
+- **"lock jarvis" / "lock yourself" / "lock the app"** → intent `LOCK_JARVIS` (`nlu.js`); it reads the raw text because the wake word is stripped ("lock jarvis" would otherwise become "lock", the *Windows* screen lock). "lock the screen" / "lock my laptop" still lock Windows.
+- **Debug:** `GET /api/lock/status` (`enabled`, `active`, `locked`, `idleMin`, `helloEnrolled`); a locked page's Network tab shows `401 { locked: true }`; `tests/applock.test.js` (54 checks: path tricks, forged and replayed signatures, wrong-purpose approvals, idle expiry with a fake clock, no-lock-out). **Locked out of everything?** Stop JARVIS, remove the `"appLock"` (and/or `"hello"`) entry from `~/jarvis/.config.json`, start again.
+
 ---
 
 ## 12. Project structure
@@ -796,6 +821,7 @@ When **Settings → Show how I understood you** is on (or you ask "how did you u
 | `skills.js`, `skills-page.js` | Website generator (any folder, or a project's frontend), UI design prompt (TCREI), DSA coach, viva practice, code fixer (server + chat side) |
 | `backup.js` | Export/import, encryption of secrets, snapshots |
 | `hello.js` | Windows Hello (WebAuthn) approvals |
+| `applock.js`, `lock.html`, `lock-client.js` | The app lock: the server gate that keeps JARVIS closed until Windows Hello is verified · the standalone lock page · the page's side (reload when locked, activity pings for the auto-lock) |
 | `autostart.js` | "Start with Windows": creates/removes the Startup link |
 | `phoneauth.js` | Authenticator codes (TOTP) for phone commands |
 | `hotkey.js` | Global Ctrl+Shift+J helper |
@@ -862,6 +888,7 @@ npm run test:live
 | `backup.test.js` | 44 | Export/import, encryption, hostile files, snapshots |
 | `skills.test.js` | 38 | Page generation safety, coach, viva grading, code fixer |
 | `hello.test.js` | 31 | Windows Hello verification and guarded routes |
+| `applock.test.js` | 54 | The app lock on a real server with a software-signed Windows Hello key: every way round the gate (path spellings, forged / replayed / wrong-purpose signatures, other ports' cookies), unlock, lock now, turning it off, idle expiry on a fake clock, the no-lock-out guarantee |
 | `triggers.test.js` | 35 | Trigger parsing, edges, cooldowns, charger announcements |
 | `rag.test.js` | 28 | File search with page numbers, hybrid + semantic fusion, .docx/.pptx/.xlsx |
 | `doctext.test.js` | 26 | Office file text extraction (zero dependencies) |
@@ -978,6 +1005,8 @@ node -e "const D=require('./decider.js'); console.log(D.decide(D.signals('neares
 
 **Phone commands say "JARVIS isn't open".** Commands run in the page — keep a JARVIS tab open on the laptop. (Questions work without it.)
 
+**JARVIS opens a lock page and Windows Hello won't verify (or I turned the lock on and lost access).** The lock needs the Windows Hello key JARVIS enrolled. Stop JARVIS (`Stop JARVIS.bat`), open `~/jarvis/.config.json`, delete the `"appLock"` entry (and the `"hello"` entry too if Windows Hello itself is the problem — the lock then stands down on its own), and start JARVIS again. Unlocking works at the laptop only: open `http://localhost:PORT` (not `127.0.0.1`, not the phone/Tailscale address) in Chrome or Edge.
+
 **Windows Hello stopped working after I changed my PIN/fingerprint.** Stop JARVIS, delete the `"hello"` entry from `~/jarvis/.config.json`, start again.
 
 **"I can't find the folder".** JARVIS searches Desktop, Documents, Downloads, your home folder and other drives by name, so check the spelling first. If a coding AI must work in that folder, add it in **Settings → Project folders** or answer **ALLOW & CONTINUE**.
@@ -1014,6 +1043,7 @@ node -e "const D=require('./decider.js'); console.log(D.decide(D.signals('neares
 - The PWA install (own window, offline shell) needs Chrome or Edge; everything that acts on your PC still runs through the local server.
 - Automatic repair of dev servers covers missing dependencies and a stale port held by JARVIS's own earlier run; other crashes are diagnosed, not fixed. ROLLBACK only reverses actions JARVIS knows how to undo, within 30 minutes.
 - Coding-AI hand-off depends on each tool's own command line; desktop apps without one (OpenCode) need a manual paste.
+- The app lock unlocks at the laptop only (Windows Hello is localhost-only), so the phone/Tailscale page can't be unlocked while it is on; and JARVIS can't check your Windows account *password* — Windows Hello (your fingerprint, face or Windows Hello PIN) is the lock's key.
 - Screen OCR is English only.
 
 ---

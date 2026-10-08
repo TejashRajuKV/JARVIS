@@ -2819,6 +2819,15 @@ async function executeTool(p, raw) {
     }
 
     /* ---- power ---- */
+    case 'LOCK_JARVIS': {   // "lock jarvis" / "lock yourself": JARVIS's own lock (not the Windows screen)
+      const st = await getJSON('/lock/status');
+      if (!st.active) return { text: st.enabled ? 'The lock needs Windows Hello, ' + Persona.sir() + ' — turn on **Settings → Data → Require Windows Hello** first.'
+        : 'The app lock is off, ' + Persona.sir() + '. Turn on **Settings → Data → Lock JARVIS** and JARVIS will open only after Windows Hello.', tool: 'lockJarvis' };
+      toolStep('lockJarvis');
+      await callTool('/lock/lock');
+      setTimeout(() => location.reload(), 900);   // the server now serves the lock page
+      return { text: 'Locking JARVIS. Windows Hello will open it again.', speak: 'Locked.', tool: 'lockJarvis' };
+    }
     case 'SYS_LOCK': toolStep('lockSystem'); await callTool('/tool/lockSystem'); return { text: 'Locking your screen.', tool: 'lockSystem' };
     case 'SYS_SLEEP':
       return confirmPower('Put the computer to sleep now?', 'YES — SLEEP', () => withHello('power', async tok => { toolStep('sleepSystem'); const r = await callTool('/tool/sleepSystem', {}, tok); jarvisSay(r.error ? { text: cap(r.error) + '.', intent: 'SYS_SLEEP' } : { text: 'Goodnight.', intent: 'SYS_SLEEP' }); }));
@@ -4576,6 +4585,7 @@ async function loadVoiceVocab() {
 setTimeout(loadVoiceVocab, 20000); setInterval(loadVoiceVocab, 10 * 60 * 1000);   // after the laptop list is built; then every 10 min
 async function handleUser(text, source) {
   text = (text || '').trim(); if (!text) return;
+  if (typeof window.__lockPing === 'function') window.__lockPing();   // spoken commands count as "still here" for the auto-lock
   const rawHeard = text;   // for the inspector: what the mic gave us, before repairs
   // Spoken English: repair words the recogniser mishears ("front and" → frontend) before anything reads it.
   if ((source === 'voice' || source === 'wake') && typeof SpeechFix !== 'undefined' && Lang.detect(text) === 'en') {
@@ -5849,6 +5859,42 @@ $('#helloToggle').addEventListener('click', async () => {
   renderHelloToggle();
 });
 renderHelloToggle();
+
+/* ---- App lock (applock.js): JARVIS opens only after Windows Hello ---- */
+async function renderAppLock() {
+  const st = await getJSON('/lock/status');
+  if (st.error) return;
+  const on = $('#appLockToggle'), opts = $('#appLockOpts'), note = $('#appLockNote');
+  on.classList.toggle('on', !!st.enabled); on.setAttribute('aria-checked', String(!!st.enabled));
+  opts.hidden = !st.enabled; $('#appLockIdle').value = String(st.enabled ? st.idleMin || 0 : 15);
+  const why = !st.helloEnrolled ? 'Turn on “Require Windows Hello” above first — the lock opens with it.'
+    : st.enabled ? 'On: JARVIS asks for Windows Hello every time it opens' + (st.idleMin ? ', and after ' + st.idleMin + ' minutes of no use' : '') + '. Reminders and phone alerts keep working while it’s locked. It can only be unlocked at the laptop — Windows Hello works there only.' : '';
+  note.hidden = !why; note.textContent = why;
+  if (typeof window.__lockSetActive === 'function') window.__lockSetActive(st.active);
+}
+// Turning the lock on / off / changing the auto-lock time always needs a fresh Windows Hello approval.
+async function setAppLock(enable, idleMin) {
+  const token = await Hello.approve('lock');
+  if (!token) { toast('Windows Hello wasn’t verified — nothing changed', true); return false; }
+  const r = enable ? await callTool('/lock/enable', { idleMin }, token) : await callTool('/lock/disable', {}, token);
+  if (r.error) { toast(r.error, true); return false; }
+  return true;
+}
+$('#appLockToggle').addEventListener('click', async () => {
+  sfx.key();
+  const st = await getJSON('/lock/status');
+  if (st.enabled) { if (await setAppLock(false)) toast('Lock off — JARVIS opens without Windows Hello'); }
+  else if (!st.helloEnrolled) toast('Turn on “Require Windows Hello” first — the lock opens with it', true);
+  else if (await setAppLock(true, Number($('#appLockIdle').value))) toast('Lock on — JARVIS will ask for Windows Hello each time it opens');
+  renderAppLock();
+});
+$('#appLockIdle').addEventListener('change', async e => {
+  const st = await getJSON('/lock/status');
+  if (st.enabled && await setAppLock(true, Number(e.target.value))) toast('Auto-lock updated');
+  renderAppLock();
+});
+$('#appLockNow').addEventListener('click', async () => { await callTool('/lock/lock'); location.reload(); });
+renderAppLock();
 $('#wipeBtn').addEventListener('click', () => {
   if (!confirm('Erase all JARVIS data (settings, chat, memory, tasks)? This is shared, so it clears it for every browser. Files in ~/jarvis are kept.')) return;
   withHello('wipe', async tok => {

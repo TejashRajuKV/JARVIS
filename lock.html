@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS — Locked</title>
+<meta name="theme-color" content="#06090c">
+<style>
+  :root { --bg: #06090c; --ink: #e8f6fb; --dim: #8fa6b2; --cyan: #5fd4ff; --rule: #1b2a33; --bad: #ff7a7a; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: radial-gradient(ellipse at 50% 38%, #0d1a22 0%, var(--bg) 62%); color: var(--ink); font-family: "Segoe UI", system-ui, sans-serif;
+    display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+  main { max-width: 440px; width: 100%; }
+  .orb { width: 132px; height: 132px; margin: 0 auto 28px; border-radius: 50%; position: relative;
+    background: radial-gradient(circle at 50% 50%, #cdf3ff 0 7%, var(--cyan) 8% 17%, transparent 18%),
+               conic-gradient(from 0deg, transparent 0 8%, var(--cyan) 8% 12%, transparent 12% 33%, var(--cyan) 33% 37%, transparent 37% 58%, var(--cyan) 58% 62%, transparent 62% 83%, var(--cyan) 83% 87%, transparent 87%);
+    -webkit-mask: radial-gradient(circle, #000 0 62%, transparent 63% 69%, #000 70% 100%); mask: radial-gradient(circle, #000 0 62%, transparent 63% 69%, #000 70% 100%);
+    filter: drop-shadow(0 0 18px rgba(95, 212, 255, .55)); animation: spin 14s linear infinite; }
+  .orb.busy { animation-duration: 2.4s; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .orb { animation: none; } }
+  h1 { font-size: 15px; letter-spacing: .38em; font-weight: 600; margin: 0 0 6px; color: var(--cyan); }
+  .sub { color: var(--dim); font-size: 15px; margin: 0 0 30px; line-height: 1.55; }
+  button { font: inherit; font-size: 13px; letter-spacing: .16em; font-weight: 600; text-transform: uppercase; color: #031018; background: var(--cyan);
+    border: 0; border-radius: 8px; padding: 14px 26px; cursor: pointer; min-width: 260px; }
+  button:disabled { opacity: .55; cursor: default; }
+  button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+  .msg { min-height: 22px; margin-top: 18px; font-size: 14px; color: var(--dim); line-height: 1.5; }
+  .msg.err { color: var(--bad); }
+  .foot { margin-top: 38px; font-size: 12px; color: #5d7480; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+<main>
+  <div class="orb" id="orb" aria-hidden="true"></div>
+  <h1>J.A.R.V.I.S.</h1>
+  <p class="sub" id="sub">JARVIS is locked.<br>Confirm it's you with Windows Hello — your fingerprint, face or Windows Hello PIN.</p>
+  <button id="go" type="button">Unlock with Windows Hello</button>
+  <div class="msg" id="msg" role="status" aria-live="polite"></div>
+  <div class="foot">Your chat, files and settings stay closed until you unlock.</div>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const fromB64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+  const say = (t, err) => { $('msg').textContent = t || ''; $('msg').className = 'msg' + (err ? ' err' : ''); };
+  const post = async (url, body) => { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    let j = {}; try { j = await r.json(); } catch {} return Object.assign({ _status: r.status }, j); };
+  let busy = false;
+
+  // Why Windows Hello can't be used on this page, or null when it can.
+  async function unavailable() {
+    if (/\.ts\.net$/i.test(location.hostname)) return 'JARVIS is locked. Unlocking has to be done at the laptop itself — Windows Hello can’t be used from another device.';
+    if (location.hostname !== 'localhost') return 'Open JARVIS at http://localhost:' + location.port + ' to unlock it with Windows Hello.';
+    if (!window.PublicKeyCredential || !navigator.credentials) return 'This browser can’t use Windows Hello — open JARVIS in Chrome or Edge.';
+    try { if (!(await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())) return 'Windows Hello isn’t available on this PC.'; } catch {}
+    return null;
+  }
+  async function unlock() {
+    if (busy) return;
+    const why = await unavailable(); if (why) { say(why, true); return; }
+    busy = true; $('go').disabled = true; $('orb').classList.add('busy'); say('Waiting for Windows Hello…');
+    try {
+      const c = await post('/api/hello/challenge', { purpose: 'unlock' });
+      if (!c.challenge || !c.credId) throw new Error(c.error || 'Windows Hello isn’t set up on this JARVIS');
+      const a = await navigator.credentials.get({ publicKey: { challenge: fromB64u(c.challenge), rpId: 'localhost',
+        allowCredentials: [{ type: 'public-key', id: fromB64u(c.credId), transports: ['internal'] }], userVerification: 'required', timeout: 60000 } });
+      const r = await post('/api/lock/unlock', { authenticatorData: b64u(a.response.authenticatorData), clientDataJSON: b64u(a.response.clientDataJSON), signature: b64u(a.response.signature) });
+      if (!r.success) throw new Error(r._status === 429 ? 'Too many failed attempts — wait a minute and try again.' : (r.error || 'Windows Hello didn’t verify'));
+      say('Unlocked.'); location.reload();
+    } catch (e) {
+      say(e && e.name === 'NotAllowedError' ? 'Cancelled or timed out — try again.' : (e && e.message) || 'Could not unlock.', true);
+      busy = false; $('go').disabled = false; $('orb').classList.remove('busy');
+    }
+  }
+  $('go').addEventListener('click', unlock);
+  // Ask straight away; the button is there if you dismiss the prompt.
+  unavailable().then(why => { if (why) say(why, true); else setTimeout(unlock, 450); });
+})();
+</script>
+</body>
+</html>

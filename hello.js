@@ -18,6 +18,7 @@ const GUARDED = {
   'POST /api/tool/shutdownsystem': 'power', 'POST /api/tool/restartsystem': 'power', 'POST /api/tool/sleepsystem': 'power',
   'POST /api/tool/deleteitem': 'files', 'POST /api/tool/clearsandbox': 'files',
   'DELETE /api/state': 'wipe', 'POST /api/backup/import': 'wipe', 'POST /api/backup/restore': 'wipe',
+  'POST /api/lock/enable': 'lock', 'POST /api/lock/disable': 'lock',   // the app lock (applock.js)
 };
 function guardFor(method, urlPath) {
   let raw = String(urlPath || '').split('?')[0];
@@ -114,17 +115,24 @@ module.exports = function setupHello(app, { getConfig, saveConfig, ALLOWED_ORIGI
     res.json({ success: true });
   });
 
+  // Checks a signed Windows Hello assertion against the challenge it answers (single use, pass or fail).
+  // → null when it is genuine, else { status, error }. Shared by /api/hello/verify and the app lock's unlock.
+  function verifyChallenge(b, purpose) {
+    const h = hello();
+    if (!h) return { status: 400, error: 'Windows Hello is not set up' };
+    let challenge;
+    try { challenge = JSON.parse(fromB64(b.clientDataJSON).toString('utf8')).challenge; } catch { return { status: 400, error: 'bad client data' }; }
+    const c = challenges.get(challenge); challenges.delete(challenge);
+    if (!c || c.purpose !== purpose || c.exp < Date.now()) return { status: 400, error: 'wrong or expired challenge' };
+    const err = verifyAssertion({ cred: h, expectedChallenge: challenge, origins, authenticatorData: b.authenticatorData, clientDataJSON: b.clientDataJSON, signature: b.signature });
+    return err ? { status: 403, error: err } : null;
+  }
+
   app.post('/api/hello/verify', (req, res) => {
     const b = req.body || {};
-    const h = hello();
-    if (!h) return res.status(400).json({ error: 'Windows Hello is not set up' });
     const purpose = String(b.purpose || '');
-    let challenge;
-    try { challenge = JSON.parse(fromB64(b.clientDataJSON).toString('utf8')).challenge; } catch { return res.status(400).json({ error: 'bad client data' }); }
-    const c = challenges.get(challenge); challenges.delete(challenge); // single use, pass or fail
-    if (!c || c.purpose !== purpose || c.exp < Date.now()) return res.status(400).json({ error: 'wrong or expired challenge' });
-    const err = verifyAssertion({ cred: h, expectedChallenge: challenge, origins, authenticatorData: b.authenticatorData, clientDataJSON: b.clientDataJSON, signature: b.signature });
-    if (err) return res.status(403).json({ error: err });
+    const bad = verifyChallenge(b, purpose);
+    if (bad) return res.status(bad.status).json({ error: bad.error });
     const token = crypto.randomBytes(24).toString('hex');
     tokens.set(token, { purpose, exp: Date.now() + TOKEN_MS });
     res.json({ success: true, token });
@@ -136,6 +144,7 @@ module.exports = function setupHello(app, { getConfig, saveConfig, ALLOWED_ORIGI
     delete getConfig().hello; saveConfig();
     res.json({ success: true });
   });
+  return { verifyChallenge, isEnrolled: () => !!hello() };
 };
 module.exports.guardFor = guardFor;
 module.exports.verifyAssertion = verifyAssertion;
