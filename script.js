@@ -829,22 +829,30 @@ function spokenVersion(t) {
 // Telugu / Kannada replies are spoken with Microsoft's neural voices (via the server), so they work in any browser.
 let ttsAudio = null;
 function stopSpeaking() {
+  if (typeof speechQueue !== 'undefined') speechQueue.clear();   // sentences still waiting (speak-while-writing) go too
   if ('speechSynthesis' in window) speechSynthesis.cancel();
   if (ttsAudio) { try { ttsAudio.pause(); } catch (e) {} ttsAudio = null; }
 }
-async function speakNeural(clean, l) {
+// The neural voice in two steps, so speak-while-writing can fetch the next sentence while the current one plays.
+async function neuralClip(clean, l) {
   const r = await fetch(API + '/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: clean, lang: l, gender: settings.persona === 'friday' ? 'female' : 'male', rate: settings.rate }) });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'voice error');
-  const url = URL.createObjectURL(await r.blob());
+  return URL.createObjectURL(await r.blob());
+}
+function playClip(url) {                 // does NOT call stopSpeaking(): the queue owns the order
   return new Promise(res => {
-    stopSpeaking();
     const a = new Audio(url); ttsAudio = a;
     const pulse = setInterval(() => { speechPulse = .6 + Math.random() * .4; }, 160);
     const done = () => { clearInterval(pulse); URL.revokeObjectURL(url); if (ttsAudio === a) ttsAudio = null; res(); };
     a.onended = done; a.onerror = done; a.onpause = done;
     a.play().catch(done);
   });
+}
+async function speakNeural(clean, l) {
+  const url = await neuralClip(clean, l);
+  stopSpeaking();
+  return playClip(url);
 }
 function speak(text) {
   return new Promise(res => {
@@ -886,6 +894,21 @@ function speakBrowser(clean, res) {
     } catch (e) { res(); }
 }
 let speechPulse = 0, wordTimer = 0, lastSpoken = { text: '', at: 0 };
+// Speak while writing (speech-stream.js): sentences of the answer are spoken as they are finished, one at a time.
+const earlyNeural = () => settings.persona === 'friday' && !settings.voice && settings.neuralVoice !== false;   // English only: other languages are translated after the stream
+const speechQueue = SpeechStream.createQueue({
+  prefetch: clean => (earlyNeural() ? neuralClip(clean, 'en') : undefined),
+  play: async (clean, prep) => {
+    engine('tts', true);
+    try {
+      lastSpoken = { text: clean, at: Date.now() };
+      if (earlyNeural() && prep) { try { await playClip(await prep); return; } catch (e) { log('warn', 'neural voice unavailable: ' + e.message); } }
+      await new Promise(res => speakBrowser(clean, res));
+    } finally { if (!speechQueue.waiting) { engine('tts', false); stateMsg.classList.remove('caption'); } }
+  },
+});
+// "stop" / the STOP button / Esc: the voice, the sentences still waiting, and the answer being written, all at once.
+function stopEverything() { stopSpeaking(); if (llmAbort) llmAbort.abort(); }
 // Keeps Telugu/Kannada letters too — otherwise every Telugu reply looked empty and was never recognised as an echo.
 const simpleWords = s => String(s).toLowerCase().replace(/[^a-zఀ-೿' ]/g, ' ').replace(/\s+/g, ' ').trim();
 // Chrome's speechSynthesis.speaking can stay stuck at true after a reply; trusting it forever kept the wake word
@@ -991,6 +1014,7 @@ function deleteExchange(i, quiet) {
 }
 function logChat(role, text, meta, source) {
   chatLog.push({ role, text, meta: meta || '', source: source || '', t: Date.now() });
+  if (typeof Extras !== 'undefined') Extras.archiveLog({ role, text, t: chatLog[chatLog.length - 1].t, source });   // also kept for "what did I decide about X last week" (chatarchive.js)
   if (chatLog.length > 80) chatLog = chatLog.slice(-80);
   store.set('jarvis.chat', chatLog); updateMsgCount();
 }
@@ -1022,7 +1046,9 @@ async function renderReply(o) {
   const meta = o.meta || ((o.intent || '') + (o.tool ? ' · ' + o.tool + '()' : '') + (o.intent ? ' · LOCAL' : ''));
   if (node.metaEl) { node.metaEl.textContent = meta; if (/AI/.test(meta)) node.metaEl.classList.add('ai'); }
   const typed = o.node ? Promise.resolve() : typeMD(node.bodyEl, text, o.instant);
-  const spoken = (!o.noTTS && settings.tts) ? speak(o.speak || text) : sleep(200);
+  // spokenEarly: the answer was already spoken sentence by sentence while it was being written; only the closing note (if any) is left to say
+  const spoken = o.spokenEarly ? (async () => { if (o.earlySuffix && settings.tts) speechQueue.add(o.earlySuffix); await speechQueue.idle(); })()
+    : (!o.noTTS && settings.tts) ? speak(o.speak || text) : sleep(200);
   if (o.card) {
     const dl = document.createElement('dl'); dl.className = 'info-card';
     dl.innerHTML = o.card.map(([k, v]) => '<dt>' + escHtml(k) + '</dt><dd>' + escHtml(v) + '</dd>').join('');
@@ -1041,6 +1067,7 @@ async function renderReply(o) {
     o.actions.forEach(a => { const b = document.createElement('button'); b.className = 'cbtn'; b.textContent = a.label; b.addEventListener('click', () => { d.classList.add('done'); a.fn(); }); d.appendChild(b); });
     node.extraEl.appendChild(d);
   }
+  if (o.extraNode) node.extraEl.appendChild(o.extraNode);   // a picture or widget made by a tool (e.g. a QR code); never untrusted HTML
   if (o.suggestions && o.suggestions.length) {
     const d = document.createElement('div'); d.className = 'suggestRow';
     o.suggestions.forEach(sg => { const b = document.createElement('button'); b.className = 'chip-cmd'; b.textContent = sg; b.addEventListener('click', () => handleUser(sg, 'text')); d.appendChild(b); });
@@ -1333,6 +1360,17 @@ if (serverScheduler && 'EventSource' in window) {
       chatLog = store.get('jarvis.chat', []); restoreChat();
     };
     apply();
+  });
+  // Service watchdog (watchdog.js): something you watch went down, or came back. Only the leading tab says it.
+  events.addEventListener('watchdog', e => {
+    const ev = JSON.parse(e.data);
+    if (!ev.lead) return;
+    const mins = Math.max(1, Math.round((ev.downForMs || 0) / 60000));
+    const down = ev.status === 'down';
+    const text = down ? '🔴 **' + ev.label + '** has stopped answering, ' + Persona.sir() + '.' : '🟢 **' + ev.label + '** is back up' + (ev.downForMs ? ' after ' + plural(mins, 'minute') : '') + '.';
+    sfx.alarm(); toast((down ? '🔴 ' : '🟢 ') + ev.label + (down ? ' is down' : ' is back up'), true); notify('JARVIS watchdog', ev.label + (down ? ' is down' : ' is back up'));
+    jarvisSay({ text, speak: ev.label.replace(/[:.]/g, ' ') + (down ? ' is down.' : ' is back up.'), intent: 'WATCHDOG', noPersona: true });
+    log(down ? 'warn' : 'ok', 'watchdog: ' + ev.label + (down ? ' is down' : ' is back up'));
   });
   // Ctrl+Shift+J pressed in another app: the selected text arrives here (see hotkey.js).
   events.addEventListener('hotkey', e => {
@@ -2028,7 +2066,7 @@ async function smartAlerts() {
   // ---- RAM high (existing, now uses Thresholds) ----
   if (Thresholds.isRamHigh(sys.ram)) alertOnce('ram', Thresholds.reAlertMinutes * 6e4, '⚠ Memory is at **' + sys.ram + '%** — things may slow down. Close something heavy?', ['What are the top processes?']);
   // ---- Disk low (NEW — proactive, not just diagnostics) ----
-  if (Thresholds.isDiskLow(sys.diskFree)) alertOnce('disk', Thresholds.reAlertMinutes * 6e4, '💾 Storage is low — only **' + sys.diskFree + ' GB** free on the system drive. Want me to find large files?', ['What is taking up disk space?']);
+  if (Thresholds.isDiskLow(sys.diskFree)) alertOnce('disk', Thresholds.reAlertMinutes * 6e4, '💾 Storage is low — only **' + sys.diskFree + ' GB** free on the system drive. Want me to find what is using it?', ['What is taking up disk space?', 'Clean my temp files', 'Find large files']);
   // ---- CPU sustained load (NEW — fires only after cpuSustainedSec seconds above cpuSustained) ----
   if (sys.cpu >= Thresholds.cpuSustained) {
     if (!cpuSustainedSince) cpuSustainedSince = now;
@@ -4356,6 +4394,9 @@ async function askLLM(userText, opts) {
   llmAbort = new AbortController();
   const t0 = performance.now();
   let acc = '', raf = 0;
+  // Speak while writing: only for ordinary chat answers in English, with the voice on, and never when the answer is cut to "N lines".
+  const early = (opts.earlySpeech && settings.tts && settings.speakWhileWriting !== false && !limit && Lang.replyLang() === 'en')
+    ? SpeechStream.createEarly({ enqueue: t => speechQueue.add(t), isEnglish: t => Lang.detect(t) === 'en' }) : null;
   // setTimeout rather than rAF so streaming still renders when the window is in the background.
   const paint = () => { raf = 0; if (!/^\s*</.test(acc)) { node.bodyEl.innerHTML = renderMD(acc); node.bodyEl.classList.add('typing'); messages.scrollTop = messages.scrollHeight; } };
   try {
@@ -4374,13 +4415,13 @@ async function askLLM(userText, opts) {
       while ((nl = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
         if (!line) continue;
-        try { const j = JSON.parse(line); if (j.error) throw new Error(j.error); if (j.message && j.message.content) { acc += j.message.content; if (acc.length === j.message.content.length) setState('SPEAKING', 'Answering…'); if (!raf) raf = setTimeout(paint, 50); } } catch (e) { if (e.message && !/JSON/.test(e.message)) throw e; }
+        try { const j = JSON.parse(line); if (j.error) throw new Error(j.error); if (j.message && j.message.content) { acc += j.message.content; if (early && !early.dead) { if (/<</.test(acc)) early.cancel(); else early.feed(j.message.content); } if (acc.length === j.message.content.length) setState('SPEAKING', 'Answering…'); if (!raf) raf = setTimeout(paint, 50); } } catch (e) { if (e.message && !/JSON/.test(e.message)) throw e; }
       }
     }
     llm.warm = true; bumpStat('aiQuestions');
   } catch (e) {
     node.bodyEl.classList.remove('typing');
-    engine('llm', false); llmAbort = null;
+    engine('llm', false); llmAbort = null; if (early) { early.cancel(); speechQueue.clear(); }
     if (e.name === 'AbortError') { node.bodyEl.innerHTML = renderMD(acc ? acc + '\n\n_(stopped)_' : '_(stopped)_'); if (acc) logChat('assistant', acc, 'LOCAL AI · stopped'); return { delivered: true }; }
     node.root.remove();
     log('err', 'AI brain error: ' + e.message);
@@ -4394,6 +4435,7 @@ async function askLLM(userText, opts) {
   const tm = acc.match(/<<\s*([a-z_]+)\s*(\{[\s\S]*?\})?\s*>>/);
   // Any tool line — known or invented — goes to the server for validation (handleUser), never straight to executeTool.
   if (tm && !opts.noTools) {
+    if (early) { early.cancel(); stopSpeaking(); }   // a tool call is about to run: nothing half-said
     node.root.remove();
     let args = {};
     try { args = tm[2] ? JSON.parse(tm[2]) : {}; } catch (e) {}
@@ -4406,7 +4448,8 @@ async function askLLM(userText, opts) {
   node.bodyEl.innerHTML = renderMD(answer);
   messages.scrollTop = messages.scrollHeight;
   log('ai', 'AI answered in ' + secs + 's (' + answer.length + ' chars)');
-  return { node, text: answer, limit, meta: 'LOCAL AI · ' + llm.model + ' · ' + secs + 's' + (opts.web ? ' · +' + opts.web.source : '') };
+  const earlyResult = early ? early.finish() : null;   // says the last sentence, and whether "the full answer is on screen" is needed
+  return { node, text: answer, limit, early: earlyResult, meta: 'LOCAL AI · ' + llm.model + ' · ' + secs + 's' + (opts.web ? ' · +' + opts.web.source : '') };
 }
 
 /* ============ main turn pipeline ============ */
@@ -4519,7 +4562,7 @@ async function finishAIAnswer(ai, after, p) {
     if (tr !== ai.text) { ai.text = tr; ai.meta += ' · translated ' + ((performance.now() - t0) / 1000).toFixed(1) + 's'; }
   }
   ai.node.bodyEl.innerHTML = renderMD(ai.text);
-  await deliver({ node: ai.node, text: ai.text, meta: ai.meta, suggestions: after && after.suggestions }, p);
+  await deliver({ node: ai.node, text: ai.text, meta: ai.meta, suggestions: after && after.suggestions, actions: ai.chips, spokenEarly: !!(ai.early && ai.early.spoke), earlySuffix: ai.early ? ai.early.suffix : '' }, p);
   if (after) await runAfter(after, ai.text, p);
 }
 // Follow-up work after an AI answer: save its code to a file (and run it) or copy it back to the clipboard.
@@ -4588,6 +4631,9 @@ async function loadVoiceVocab() {
   try { const r = await fetch(API + '/voice/vocab').then(x => x.json()); if (r && r.success) { voiceVocab.names = r.names || []; voiceVocab.drives = r.drives || []; } } catch (e) {}
 }
 setTimeout(loadVoiceVocab, 20000); setInterval(loadVoiceVocab, 10 * 60 * 1000);   // after the laptop list is built; then every 10 min
+// Skill packs (SKILL.md folders): load the list once the backend is up; try again if it wasn't ready.
+setTimeout(() => { if (typeof Skills !== 'undefined') Skills.loadPacks(); }, 3000);
+setTimeout(() => { if (typeof Skills !== 'undefined' && !Skills.packs.length) Skills.loadPacks(); }, 20000);
 async function handleUser(text, source) {
   text = (text || '').trim(); if (!text) return;
   if (typeof window.__lockPing === 'function') window.__lockPing();   // spoken commands count as "still here" for the auto-lock
@@ -4598,6 +4644,14 @@ async function handleUser(text, source) {
     // that don't exist ("b drive" → D drive).
     const fixed = SpeechFix.fixNames(SpeechFix.fixDrives(SpeechFix.fix(text), voiceVocab.drives), voiceVocab.names);
     if (fixed && fixed !== text) { log('info', 'heard "' + text + '" → understood "' + fixed + '"'); text = fixed; }
+  }
+  // "stop" / "be quiet": cuts the voice and the answer being written, at any moment. Handled BEFORE the busy check, because in the middle of a reply the turn is busy.
+  // It only acts while JARVIS is actually speaking or writing; otherwise it is an ordinary word again ("stop" ends a quiz, "stop coaching" ends coaching…).
+  if (typeof SpeechStream !== 'undefined' && SpeechStream.STOP_TALKING.test(text) && (isSpeakingNow() || speechQueue.active || llmAbort)) {
+    stopEverything();
+    addMsg('user', text, { source: source || 'text' }); logChat('user', text, '', source || 'text');
+    jarvisSay({ text: 'Stopped.', intent: 'STOP', noTTS: true, noPersona: true, noLog: true });
+    return;
   }
   if (busy) { inputQueue.push([text, source]); toast('Queued: "' + text.slice(0, 40) + '"'); return; }
   // A permission card (ALLOW/CANCEL) is still on screen: typed "yes"/"no" presses it. Anything else is a
@@ -4738,14 +4792,14 @@ async function handleUser(text, source) {
       return;
     }
     // "open it" / "open that folder" / "open the second one" / "open number 3": the folder or file in focus.
-    if (!ctx.pending && !(typeof Skills !== 'undefined' && (Skills.state.site || Skills.state.uip || Skills.state.viva))) {
+    if (!ctx.pending && !(typeof Skills !== 'undefined' && (Skills.state.site || Skills.state.uip || Skills.state.viva || (typeof Student !== 'undefined' && Student.active())))) {
       const target = openFocusTarget(cmdText);
       if (target) { await deliver(target.text ? { text: target.text } : await openFocusPath(target.path), { intent: 'OPEN_FOCUS', confidence: 1 }); return; }
     }
     // Website generator, DSA coach and viva practice (skills-page.js): active sessions and their trigger phrases.
     if (!ctx.pending && typeof Skills !== 'undefined') {
-      const sk = await Skills.intercept(cmdText);
-      if (sk) { traceRoute('skill (website / UI prompt / coach / viva)'); await deliver(sk, { intent: sk.intent || 'SKILL', confidence: 1 }); return; }
+      const sk = await Skills.intercept(cmdText, source);
+      if (sk) { traceRoute('skill (website / UI prompt / coach / viva / skill pack)'); await deliver(sk, { intent: sk.intent || 'SKILL', confidence: 1 }); return; }
     }
     // Routines by name: "study mode", "run bedtime"
     const routine = !ctx.pending && Routines.match(NLU.normalize(cmdText, settings.wakeWord).text);
@@ -4918,7 +4972,9 @@ async function handleUser(text, source) {
       const SORT = { nearest: 'nearest first', 'best rated': 'best rated', cheapest: 'cheapest first', 'open now': 'open now' };
       await deliver(r.error ? { text: 'I couldn’t open Google Maps: ' + r.error } : { text: 'Opening **Google Maps**: **' + (pq.category || mq) + '** near **' + pq.location + '**' + (SORT[pq.sort] ? ', ' + SORT[pq.sort] : '') + ' — with ratings, opening hours and directions.' + (pq.sort === 'nearest' ? ' Maps lists the closest ones first, each with its distance.' : ''),
         speak: 'Opening Google Maps for ' + (pq.category || mq) + ' near ' + pq.location.replace('your current location', 'you') + '.', tool: 'openUrl', card: [['PLACE', pq.category || '—'], ['WHERE', pq.location], ['SORT', pq.sort]],
-        suggestions: settings.online ? ['Search the web for ' + mq] : null }, { intent: 'MAPS', confidence: 1 });
+        suggestions: settings.online ? ['Search the web for ' + mq] : null,
+        // the same places listed right here in the chat (nearby.js, OpenStreetMap), for kinds of place it knows
+        actions: settings.online && pq.category && typeof Extras !== 'undefined' ? [{ label: 'LIST THEM HERE', fn: () => Extras.listNearby(pq.category, pq.location) }] : undefined }, { intent: 'MAPS', confidence: 1 });
       return;
     }
     if (wantsLLM && !result && decision.route === 'WEB_AI') {   // (without the AI, doResearch shows the top links)
@@ -4941,11 +4997,21 @@ async function handleUser(text, source) {
     } else if (wantsLLM || (result && result.askLLM)) {
       traceRoute(result && result.askLLM ? 'rules → ' + (p.tool || p.intent) + ' → AI writes the answer (' + llm.model + ')' : 'AI chat (' + llm.model + ') — no command matched');
       const toolPrompt = result && typeof result.askLLM === 'string';
+      // Is there a skill pack for this? Plain chat only (never a tool prompt or an "answer from memory"). A button after the answer, or the skill runs straight away if its header says auto: true.
+      let skillHint = null;
+      if (!result && !toolPrompt && !answerOnly && srcLang === 'en' && typeof SkillRouter !== 'undefined' && typeof Skills !== 'undefined' && settings.skillSuggest !== false && llmReady()) {
+        try { skillHint = SkillRouter.pick(cmdText, Skills.packs); } catch (e) { skillHint = null; }
+      }
+      if (skillHint && skillHint.auto) {
+        traceRoute('skill (auto): ' + skillHint.name);
+        const sk = await Skills.intercept('/' + skillHint.name + ' ' + cmdText);
+        if (sk) { sk.text = 'Using the **' + skillHint.name + '** skill.\n\n' + sk.text; await deliver(sk, { intent: sk.intent || 'SKILL', confidence: 1 }); return; }
+      }
       // Telugu/Kannada: include our English reading too — speech recognition often mangles English technical words.
       const userAsk = srcLang !== 'en' && cmdText !== text
         ? (Lang.aiInEnglish() ? cmdText : text + '\n\n(Meaning, in English: "' + cmdText + '". Answer that, in ' + ({ te: 'Telugu', kn: 'Kannada' }[Lang.replyLang()] || 'English') + '.)')
         : text;
-      let ai = llmReady() ? await askLLM(toolPrompt ? result.askLLM : userAsk, { noTools: toolPrompt || answerOnly, imageToken: toolPrompt ? result.imageToken : undefined, noHistory: toolPrompt && !!result.noHistory, limitText: toolPrompt ? cmdText : undefined }) : null;
+      let ai = llmReady() ? await askLLM(toolPrompt ? result.askLLM : userAsk, { earlySpeech: !toolPrompt, noTools: toolPrompt || answerOnly, imageToken: toolPrompt ? result.imageToken : undefined, noHistory: toolPrompt && !!result.noHistory, limitText: toolPrompt ? cmdText : undefined }) : null;
       // The chat model chose a tool: the server validates the name and arguments and sets the permission tier.
       let checked = null;
       if (ai && ai.tool) {
@@ -4988,6 +5054,7 @@ async function handleUser(text, source) {
       } else if (ai && ai.delivered) {
         idleState();
       } else if (ai) {
+        if (skillHint) ai.chips = [{ label: 'USE THE ' + skillHint.name.toUpperCase() + ' SKILL', fn: () => handleUser('/' + skillHint.name + ' ' + cmdText, 'chip') }];
         await finishAIAnswer(ai, result && result.after, p);
       } else {
         const why = !settings.llm ? 'My AI brain is switched off in settings, so I only understand direct commands.'
@@ -5309,8 +5376,7 @@ let spaceHeld = false;
 document.addEventListener('keydown', e => {
   const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
   if (e.key === 'Escape') {
-    stopSpeaking();
-    if (llmAbort) llmAbort.abort();
+    stopEverything();
     closeDrawer(); document.body.classList.remove('show-left');
   } else if (e.key === '/' && !typing) { e.preventDefault(); chatInput.focus(); }
   else if (e.code === 'Space' && !typing && !e.repeat && !spaceHeld && SR) {
@@ -5551,6 +5617,29 @@ $('#providerAddBtn').addEventListener('click', async () => {
   if (r.defaultModel) { settings.model = r.defaultModel; saveSettings(); llm.warm = false; } // start using it straight away
   await checkLLM(); renderProviders();
 });
+/* ============ image service key: "draw me …" (imagegen.js keeps the key server-side and never sends it back) ============ */
+async function renderImageService() {
+  const note = $('#imageNote'); if (!note) return;
+  let d; try { d = await (await fetch(API + '/image/status')).json(); } catch (e) { d = null; }
+  if (!d || !d.success) { note.textContent = ''; return; }
+  $('#imageKeyRemove').hidden = !d.hasKey;
+  note.textContent = (d.hasKey ? '✓ A key is saved on this laptop. ' : 'No key saved. That is fine if the service lets you in without one. ') + (d.local ? 'A Stable Diffusion server was found on this PC and is used first.' : '');
+}
+$('#imageKeySave').addEventListener('click', async () => {
+  const el = $('#imageKey'), key = el.value.trim();
+  if (!key) { $('#imageNote').textContent = 'Paste the key first.'; return; }
+  const r = await callTool('/image/key', { apiKey: key });
+  el.value = '';                                         // the key never stays in the page
+  if (r.error) { $('#imageNote').textContent = '✗ ' + r.error; return; }
+  sfx.ok(); log('ok', 'image service key saved'); renderImageService();
+});
+$('#imageKeyRemove').addEventListener('click', async () => {
+  if (!confirm('Remove the image service key from this laptop?')) return;
+  const r = await callTool('/image/key', { apiKey: '' });
+  if (r.error) { $('#imageNote').textContent = '✗ ' + r.error; return; }
+  log('info', 'image service key removed'); renderImageService();
+});
+$('#imageKey').addEventListener('keydown', e => { if (e.key === 'Enter') $('#imageKeySave').click(); });
 /* ============ attach a file: 📎 or drag & drop anywhere ============ */
 async function uploadFile(f) {
   if (!f) return;
@@ -5576,7 +5665,7 @@ addEventListener('drop', e => { if (!e.dataTransfer.files.length) return; e.prev
 $('#wizAiBtn').addEventListener('click', () => { closeDrawer(); Wizard.open('welcome'); });
 $('#wizPhoneBtn').addEventListener('click', () => { closeDrawer(); Wizard.open('phone1'); });
 $('#providerKey').addEventListener('keydown', e => { if (e.key === 'Enter') $('#providerAddBtn').click(); });
-$('#settingsBtn').addEventListener('click', () => renderProviders());
+$('#settingsBtn').addEventListener('click', () => { renderProviders(); renderImageService(); });
 
 $('#clearMemBtn').addEventListener('click', () => { if (!confirm('Forget everything JARVIS knows about you?')) return; const prev = memory.slice(); memory = []; store.set('jarvis.memory', memory); renderMemory(); toast('Memory cleared'); if (prev.length) Undo.push('cleared memory', () => { memory = prev.concat(memory); store.set('jarvis.memory', memory); renderMemory(); return 'Brought back ' + plural(prev.length, 'memory') + '.'; }); });
 $('#clearChatBtn').addEventListener('click', () => {
@@ -5624,6 +5713,22 @@ async function updateHotkeyNote() {
 }
 $('#settingsBtn').addEventListener('click', updateHotkeyNote);
 bindSwitch('#alertsToggle', 'alerts', v => log('info', 'smart alerts ' + (v ? 'on' : 'off')));
+if (settings.skillSuggest === undefined) { settings.skillSuggest = true; }
+bindSwitch('#skillSuggestToggle', 'skillSuggest');
+if (settings.speakWhileWriting === undefined) settings.speakWhileWriting = true;
+bindSwitch('#speakWhileWritingToggle', 'speakWhileWriting');
+if (settings.chatArchive === undefined) settings.chatArchive = true;
+bindSwitch('#chatArchiveToggle', 'chatArchive');
+setTimeout(() => { if (typeof Extras !== 'undefined') Extras.archiveBackfill(chatLog); }, 6000);
+// the STOP button shows while JARVIS is speaking or writing
+{ const stopBtn = $('#stopBtn'); stopBtn.addEventListener('click', () => { stopEverything(); stopBtn.hidden = true; });
+  setInterval(() => { stopBtn.hidden = !(isSpeakingNow() || speechQueue.active || llmAbort); }, 250); }
+// camera watchers (watch-page.js): off until you switch them on; the switch stays as you left it
+bindSwitch('#presenceToggle', 'presenceLock', v => { if (typeof Watch !== 'undefined') Watch.setPresence(v); });
+bindSwitch('#presenceWinToggle', 'presenceLockWindows');
+$('#presenceSecsSelect').value = String(settings.presenceSecs || 60);
+$('#presenceSecsSelect').addEventListener('change', e => { settings.presenceSecs = +e.target.value; saveSettings(); if (typeof Watch !== 'undefined') Watch.applySeconds(); toast('Presence lock: ' + e.target.selectedOptions[0].textContent.toLowerCase()); });
+setTimeout(() => { if (typeof Watch !== 'undefined') Watch.resume(); }, 4000);
 bindSwitch('#chargerAlertsToggle', 'chargerAlerts', v => log('info', 'charger alerts ' + (v ? 'on' : 'off')));
 bindSwitch('#inspectToggle', 'inspect', v => toast(v ? 'I’ll show how I understood each request (🔍 under the reply)' : 'Inspector off — say “how did you understand that?” any time'));
 // Phone alerts: the server pushes reminders/deadline alerts to ntfy.sh under a random, unguessable topic.

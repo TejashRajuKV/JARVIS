@@ -14,6 +14,8 @@
     if (typeof CHIP_GROUPS !== 'undefined') for (const g of Object.keys(CHIP_GROUPS)) for (const c of CHIP_GROUPS[g]) add(c, c.replace('Play / pause', 'pause'), 'Quick actions', g.toLowerCase());
     // Skills & study
     add('UI design prompt', 'ui design prompt', 'Skills', 'TCREI: 4 questions, then the prompt');
+    // Skill packs (SKILL.md folders): "/name…" fills the box so you can add what it should work on
+    if (typeof Skills !== 'undefined' && Skills.packs) for (const p of Skills.packs) add('/' + p.name + '…', '/' + p.name, 'Skills', p.hint);
     add('Plan my day', 'plan my day', 'Study');
     add('Plan my GATE prep…', 'plan my gate prep, exam on', 'Study', 'then: exam date + topics');
     add('Take my DBMS viva', 'take my dbms viva', 'Study');
@@ -36,6 +38,32 @@
     add('List my triggers', 'list my triggers', 'Automation');
     add('Daily briefing', 'give me my briefing', 'Automation');
     add('Run diagnostics', 'run diagnostics', 'System');
+    add('Check my AI', 'check my ai', 'System', 'Ollama, recent AI errors, disk space');
+    add('What is down? (watchdog)', 'what is down', 'System', 'Ollama and anything you watch');
+    add('Places near me…', 'list cafes near', 'Skills', 'cafés, pharmacies, ATMs… from the map');
+    add('Analyze a CSV file…', '/csv', 'Skills', 'statistics, questions, charts');
+    add('Document a project…', '/wiki', 'Skills', 'overview, architecture diagram, module pages');
+    add('Draw a picture…', '/image', 'Skills', 'text to image (online service or your own)');
+    add('PDF tools…', '/pdf', 'Skills', 'merge, split, rotate, watermark, make');
+    add('What is using my disk?', "what's using my C: drive", 'System', 'biggest folders, temp files, free space');
+    add('Tidy my Downloads', 'tidy my downloads', 'System', 'sort into folders — undo puts it back');
+    add('Find large files', 'find large files', 'System', 'then “trash 1, 3”');
+    add('Find duplicate files', 'find duplicate files', 'System', 'keeps one copy of each');
+    add('Clean my temp files', 'clean my temp files', 'System', 'old temp files; permanent');
+    add('Find similar photos', 'find similar photos', 'System', 'look-alikes, even resized; undo puts them back');
+    add('Shrink my big photos', 'shrink my big photos', 'System', 'original stays in the JARVIS trash');
+    add('Scan a document', 'scan a document', 'Camera', 'camera → straightened page → searchable PDF');
+    add('Scan a QR code', 'scan a qr code', 'Camera', 'shows the link; never opens it by itself');
+    add('Make a QR code…', 'make a qr for ', 'Camera', 'link or text → picture');
+    add('Solve from a photo', 'solve this from a photo', 'Camera', 'the local AI looks at the picture');
+    add('Lock when I leave (on/off)', 'lock when I leave', 'Camera', 'webcam looks for a face; locks JARVIS');
+    add('Watch my room', 'watch my room', 'Camera', 'movement alert; pictures stay on this laptop');
+    add('Search my old chats…', 'what did I decide about ', 'Study', 'every message is kept on this laptop');
+    add('Import my timetable', 'import my timetable', 'Study', 'photo, calendar file or pasted lines');
+    add('Start lecture mode…', 'start lecture mode for ', 'Study', 'listens, saves a transcript, writes notes');
+    add('Start an exam…', 'start an exam on ', 'Study', 'timed questions from a note; mistakes become flashcards');
+    add('How did my exams go?', 'how did my exams go', 'Study');
+    add('Watch a port or site…', 'watch localhost:5000', 'System', 'tell me if it goes down');
     add('Battery status', 'battery', 'System');
     add('Top processes', 'top processes', 'System');
     add('Screenshot', 'take a screenshot', 'System');

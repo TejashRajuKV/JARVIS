@@ -199,8 +199,14 @@ function parseEmbedReply(kind, j) {
 }
 
 /* ---------- the model layer ---------- */
-function createLLM({ getConfig, saveConfig, OLLAMA, DEFAULT_MODEL }) {
+function createLLM({ getConfig, saveConfig, OLLAMA, DEFAULT_MODEL, onCall }) {
   const providers = () => (Array.isArray(getConfig().providers) ? getConfig().providers : []);
+  // Optional: onCall({provider, model, ok, ms, stream, error}) after every AI call, for the health history (aihealth.js).
+  // It gets the outcome only, never the question, the answer or a key; a failing listener never affects the call.
+  const note = (o, ok, t0, e, stream) => {
+    if (typeof onCall !== 'function') return;
+    try { const id = parseModelId((o && o.model) || DEFAULT_MODEL); onCall({ provider: id.provider, model: id.model, ok, ms: Date.now() - t0, stream: !!stream, error: ok ? undefined : (e && e.message) || String(e) }); } catch {}
+  };
   const labelOf = p => p.label || (PRESET_BY_ID[p.preset] || {}).label || p.id;
 
   function resolve(modelId) {
@@ -214,7 +220,12 @@ function createLLM({ getConfig, saveConfig, OLLAMA, DEFAULT_MODEL }) {
   const isCloud = modelId => parseModelId(modelId).provider !== 'ollama';
 
   // embed('nomic-embed-text', ['text one', 'text two']) → [[floats], [floats]] (or throws with a friendly message)
-  async function embed(model, inputs, { timeoutMs = 60000 } = {}) {
+  async function embed(model, inputs, opts) {
+    const t0 = Date.now();
+    try { const out = await embedRaw(model, inputs, opts); note({ model }, true, t0); return out; }
+    catch (e) { note({ model }, false, t0, e); throw e; }
+  }
+  async function embedRaw(model, inputs, { timeoutMs = 60000 } = {}) {
     const ins = (Array.isArray(inputs) ? inputs : [inputs]).map(s => String(s || '').slice(0, 8000));
     if (!ins.length) return [];
     const r = resolve(model);
@@ -232,7 +243,13 @@ function createLLM({ getConfig, saveConfig, OLLAMA, DEFAULT_MODEL }) {
     return vecs;
   }
 
+  // Every chat call goes through here: time it and report success or failure (a user-cancelled call is neither).
   async function send(o, stream) {
+    const t0 = Date.now();
+    try { const out = await sendRaw(o, stream); out.t0 = t0; return out; }
+    catch (e) { if (!(o && o.signal && o.signal.aborted)) note(o, false, t0, e, stream); throw e; }
+  }
+  async function sendRaw(o, stream) {
     const r = resolve(o.model);
     const hadImages = !!(o.images && o.images.length);
     let adapt = initialAdapt(r.prov.preset, r.model);
@@ -260,15 +277,20 @@ function createLLM({ getConfig, saveConfig, OLLAMA, DEFAULT_MODEL }) {
 
   // → the full reply text
   async function complete(o) {
-    const { res, kind } = await send(o, false);
-    const j = await res.json();
-    const text = replyText(kind, j).replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-    if (!text && kind !== 'ollama') throw new Error(EMPTY_REPLY);
+    const { res, kind, t0 } = await send(o, false);
+    let text;
+    try {
+      const j = await res.json();
+      text = replyText(kind, j).replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+      if (!text && kind !== 'ollama') throw new Error(EMPTY_REPLY);
+    } catch (e) { if (!(o && o.signal && o.signal.aborted)) note(o, false, t0, e); throw e; }
+    note(o, true, t0);
     return text;
   }
   // → { droppedImages, deltas: async iterable of text pieces }
   async function openStream(o) {
-    const { res, kind, droppedImages } = await send(o, true);
+    const { res, kind, droppedImages, t0 } = await send(o, true);
+    note(o, true, t0, null, true);   // streaming: the call is "ok" once the model starts answering (time to first byte)
     async function* deltas() {
       let any = false;
       for await (const line of lines(res.body)) {

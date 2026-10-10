@@ -4,7 +4,7 @@
 // with the reason — they are covered by the page self-test with fakes, and by `npm run test:live`.
 // A gate at the end fails if any route exists that is neither tested nor listed. Run: node tests/api.test.js
 'use strict';
-const fs = require('fs'), path = require('path'), { execFileSync } = require('child_process');
+const fs = require('fs'), os = require('os'), path = require('path'), { execFileSync } = require('child_process');
 const { startServer, suite, freePort, ROOT } = require('./lib/server');
 const { check, done } = suite('api');
 
@@ -34,11 +34,13 @@ const NOT_TESTABLE = {
   'GET /api/events': 'server-sent event stream (the page self-test listens to it)',
   'POST /api/tool/findFolderAnywhere': 'walks every drive (slow); covered by the page self-test',
   'POST /api/tool/clearSandbox': 'guarded bulk delete; deleteItem covers the same path',
+  'POST /api/ocr/screen': 'captures your screen',
 };
 
 // Every route declared in the server files, as "METHOD /path" with :params, for the gate.
 const ROUTE_FILES = ['server.js', 'system-tools.js', 'agent-tools.js', 'rag.js', 'skills.js', 'scheduler.js', 'backup.js', 'codetools.js',
-  'hotkey.js', 'hello.js', 'applock.js', 'llm.js', 'update.js', 'tts.js', 'autostart.js', 'wakeword.js'];
+  'hotkey.js', 'hello.js', 'applock.js', 'llm.js', 'update.js', 'tts.js', 'autostart.js', 'wakeword.js',
+  'skillpack.js', 'aihealth.js', 'watchdog.js', 'nearby.js', 'csvtools.js', 'projectwiki.js', 'imagegen.js', 'pdftools.js', 'diskcare.js', 'ocr.js', 'scan.js', 'chatarchive.js', 'studyserver.js'];
 const ROUTES = [];
 for (const f of ROUTE_FILES) {
   const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -73,7 +75,9 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
 (async () => {
   // A fake wttr.in (JARVIS_WTTR_URL), so the weather route's parsing is tested on a real response shape without the internet.
   const wttr = await fakeWttr();
-  const S = await startServer({ env: { GIT_AUTHOR_NAME: 'JARVIS test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'JARVIS test', GIT_COMMITTER_EMAIL: 'test@example.invalid',
+  // the disk-care temp cleaner is pointed at a throwaway folder named Temp, never at the real %TEMP%
+  const diskTemp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'api-disk-')), 'Temp'); fs.mkdirSync(diskTemp);
+  const S = await startServer({ env: { JARVIS_TEMP_DIR: diskTemp, GIT_AUTHOR_NAME: 'JARVIS test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'JARVIS test', GIT_COMMITTER_EMAIL: 'test@example.invalid',
     JARVIS_WTTR_URL: wttr.url } });
   const rec = (method, p) => { const r = routeOf(method, p); if (r) hit.add(r); };
   const post = (p, b, x) => { rec('POST', p); return S.post(p, b, x); };
@@ -336,6 +340,194 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     }
     r = await post('/api/skill/viva/questions', { topic: 'DBMS' });
     check('Skills', 'viva questions with the AI offline: a clean error, not a crash', r.status >= 400 && typeof r.json.error === 'string', r.status + ' ' + r.text);
+    // Skill packs (SKILL.md folders): the four shipped skills load from skills-bundled; instructions are never sent to the page.
+    r = await get('/api/skills');
+    check('Skill packs', 'the shipped skills are listed', r.json.success && ['code-review', 'plan-then-act', 'quick', 'research'].every(n => r.json.skills.some(s => s.name === n)), r.text.slice(0, 300));
+    check('Skill packs', 'the list has hints and uses but never the instructions', r.json.skills.every(s => s.hint && !('body' in s)) && !/Never add facts from memory|Answer in at most three/.test(r.text));
+    check('Skill packs', 'an unknown skill is a plain 404', (await post('/api/skill/run', { skill: 'nope', input: 'x' })).status === 404);
+    check('Skill packs', 'a skill with no input is a plain 400', (await post('/api/skill/run', { skill: 'quick', input: '' })).status === 400);
+    r = await post('/api/skill/run', { skill: 'quick', input: 'what is dns' });
+    check('Skill packs', 'running a skill with the AI offline: a clean error, not a crash', r.status >= 400 && typeof r.json.error === 'string', r.status + ' ' + r.text);
+    r = await post('/api/skills/reload', {});
+    check('Skill packs', 'reload rescans and reports how many', r.json.success && r.json.count >= 4 && Array.isArray(r.json.skipped), r.json);
+    // "Check my AI": works with the AI offline (that is when it matters), keeps outcomes only, never the question or a key.
+    r = await get('/api/ai/health');
+    check('AI health', 'the report loads with the AI offline and says Ollama is not answering', r.json.success && r.json.ollama.reachable === false && r.json.verdicts.some(v => v.level === 'bad' && /not answering/.test(v.text)) && /^Something needs attention/.test(r.json.headline) && /\*\*AI health\*\*/.test(r.json.text), r.text.slice(0, 300));
+    check('AI health', 'the failed chat call from above is in the history, as a kind of error and nothing more', r.json.summary.total >= 1 && r.json.summary.failed >= 1 && !/hello world/.test(r.text) && Object.keys(r.json.summary.errors).length >= 1, r.json.summary);
+    r = await get('/api/ai/health?deep=1');
+    check('AI health', 'the test question fails cleanly when the AI is off', r.json.success && r.json.deep && r.json.deep.ok === false && typeof r.json.deep.error === 'string', r.json.deep);
+    r = await post('/api/ai/health/clear', {});
+    check('AI health', 'the history can be cleared', r.json.success && (await get('/api/ai/health')).json.summary.total <= 1);
+    // Nearby places: gated by Online tools like the other web lookups; bad input is refused before any network call.
+    check('Nearby', 'refuses when Online tools is off', (await post('/api/tool/nearby', { place: 'majestic', category: 'cafe' })).status === 403);
+    check('Nearby', 'needs a kind of place', (await post('/api/tool/nearby', { online: true, place: 'majestic' })).status === 400);
+    r = await post('/api/tool/nearby', { online: true, place: 'majestic', category: 'spaceport' });
+    check('Nearby', 'an unknown kind is a plain 400 that lists what it can find', r.status === 400 && /pharmacies/.test(r.json.error), r.text);
+    r = await post('/api/tool/nearby', { online: true, category: 'cafe' });
+    check('Nearby', 'needs a place (or coordinates)', r.status === 400 && /Near where/.test(r.json.error), r.text);
+    check('Nearby', 'impossible coordinates are a 400', (await post('/api/tool/nearby', { online: true, lat: 300, lon: 5, category: 'cafe' })).status === 400);
+    // CSV analysis on a real file in the sandbox: exact numbers, and nothing outside the allowed folders.
+    fs.mkdirSync(path.join(S.sandbox, 'Documents'), { recursive: true });
+    fs.writeFileSync(path.join(S.sandbox, 'Documents', 'api-marks.csv'), 'name,dept,marks,attendance\nAsha,CSE,82,91\nBen,CSE,67,78\nChitra,ECE,45,60\nDev,ECE,91,95\nEsha,ME,58,72\nFarid,ME,,80\nGita,CSE,73,85\nHari,ECE,39,55\n');
+    r = await post('/api/csv/analyze', { name: 'api-marks.csv' });
+    check('CSV', 'analyze: rows, columns, exact statistics, a digest with no row values', r.json.success && r.json.rows === 8 && r.json.cols === 4 && r.json.columns[2].mean === 65 && r.json.columns[2].missing === 1 && r.json.correlations.length === 1 && /8 rows × 4 columns/.test(r.json.digest) && !/Asha|Farid/.test(r.json.digest), r.text.slice(0, 300));
+    r = await post('/api/csv/query', { name: 'api-marks.csv', groupBy: 'dept', column: 'marks' });
+    check('CSV', 'average marks by department', r.json.success && r.json.groups[0].group === 'CSE' && r.json.groups[0].value === 74 && r.json.groups[1].value === 58.3333, r.text.slice(0, 300));
+    r = await post('/api/csv/query', { name: 'api-marks.csv', filter: 'marks > 60 and dept = CSE', limit: 5 });
+    check('CSV', 'a filter returns the matching rows', r.json.matched === 3 && r.json.rows.length === 3 && r.json.columns.join() === 'name,dept,marks,attendance', r.text.slice(0, 300));
+    check('CSV', 'a bad filter is a 400 that names the real columns', (r = await post('/api/csv/query', { name: 'api-marks.csv', filter: 'mark > 5' })).status === 400 && /name, dept, marks, attendance/.test(r.json.error), r.text);
+    check('CSV', 'hostile filter text is just an error', (await post('/api/csv/query', { name: 'api-marks.csv', filter: 'marks > 1; process.exit(1)' })).status === 400 && (await get('/api/health')).json.status);
+    r = await post('/api/csv/chart', { name: 'api-marks.csv', column: 'marks', groupBy: 'dept', open: false });
+    check('CSV', 'a chart is written into Charts/ (not opened in this test)', r.json.success && r.json.file === 'Charts/api-marks-marks-by-dept.svg' && /^<svg/.test(fs.readFileSync(path.join(S.sandbox, 'Charts', 'api-marks-marks-by-dept.svg'), 'utf8')), r.text.slice(0, 300));
+    check('CSV', 'a file that does not exist is a 404; no name is a 404', (await post('/api/csv/analyze', { name: 'nope.csv' })).status === 404 && (await post('/api/csv/analyze', {})).status === 404);
+    check('CSV', 'a path into a blocked area is refused as not found', (await post('/api/csv/analyze', { name: 'C:\\Windows\\System32\\drivers\\etc\\hosts' })).status === 404);
+    fs.writeFileSync(path.join(S.sandbox, 'Documents', 'api-bad.csv'), 'just one line');
+    check('CSV', 'a file that is not a real table is a 400 with the reason', (r = await post('/api/csv/analyze', { name: 'api-bad.csv' })).status === 400 && /header row/.test(r.json.error), r.text);
+    // Project wiki: derived from a real project folder in the sandbox; nothing is invented and nothing leaves ~/jarvis unless asked.
+    const wp = path.join(S.sandbox, 'Projects', 'apiwiki');
+    fs.mkdirSync(path.join(wp, 'core'), { recursive: true });
+    fs.writeFileSync(path.join(wp, 'main.py'), 'from core.engine import Engine\nif __name__ == "__main__":\n    Engine().run()\n');
+    fs.writeFileSync(path.join(wp, 'core', 'engine.py'), '"""The engine."""\nclass Engine:\n    def run(self): pass\n');
+    r = await post('/api/project/wiki', { name: 'apiwiki', ai: false, open: false });
+    check('Wiki', 'a project in the sandbox gets a wiki under Wikis/ (no AI, nothing opened)', r.json.success && r.json.relDir === 'Wikis/apiwiki' && r.json.modules === 2 && r.json.sourceFiles === 2 && r.json.aiSummaries === 0 && r.json.files.includes('architecture.md') && fs.existsSync(path.join(S.sandbox, 'Wikis', 'apiwiki', 'modules', 'core.md')), r.text.slice(0, 300));
+    const archText = fs.readFileSync(path.join(S.sandbox, 'Wikis', 'apiwiki', 'architecture.md'), 'utf8');
+    check('Wiki', 'the diagram has the real import (root files → core) and balanced Mermaid fences', /-->\|1\|/.test(archText) && (archText.match(/^```/gm) || []).length === 2 && /The engine\./.test(fs.readFileSync(path.join(S.sandbox, 'Wikis', 'apiwiki', 'modules', 'core.md'), 'utf8')));
+    check('Wiki', 'the original project is untouched', fs.readdirSync(wp).sort().join() === 'core,main.py');
+    r = await post('/api/project/wiki', { name: 'apiwiki', into: 'project', ai: false, open: false });
+    check('Wiki', 'into the project folder (inside ~/jarvis needs no approval) writes docs/wiki there', r.json.success && fs.existsSync(path.join(wp, 'docs', 'wiki', 'README.md')), r.text.slice(0, 200));
+    check('Wiki', 'no name → 400; unknown project → 404; a whole drive → 400', (await post('/api/project/wiki', {})).status === 400 && (await post('/api/project/wiki', { name: 'no-such-project' })).status === 404 && (await post('/api/project/wiki', { name: path.parse(S.sandbox).root })).status === 400);
+    check('Wiki', 'a blocked system folder is refused as not found', (await post('/api/project/wiki', { name: 'C:\\Windows\\System32' })).status === 404);
+    fs.mkdirSync(path.join(S.sandbox, 'Projects', 'emptyproj'), { recursive: true });
+    check('Wiki', 'a folder with no source files is a 422 that says what I look for', (r = await post('/api/project/wiki', { name: 'emptyproj', ai: false, open: false })).status === 422 && /node_modules/.test(r.json.error), r.text);
+    // Images: input checks only (a real request would leave this machine); the key is stored and never shown back.
+    r = await get('/api/image/status');
+    check('Images', 'status names the service and says no key is saved yet', r.json.success && r.json.service.id === 'pollinations' && r.json.hasKey === false && /Images$/.test(r.json.folder), r.text.slice(0, 300));
+    check('Images', 'the key can be saved from the laptop page, is never shown back, and can be removed', (r = await post('/api/image/key', { apiKey: 'sk_test_key_123' })).json.hasKey === true && !r.text.includes('sk_test_key_123') && !(await get('/api/image/status')).text.includes('sk_test_key_123') && (await get('/api/image/status')).json.hasKey === true && (await post('/api/image/key', { apiKey: '' })).json.hasKey === false && (await get('/api/image/status')).json.hasKey === false);
+    check('Images', 'a key with spaces is refused; a key change from elsewhere is refused', (await post('/api/image/key', { apiKey: 'has a space' })).status === 400 && (await post('/api/image/key', { apiKey: 'abc' }, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status === 403);
+    check('Images', 'the hosted service needs Online tools', (await post('/api/image/generate', { prompt: 'a cat on the moon', service: 'pollinations' })).status === 403);
+    check('Images', 'bad shape, unknown style, too-short and missing descriptions are plain 400s', (await post('/api/image/generate', { online: true, prompt: 'a cat on the moon', service: 'pollinations', shape: 'huge' })).status === 400 && /anime/.test((await post('/api/image/generate', { online: true, prompt: 'a cat on the moon', service: 'pollinations', style: 'nope' })).json.error) && (await post('/api/image/generate', { online: true, prompt: 'hi', service: 'pollinations' })).status === 400 && (await post('/api/image/generate', { online: true, service: 'pollinations' })).status === 400);
+    // PDF tools on real PDFs made here: always a NEW file under ~/jarvis/PDFs, the originals are never touched.
+    {
+      const { PDFDocument } = require('pdf-lib');
+      const mkPdf = async n => { const d = await PDFDocument.create(); for (let i = 0; i < n; i++) d.addPage([200, 200]); return Buffer.from(await d.save()); };
+      const docsDir = path.join(S.sandbox, 'Documents');
+      fs.writeFileSync(path.join(docsDir, 'api-a.pdf'), await mkPdf(2)); fs.writeFileSync(path.join(docsDir, 'api-b.pdf'), await mkPdf(3));
+      fs.writeFileSync(path.join(docsDir, 'api-fake.pdf'), 'not a pdf at all'); fs.writeFileSync(path.join(docsDir, 'api-note.txt'), 'hello');
+      const h = f => require('crypto').createHash('sha256').update(fs.readFileSync(path.join(docsDir, f))).digest('hex');
+      const before = [h('api-a.pdf'), h('api-b.pdf')];
+      r = await post('/api/pdf/merge', { files: ['api-a.pdf', 'api-b.pdf'], open: false });
+      check('PDF', 'merge: a new 5-page PDF in PDFs/, named from the inputs', r.json.success && r.json.file === 'PDFs/api-a-and-api-b-merged.pdf' && r.json.pages === 5 && (await PDFDocument.load(fs.readFileSync(r.json.path))).getPageCount() === 5, r.text.slice(0, 300));
+      r = await post('/api/pdf/pages', { file: 'api-b.pdf', pages: '2-3', open: false });
+      check('PDF', 'pages: pages 2-3 as a new 2-page PDF', r.json.success && r.json.pages === 2 && r.json.total === 3 && r.json.selected === '2-3' && (await PDFDocument.load(fs.readFileSync(r.json.path))).getPageCount() === 2, r.text.slice(0, 300));
+      r = await post('/api/pdf/rotate', { file: 'api-b.pdf', degrees: 'right', pages: '1', open: false });
+      check('PDF', 'rotate: page 1 turned 90°, the others not', r.json.success && (await PDFDocument.load(fs.readFileSync(r.json.path))).getPages().map(p => p.getRotation().angle).join() === '90,0,0', r.text.slice(0, 300));
+      r = await post('/api/pdf/watermark', { file: 'api-a.pdf', text: 'DRAFT', open: false });
+      check('PDF', 'watermark: both pages stamped', r.json.success && r.json.pages === 2 && r.json.file === 'PDFs/api-a-watermarked.pdf', r.text.slice(0, 300));
+      r = await post('/api/pdf/make', { title: 'API Notes', text: '# Heading\n- one\n- two', open: false });
+      check('PDF', 'make: a PDF from text, named from the title', r.json.success && r.json.file === 'PDFs/api-notes.pdf' && r.json.pages === 1 && r.json.replaced === 0, r.text.slice(0, 300));
+      check('PDF', 'a second identical request makes a second file, not an overwrite', (await post('/api/pdf/make', { title: 'API Notes', text: '# Heading', open: false })).json.file === 'PDFs/api-notes-2.pdf');
+      check('PDF', 'the original PDFs are byte-for-byte unchanged', h('api-a.pdf') === before[0] && h('api-b.pdf') === before[1]);
+      check('PDF', 'refusals are plain 4xx messages: one file, missing file, not a PDF, damaged file, bad pages, bad angle, empty text', (await post('/api/pdf/merge', { files: ['api-a.pdf'] })).status === 400 && (await post('/api/pdf/pages', { file: 'nope.pdf', pages: '1' })).status === 404 && /isn’t a PDF/.test((await post('/api/pdf/pages', { file: 'api-note.txt', pages: '1' })).json.error) && /doesn’t look like a PDF/.test((await post('/api/pdf/pages', { file: 'api-fake.pdf', pages: '1' })).json.error) && /3 pages, so page 9/.test((await post('/api/pdf/pages', { file: 'api-b.pdf', pages: '9' })).json.error) && (await post('/api/pdf/rotate', { file: 'api-b.pdf', degrees: 33 })).status === 400 && (await post('/api/pdf/make', { text: '  ' })).status === 400);
+      check('PDF', 'a blocked system path is "not found"', (await post('/api/pdf/pages', { file: 'C:\\Windows\\win.pdf', pages: '1' })).status === 404);
+    }
+    // Disk care on real folders in the test home: scans only read; every change is planned on the server, approved, applied once, and undone in one step.
+    {
+      const old = d => new Date(Date.now() - d * 864e5);
+      const put = (f, data, ageDays) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, data); if (ageDays) fs.utimesSync(f, old(ageDays), old(ageDays)); return f; };
+      const dl = path.join(S.home, 'Downloads');
+      put(path.join(dl, 'api-report.pdf'), 'p', 5); put(path.join(dl, 'api-photo.jpg'), 'j', 5); put(path.join(dl, 'api-setup.exe'), 'e', 5); put(path.join(dl, 'api-half.crdownload'), 'h', 5); put(path.join(dl, 'api-fresh.txt'), 'f', 0);
+      const foreign = { headers: { 'Sec-Fetch-Site': 'cross-site' } };
+      r = await post('/api/disk/usage', {});
+      check('Disk care', 'usage: drives with free space and the biggest places, read-only', r.json.success && r.json.drives.length >= 1 && r.json.drives[0].totalBytes > 0 && Array.isArray(r.json.places) && r.json.temp && typeof r.json.trashBytes === 'number', r.text.slice(0, 300));
+      r = await post('/api/disk/plan', { kind: 'tidy' });
+      const tidyId = r.json.planId;
+      check('Disk care', 'tidy plan: the Downloads folder by default, a count per category, unfinished and brand-new files left alone; nothing has moved yet', r.json.success && r.json.count === 3 && r.json.byCategory.Documents.count === 1 && r.json.byCategory.Images.count === 1 && r.json.byCategory.Installers.count === 1 && r.json.skipped.inProgress === 1 && r.json.skipped.recent === 1 && fs.existsSync(path.join(dl, 'api-report.pdf')) && !('items' in r.json), r.text.slice(0, 400));
+      check('Disk care', 'apply and undo are refused when they do not come from JARVIS on the laptop', (await post('/api/disk/apply', { planId: tidyId }, foreign)).status === 403 && (await post('/api/disk/undo', { runId: '20260101000000-abcdef' }, foreign)).status === 403 && (await post('/api/disk/applyPermanent', { planId: tidyId }, foreign)).status === 403);
+      r = await post('/api/disk/apply', { planId: tidyId });
+      check('Disk care', 'apply: Downloads is outside ~/jarvis, so the normal "needs your OK" answer (409) comes first and nothing moves', r.status === 409 && r.json.needsApproval === true && r.json.paths.includes(dl) && fs.existsSync(path.join(dl, 'api-report.pdf')), r.text.slice(0, 300));
+      r = await post('/api/disk/apply', { planId: tidyId, approved: true });
+      const tidyRun = r.json.runId;
+      check('Disk care', 'apply with approval: files land in category folders and a run id is returned', r.json.success && r.json.moved === 3 && /^\d{14}-[a-f0-9]{6}$/.test(tidyRun) && fs.existsSync(path.join(dl, 'Documents', 'api-report.pdf')) && fs.existsSync(path.join(dl, 'Images', 'api-photo.jpg')) && fs.existsSync(path.join(dl, 'Installers', 'api-setup.exe')) && fs.existsSync(path.join(dl, 'api-half.crdownload')) && fs.existsSync(path.join(dl, 'api-fresh.txt')), r.text.slice(0, 300));
+      check('Disk care', 'a plan can only be applied once, and a made-up plan id or a file list sent by the page does nothing', (await post('/api/disk/apply', { planId: tidyId, approved: true })).status === 410 && (await post('/api/disk/apply', { planId: 'feedfacefeedface', approved: true, items: [{ from: path.join(dl, 'api-fresh.txt') }] })).status === 410 && fs.existsSync(path.join(dl, 'api-fresh.txt')));
+      r = await post('/api/disk/undo', { runId: tidyRun });
+      check('Disk care', 'undo asks for approval too (it writes into Downloads) and moves nothing until it has it', r.status === 409 && !fs.existsSync(path.join(dl, 'api-report.pdf')));
+      r = await post('/api/disk/undo', { runId: tidyRun, approved: true });
+      check('Disk care', 'undo: all three files are back, the empty category folders are gone, and asking again is refused', r.json.success && r.json.restored === 3 && fs.existsSync(path.join(dl, 'api-report.pdf')) && !fs.existsSync(path.join(dl, 'Documents')) && (await post('/api/disk/undo', { runId: tidyRun, approved: true })).status === 409);
+      check('Disk care', 'plan errors are plain: unknown folder 404, a whole drive 400, a system folder refused, JARVIS trash 400, unknown kind 400', (await post('/api/disk/plan', { kind: 'tidy', folder: 'no-such-folder-xyz' })).status === 404 && (await post('/api/disk/plan', { kind: 'tidy', folder: path.parse(S.home).root })).status === 400 && [403, 404].includes((await post('/api/disk/plan', { kind: 'tidy', folder: 'C:\\Windows\\System32' })).status) && [400, 404].includes((await post('/api/disk/plan', { kind: 'tidy', folder: path.join(S.sandbox, '.trash') })).status) && (await post('/api/disk/plan', { kind: 'nope' })).status === 400);
+      // large files → the JARVIS trash → undo; and duplicates
+      const docs = path.join(S.sandbox, 'Documents');
+      put(path.join(docs, 'api-big-a.bin'), Buffer.alloc(3 * 1048576, 1), 30); put(path.join(docs, 'api-big-b.bin'), Buffer.alloc(2 * 1048576, 2), 30);
+      put(path.join(docs, 'api-dup-1.dat'), Buffer.alloc(2 * 1048576 + 5, 9), 40); put(path.join(S.sandbox, 'Projects', 'api-dup-2.dat'), Buffer.alloc(2 * 1048576 + 5, 9), 20);
+      r = await post('/api/disk/plan', { kind: 'large', minMB: 2 });
+      const bigItems = r.json.items || [];
+      check('Disk care', 'large files: biggest first, numbered, with size, age and path (read-only)', r.json.success && bigItems.length >= 3 && bigItems[0].n === 1 && bigItems[0].size >= bigItems[1].size && bigItems.some(i => /api-big-a\.bin$/.test(i.path)) && bigItems.every(i => i.size >= 2 * 1048576), r.text.slice(0, 300));
+      const bigId = r.json.planId;
+      check('Disk care', 'large files: choosing nothing, or a number that is not in the list, is a plain 400', (await post('/api/disk/apply', { planId: bigId })).status === 400 && (await post('/api/disk/apply', { planId: bigId, pick: [999] })).status === 400 && (await post('/api/disk/apply', { planId: bigId, pick: [0] })).status === 400);
+      const pickN = bigItems.find(i => /api-big-a\.bin$/.test(i.path)).n;
+      r = await post('/api/disk/apply', { planId: bigId, pick: [pickN] });
+      const bigRun = r.json.runId;
+      check('Disk care', 'large files: the picked file goes to the JARVIS trash on the same drive; the other stays', r.json.success && r.json.moved === 1 && r.json.trashNote === true && !fs.existsSync(path.join(docs, 'api-big-a.bin')) && fs.existsSync(path.join(docs, 'api-big-b.bin')) && fs.readdirSync(path.join(S.sandbox, '.trash')).some(n => n === 'diskcare-' + bigRun), r.text.slice(0, 300));
+      r = await post('/api/disk/undo', { runId: bigRun });
+      check('Disk care', 'large files: undo brings it back (inside ~/jarvis, so no approval is needed)', r.json.success && r.json.restored === 1 && fs.existsSync(path.join(docs, 'api-big-a.bin')) && fs.statSync(path.join(docs, 'api-big-a.bin')).size === 3 * 1048576, r.text.slice(0, 300));
+      r = await post('/api/disk/plan', { kind: 'duplicates' });
+      check('Disk care', 'duplicates: identical files are found by content, one copy is kept, the rest listed', r.json.success && r.json.groupCount >= 1 && r.json.extraCopies >= 1 && r.json.wasted >= 2 * 1048576 && r.json.groups.some(g => g.copies.length >= 1 && g.size === 2 * 1048576 + 5), r.text.slice(0, 400));
+      const dupId = r.json.planId;
+      r = await post('/api/disk/apply', { planId: dupId });
+      const dupRun = r.json.runId;
+      check('Disk care', 'duplicates: apply moves only the extras; exactly one of the two copies is left', r.json.success && r.json.moved === 1 && [path.join(docs, 'api-dup-1.dat'), path.join(S.sandbox, 'Projects', 'api-dup-2.dat')].filter(f => fs.existsSync(f)).length === 1, r.text.slice(0, 300));
+      // similar photos with the real Windows image tools: two copies of one (tiny, padded) JPEG are the same picture
+      {
+        const TINYJ = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64');
+        const padded = Buffer.concat([TINYJ, Buffer.alloc(40 * 1024, 0)]);
+        fs.mkdirSync(path.join(S.sandbox, 'Images'), { recursive: true });
+        fs.writeFileSync(path.join(docs, 'api-photo-a.jpg'), padded); fs.writeFileSync(path.join(S.sandbox, 'Images', 'api-photo-b.jpg'), padded);
+        r = await post('/api/disk/plan', { kind: 'photos' });
+        const gi = r.json.success ? r.json.groups.findIndex(g => [g.keep.path, ...g.copies.map(c => c.path)].some(p => /api-photo-/.test(p))) : -1;
+        check('Disk care', 'similar photos: the same picture in two folders is one set (found by the real Windows image tools), with the size and how alike', r.json.success && gi >= 0 && r.json.groups[gi].copies.length === 1 && r.json.groups[gi].copies[0].distance === 0 && /^[a-f0-9]{16}$/.test(r.json.planId), r.text.slice(0, 500));
+        if (gi >= 0) {
+          check('Disk care', 'similar photos: a set number that does not exist is refused', (await post('/api/disk/apply', { planId: r.json.planId, pick: [999] })).status === 400);
+          const ap = await post('/api/disk/apply', { planId: r.json.planId, pick: [gi + 1] });
+          check('Disk care', 'similar photos: cleaning the chosen set moves exactly one of the two to the JARVIS trash', ap.json.success && ap.json.moved === 1 && [path.join(docs, 'api-photo-a.jpg'), path.join(S.sandbox, 'Images', 'api-photo-b.jpg')].filter(f => fs.existsSync(f)).length === 1, ap.text.slice(0, 300));
+          const un = await post('/api/disk/undo', { runId: ap.json.runId });
+          check('Disk care', 'similar photos: undo brings it back', un.json.success && un.json.restored === 1 && fs.existsSync(path.join(docs, 'api-photo-a.jpg')) && fs.existsSync(path.join(S.sandbox, 'Images', 'api-photo-b.jpg')), un.text.slice(0, 300));
+        }
+        r = await post('/api/disk/plan', { kind: 'shrink' });
+        check('Disk care', 'shrink plan: only big old JPEGs qualify, so the small ones in the test home give an empty plan with the limits stated', r.json.success && r.json.count === 0 && r.json.minMB === 3 && r.json.olderDays === 90 && r.json.quality === 82 && r.json.maxSide === 2560, r.text.slice(0, 300));
+        for (const f of [path.join(docs, 'api-photo-a.jpg'), path.join(S.sandbox, 'Images', 'api-photo-b.jpg')]) { try { fs.rmSync(f, { force: true }); } catch {} }
+      }
+      r = await post('/api/disk/plan', { kind: 'trash' });
+      check('Disk care', 'trash plan: counts what is in the JARVIS trash (a permanent action, flagged as such)', r.json.success && r.json.permanent === true && r.json.count >= 1 && r.json.bytes >= 2 * 1048576, r.text.slice(0, 300));
+      const trashId = r.json.planId;
+      check('Disk care', 'a permanent plan cannot go through the reversible route', (await post('/api/disk/apply', { planId: trashId })).status === 400);
+      r = await post('/api/disk/undo', { runId: dupRun });
+      check('Disk care', 'duplicates: undo puts the extra copy back', r.json.success && r.json.restored === 1 && fs.existsSync(path.join(docs, 'api-dup-1.dat')) && fs.existsSync(path.join(S.sandbox, 'Projects', 'api-dup-2.dat')));
+      // temp (only the throwaway folder named Temp) and emptying the trash: permanent
+      put(path.join(diskTemp, 'api-old.tmp'), 'o'.repeat(500), 10); put(path.join(diskTemp, 'api-new.tmp'), 'n', 0); put(path.join(diskTemp, 'sub', 'api-old2.log'), 'p'.repeat(100), 6);
+      r = await post('/api/disk/plan', { kind: 'temp' });
+      check('Disk care', 'temp plan: only files older than 3 days in the throwaway temp folder, flagged permanent', r.json.success && r.json.count === 2 && r.json.bytes === 600 && r.json.permanent === true && r.json.olderThanDays === 3 && fs.existsSync(path.join(diskTemp, 'api-old.tmp')), r.text.slice(0, 300));
+      r = await post('/api/disk/applyPermanent', { planId: r.json.planId });
+      check('Disk care', 'temp apply: the old files are deleted for real, the new one and the folder stay', r.json.success && r.json.removed === 2 && r.json.bytes === 600 && !fs.existsSync(path.join(diskTemp, 'api-old.tmp')) && !fs.existsSync(path.join(diskTemp, 'sub')) && fs.existsSync(path.join(diskTemp, 'api-new.tmp')) && fs.existsSync(diskTemp), r.text.slice(0, 300));
+      r = await post('/api/disk/plan', { kind: 'trash' });
+      r = await post('/api/disk/applyPermanent', { planId: r.json.planId });
+      check('Disk care', 'emptying the JARVIS trash removes everything in it (the trash folder itself stays)', r.json.success && r.json.removed >= 1 && fs.existsSync(path.join(S.sandbox, '.trash')) && fs.readdirSync(path.join(S.sandbox, '.trash')).length === 0, r.text.slice(0, 300));
+    }
+    // Service watchdog: Ollama is always listed; what to watch can only be changed from the laptop page (this harness is not it).
+    r = await get('/api/watch/status');
+    check('Watchdog', 'status lists Ollama and starts switched off', r.json.success && r.json.enabled === false && r.json.targets[0].id === 'ollama' && r.json.targets[0].builtin, r.text.slice(0, 300));
+    check('Watchdog', 'a check round works (Ollama is down in this harness) and nothing alerts on the first look', (await post('/api/watch/check', {})).json.targets[0].up === false);
+    const foreign = { headers: { 'Sec-Fetch-Site': 'cross-site' } };
+    for (const p of ['add', 'remove', 'enable']) check('Watchdog', p + ' is refused when it does not come from JARVIS on the laptop', (await post('/api/watch/' + p, { target: 'localhost:5000', on: true }, foreign)).status === 403);
+    check('Watchdog', 'nothing was added by the refused calls', (await get('/api/watch/status')).json.targets.length === 1);
+    check('Watchdog', 'a bad address is a plain 400', (await post('/api/watch/add', { target: 'file:///etc/passwd' })).status === 400 && (await post('/api/watch/add', {})).status === 400);
+    r = await post('/api/watch/add', { target: 'localhost:' + S.port, label: 'JARVIS test server' });
+    check('Watchdog', 'watching a port that is open: switched on, checked at once, up', r.json.success && r.json.enabled && r.json.watching.label === 'JARVIS test server' && r.json.watching.up === true && r.json.watching.checks === 1, r.text.slice(0, 300));
+    check('Watchdog', 'the same address again is not added twice', (await post('/api/watch/add', { target: 'LOCALHOST:' + S.port })).json.existed === true && (await get('/api/watch/status')).json.targets.length === 2);
+    r = await post('/api/watch/add', { target: 'localhost:9' });
+    check('Watchdog', 'a closed port is reported as not answering', r.json.watching.up === false && /nothing is listening/.test(r.json.watching.error), r.json.watching);
+    check('Watchdog', 'Ollama cannot be removed, an unknown name is a 404', (await post('/api/watch/remove', { target: 'ollama' })).status === 404 && (await post('/api/watch/remove', { target: 'nothing' })).status === 404);
+    check('Watchdog', 'remove by the name you gave it', (await post('/api/watch/remove', { target: 'JARVIS test server' })).json.removed === 'JARVIS test server' && (await get('/api/watch/status')).json.targets.length === 2);
+    await post('/api/watch/remove', { target: 'localhost:9' });
+    check('Watchdog', 'switch off', (await post('/api/watch/enable', { on: false })).json.enabled === false && (await get('/api/watch/status')).json.enabled === false);
     check('AI providers', 'provider list loads (keys never shown)', (await get('/api/llm/providers')).json.success);
     check('AI providers', 'adding an empty key is refused', (await post('/api/llm/providers', { apiKey: '' })).status >= 400);
     check('AI providers', 'editing a provider that doesn’t exist is a 4xx', (await post('/api/llm/providers/nope', {})).status >= 400);
@@ -388,6 +580,49 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     check('Phone', 'create the authenticator key', r.status === 200 && (await S.get('/api/phone/auth')).json.configured === true, r.json);
     check('Phone', 'a malformed code is rejected', (await post('/api/phone/auth/check', { code: '12' })).json.result === 'bad-format');
     check('Phone', 'a wrong code is rejected', (await post('/api/phone/auth/check', { code: '000000' })).json.result === 'other-key');
+
+    /* ---------- camera pictures: scans, "what is this", room snapshots, word boxes (scan.js / ocr.js; the real-OCR checks are in tests/scan.test.js) ---------- */
+    {
+      const TINY = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64');
+      const rawPost = async (p, body, site = 'same-origin') => { rec('POST', p); const x = await fetch(S.base + p, { method: 'POST', headers: { Origin: S.base, 'Sec-Fetch-Site': site, 'Content-Type': 'image/jpeg' }, body }); const t = await x.text(); let j = {}; try { j = JSON.parse(t); } catch {} return { status: x.status, json: j }; };
+      const st = (await get('/api/scan/status')).json;
+      check('Camera', 'scan status reports what is available', st.success === true && st.maxPages === 20 && typeof st.ocr === 'boolean' && typeof st.vision === 'boolean', st);
+      check('Camera', 'a scan page must be a JPEG, and from the laptop page', (await rawPost('/api/scan/page', Buffer.from('this is not a picture, only some text'))).status === 400 && (await rawPost('/api/scan/page', TINY, 'cross-site')).status === 403);
+      const pg = await rawPost('/api/scan/page', TINY);
+      check('Camera', 'a page is accepted and starts a scan', pg.status === 200 && pg.json.pages === 1 && /^[a-f0-9]{16}$/.test(pg.json.scan), pg.json);
+      r = await post('/api/scan/finish', { scan: pg.json.scan, name: 'api scan', ocr: false });
+      check('Camera', 'finishing makes a PDF in ~/jarvis/Scans', r.status === 200 && r.json.file === 'Scans/api-scan.pdf' && fs.existsSync(path.join(SB, 'Scans', 'api-scan.pdf')) && r.json.searchable === false, r.json);
+      check('Camera', 'finishing needs a scan that exists; discard is harmless', (await post('/api/scan/finish', { scan: 'x' })).status === 404 && (await post('/api/scan/discard', { scan: 'x' })).json.discarded === false);
+      check('Camera', 'vision: needs a JPEG; with no AI running it fails with a message', (await post('/api/vision/ask', {})).status === 400 && (await post('/api/vision/ask', { image: TINY.toString('base64'), ocr: false })).status >= 400);
+      r = await rawPost('/api/room/snapshot', TINY);
+      check('Camera', 'a room snapshot is kept in ~/jarvis/Watch; a non-picture is refused', r.status === 200 && /^Watch\/watch-/.test(r.json.file) && (await rawPost('/api/room/snapshot', Buffer.from('not a picture, just words in a request'))).status === 400, r.json);
+      check('Camera', 'OCR with word boxes: needs an image; text that is not a picture is refused', (await post('/api/ocr/words', {})).status === 400 && (await post('/api/ocr/words', { image: Buffer.from('not a picture, only some words').toString('base64') })).status === 400);
+      check('Camera', 'plain OCR needs an image; status answers', (await post('/api/ocr/image', {})).status === 400 && (await get('/api/ocr/status')).status === 200);
+      check('Camera', 'phone alert: refused from another site, refused when phone alerts are off', (await post('/api/phone/alert', { text: 'x' }, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status === 403 && (await post('/api/phone/alert', { text: 'Movement seen' })).status === 400);
+    }
+
+    /* ---------- chat archive: old chats saved on the laptop, searched by words and dates ---------- */
+    {
+      const now = Date.now();
+      const chat = [{ role: 'user', text: 'Which database should I use for the attendance app?', t: now - 2 * 864e5 }, { role: 'assistant', text: 'Use SQLite: it needs no server.', t: now - 2 * 864e5 + 1000 }, { role: 'user', text: 'What is the capital of France', t: now - 3600e3 }, { role: 'assistant', text: 'Paris.', t: now - 3600e3 + 1000 }];
+      check('Chat archive', 'status of a fresh install: empty', (await get('/api/chatarchive/status')).json.messages === 0);
+      check('Chat archive', 'every route is for the laptop page only', (await post('/api/chatarchive/append', { items: chat }, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status === 403 && (await get('/api/chatarchive/status', { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status === 403 && (await post('/api/chatarchive/search', { text: 'france' }, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status === 403 && (await post('/api/chatarchive/forget', { confirm: true }, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status === 403);
+      check('Chat archive', 'backfill puts the current chat in once; a second backfill is skipped', (await post('/api/chatarchive/backfill', { items: chat })).json.stored === 4 && (await post('/api/chatarchive/backfill', { items: chat })).json.skipped === true);
+      check('Chat archive', 'append adds to it; the archive is a dot-folder in ~/jarvis', (await post('/api/chatarchive/append', { items: [{ role: 'user', text: 'Remind me about the database backup', t: now - 60e3 }] })).json.stored === 1 && fs.readdirSync(path.join(S.sandbox, '.chat-archive')).some(f => /^\d{4}-\d{2}\.jsonl$/.test(f)));
+      r = await post('/api/chatarchive/search', { text: 'what did I decide about the database last 5 days' });
+      check('Chat archive', 'search by words and a date window finds the old chat, not the unrelated one', r.json.success && r.json.total >= 1 && r.json.exchanges.some(e => /SQLite/.test(e.assistant)) && !r.json.exchanges.some(e => /France/.test(e.user)) && r.json.terms.includes('database') && /last 5 days/.test(r.json.window.label), r.text.slice(0, 400));
+      check('Chat archive', 'search needs words', (await post('/api/chatarchive/search', { text: ' ' })).status === 400);
+      check('Chat archive', 'status counts the messages', (await get('/api/chatarchive/status')).json.messages === 5);
+      check('Chat archive', 'forgetting needs an explicit confirm, then erases the folder', (await post('/api/chatarchive/forget', {})).status === 400 && fs.existsSync(path.join(S.sandbox, '.chat-archive')) && (await post('/api/chatarchive/forget', { confirm: true })).json.removed >= 1 && !fs.existsSync(path.join(S.sandbox, '.chat-archive')));
+    }
+
+    /* ---------- lecture notes and exam questions (the AI is offline in these tests, so only the refusals and the clean failures are checked here; the passes are in tests/studyserver.test.js) ---------- */
+    {
+      check('Study', 'lecture notes: too little text is refused; from another site it is refused', (await post('/api/lecture/notes', { transcript: 'hi' })).status === 400 && (await post('/api/lecture/notes', { transcript: 'word '.repeat(60) }, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status === 403);
+      r = await post('/api/lecture/notes', { subject: 'DBMS', transcript: 'The lecture explains normalization and transactions in detail. '.repeat(10) });
+      check('Study', 'lecture notes: with no AI running it fails with a message, and writes no half-made file', r.status === 502 && typeof r.json.error === 'string' && !fs.existsSync(path.join(S.sandbox, 'Notes')) || r.status === 502 && !fs.readdirSync(path.join(S.sandbox, 'Notes')).some(f => /^lecture-dbms/.test(f)), r.text.slice(0, 200));
+      check('Study', 'exam questions: needs a note or a topic; a missing file is "not found"; with no AI a topic fails cleanly', (await post('/api/exam/questions', {})).status === 400 && (await post('/api/exam/questions', { name: 'no-such-note-zz.md' })).status === 404 && (await post('/api/exam/questions', { topic: 'normalization' })).status === 502);
+    }
 
     /* ---------- read-only laptop info (real, but changes nothing) ---------- */
     // Real readings are required on a Windows laptop; CI machines and Linux have no audio/brightness/radios, so there

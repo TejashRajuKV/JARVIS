@@ -66,7 +66,10 @@ config.roots = config.roots.filter(r => { try { return fs.statSync(r).isDirector
 const saveConfig = () => fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
 
 // Every AI call goes through llm.js: local Ollama, or a cloud provider with the user's own API key (kept in .config.json).
-const llm = require('./llm')({ getConfig: () => config, saveConfig, OLLAMA, DEFAULT_MODEL });
+// Each call's outcome (model, time, kind of error; never the text or a key) goes to a small history for "check my AI" (aihealth.js).
+const aiCalls = require('./aihealth').createRecorder({ file: path.join(SANDBOX, '.ai-calls.json') });
+process.on('exit', () => aiCalls.flush());
+const llm = require('./llm')({ getConfig: () => config, saveConfig, OLLAMA, DEFAULT_MODEL, onCall: aiCalls.record });
 llm.routes(app);
 
 // Windows Hello approvals (hello.js). Mounted before every route so its guard sees shutdown/delete/wipe first.
@@ -1163,7 +1166,7 @@ app.post('/api/tool/openFile', (req, res) => {
   const f = findAnywhere(String(req.body.name || ''), { kind: 'file' });
   if (!f || !f.path) return notFoundOrChoices(res, f, req.body.name);
   const p = f.path;
-  if (!/\.(pdf|txt|md|png|jpe?g|gif|docx?|pptx?|xlsx?|csv|html?)$/i.test(p)) return res.status(400).json({ error: 'I only open documents and pictures this way — say "run" for programs' });
+  if (!/\.(pdf|txt|md|png|jpe?g|gif|webp|svg|docx?|pptx?|xlsx?|csv|html?)$/i.test(p)) return res.status(400).json({ error: 'I only open documents and pictures this way — say "run" for programs' });
   openPath(p);
   res.json({ success: true, name: rel(p), path: p });
 });
@@ -1438,6 +1441,31 @@ rag.startWatcher(); // new/changed files are picked up automatically (still chea
 
 // Website generator, DSA coach and viva practice (skills.js).
 require('./skills')(app, { llm, DEFAULT_MODEL, SANDBOX, openPath, rel, findAllowed, anyPath, approvedChange, whereDir });
+// Skill packs: any folder with a SKILL.md in ~/jarvis/Skills (or ./skills-bundled) becomes a skill (skillpack.js).
+require('./skillpack')(app, { llm, DEFAULT_MODEL, SANDBOX });
+// "Check my AI": Ollama, recent AI errors, disks, memory (aihealth.js).
+require('./aihealth')(app, { llm, recorder: aiCalls, OLLAMA, DEFAULT_MODEL, SANDBOX });
+// Service watchdog: is Ollama / a dev server / a site you named still up? Alerts reach the page over the same event stream as reminders.
+require('./watchdog')(app, { OLLAMA, SANDBOX });
+// "What's near X": cafés, pharmacies, ATMs… from OpenStreetMap, using the same place search as distance / directions (nearby.js).
+require('./nearby')(app, { geocodeAll, getJSON });
+// CSV analysis: statistics, relationships, "average marks by dept", SVG charts. Files only through the usual folder checks (csvtools.js).
+require('./csvtools')(app, { findAllowed, anyPath, openPath, rel, SANDBOX });
+// "Document my project": a wiki derived from the code, one AI sentence per module (projectwiki.js).
+require('./projectwiki')(app, { llm, DEFAULT_MODEL, SANDBOX, findAllowed, anyPath, approvedChange, rel, openPath });
+// "Draw me …": text to image through an image service (a free key may be needed) or your own local Stable Diffusion; files are checked before they are saved (imagegen.js).
+require('./imagegen')(app, { getConfig: () => config, saveConfig, SANDBOX, rel, openPath });
+// PDF tools: merge, take pages out, turn pages, text to PDF, watermark. Always a new file; needs the pdf-lib package (pdftools.js).
+require('./pdftools')(app, { findAllowed, anyPath, approvedChange, openPath, rel, SANDBOX });
+// Disk care: what is using the drive, tidy Downloads, large and duplicate files, old temp files. Scan → plan → apply → undo (diskcare.js).
+// Permanent actions (temp files, emptying JARVIS's trash) are Windows Hello guarded in hello.js.
+require('./diskcare')(app, { SANDBOX, TRASH, blockedPath, approvedChange, anyPath, findAllowed, knownFolder, allRoots, scopeDir });
+// Camera pictures: document scans → one searchable PDF, "solve this from a photo", room-watch snapshots. Local only (scan.js).
+require('./scan')(app, { SANDBOX, llm, DEFAULT_MODEL, rel, openPath, IS_WIN });
+// Your old chats, saved one file per month in ~/jarvis/.chat-archive so they can be searched ("what did I decide about X last week"). Laptop page only (chatarchive.js).
+require('./chatarchive')(app, { SANDBOX, llm, DEFAULT_MODEL });
+// Student tools, server half: lecture transcript → study notes in pieces the local AI can hold; exam questions with model answers from a note or topic (studyserver.js).
+require('./studyserver')(app, { llm, DEFAULT_MODEL, SANDBOX, findAllowed, rel, readSource: async p => (/\.pdf$/i.test(p) ? (await pdf.pdfPages(p)).pages.join('\n') : fs.readFileSync(p, 'utf8')) });
 require('./jarviscode')(app, { llm, DEFAULT_MODEL, SANDBOX, anyPath, approvedChange, whereDir, rel, TRASH });
 
 // Checks only — JARVIS never installs a missing compiler or extension, it just reports what it found.

@@ -277,6 +277,24 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
     res.status((await publish(topic, 'JARVIS', text)) ? 200 : 502).json({ success: true });
   });
 
+  // A TEXT-ONLY alert from the laptop page (the room-watch camera: "movement seen at 3:42 pm"). Never a picture: the public ntfy
+  // server must not receive camera images. Laptop page only, and at most one per kind every 5 minutes.
+  const lastAlert = new Map();
+  app.post('/api/phone/alert', async (req, res) => {
+    if (!fromLaptopPage(req)) return res.status(403).json({ error: 'Phone alerts can only be sent from JARVIS on the laptop.' });
+    const topic = wantedTopic();
+    const text = String((req.body && req.body.text) || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
+    const kind = String((req.body && req.body.kind) || 'general').replace(/[^\w-]/g, '').slice(0, 20) || 'general';
+    if (!topic) return res.status(400).json({ error: 'Phone alerts are off.' });
+    if (!text) return res.status(400).json({ error: 'There is nothing to send.' });
+    const cool = Number(process.env.JARVIS_ALERT_COOLDOWN_MS) || 300000, now = Date.now();
+    if (now - (lastAlert.get(kind) || 0) < cool) return res.json({ success: true, sent: false, reason: 'cooldown' });
+    lastAlert.set(kind, now);
+    const ok = await publish(topic, 'JARVIS alert', text, ['warning'], 4);
+    if (!ok) lastAlert.delete(kind);
+    res.status(ok ? 200 : 502).json({ success: ok, sent: ok });
+  });
+
   function broadcast(ev) {
     const lead = leader();
     for (const c of clients) {

@@ -75,8 +75,87 @@ for (const t of ['help me with my resume', 'help me focus', 'help me with this e
   await Skills.intercept('take my DBMS viva'); r = await Skills.intercept('stop viva');
   check('viva: stop early with no answers', /no answers yet/.test(r.text) && Skills.state.viva === null);
 
+  // skill packs (SKILL.md folders)
+  const PACKS = [
+    { name: 'quick', hint: 'Short answers.', triggers: ['quick answer', 'be brief'], uses: '', source: 'bundled' },
+    { name: 'research', hint: 'Web answer with sources.', triggers: ['research', 'look into'], uses: 'research', source: 'bundled' },
+    { name: 'code-review', hint: 'Review my code.', triggers: ['review my code'], uses: 'files', source: 'bundled' },
+    { name: 'plan-then-act', hint: 'Plan, then do.', triggers: ['plan and do'], uses: 'plan', source: 'bundled' },
+    { name: 'mine', hint: 'My own.', triggers: [], uses: '', source: 'yours' },
+  ];
+  global.API = '/api'; let packReply = { success: true, skills: PACKS, skipped: [], folder: 'C:\\Users\\x\\jarvis\\Skills' };
+  global.fetch = async () => ({ json: async () => packReply });
+  check('packs: none loaded before the list arrives', Skills.packs.length === 0 && (await Skills.intercept('/quick hello')) === null);
+  await Skills.loadPacks();
+  check('packs: loaded from /api/skills', Skills.packs.length === 5);
+  const px = t => { const m = Skills.packExplicit(t); return m ? m.pack.name + '|' + m.input : null; };
+  check('explicit: /name rest', px('/quick what is a mutex') === 'quick|what is a mutex' && px('/QUICK hi') === 'quick|hi' && px('/mine') === 'mine|');
+  check('explicit: "use the X skill to …"', px('use the research skill to find the latest node version') === 'research|find the latest node version' && px('please use my quick skill on this') === 'quick|this' && px('use the quick skill') === 'quick|');
+  check('explicit: unknown names are left alone', px('/nothing hello') === null && px('use the nothing skill to x') === null && px('/usr/bin/env') === null && px('/etc is a folder') === null);
+  const pt = t => { const m = Skills.packByTrigger(t); return m ? m.pack.name + '|' + m.input : null; };
+  check('trigger: only at the start, on a word boundary', pt('research the latest node version') === 'research|the latest node version' && pt('Look into: rust vs go') === 'research|rust vs go' && pt('quick answer what is dns') === 'quick|what is dns');
+  check('trigger: not in the middle, not part of a longer word', pt('please research x') === null && pt('researching x') === null && pt('my research notes') === null);
+  check('trigger: ordinary commands are not hijacked', pt('open chrome') === null && pt('set volume to 30') === null && pt('what is the weather') === null);
+
+  calls.length = 0; replies['/skill/run'] = b => ({ success: true, skill: b.skill, text: 'Short. Second sentence. Third one.' });
+  r = await Skills.intercept('/quick what is a mutex');
+  check('run: plain skill goes to /skill/run with its name and the input', calls.at(-1)[0] === '/skill/run' && calls.at(-1)[1].skill === 'quick' && calls.at(-1)[1].input === 'what is a mutex' && calls.at(-1)[1].model === 'm', calls.at(-1));
+  check('run: reply is shown as is, spoken as the first two sentences', r.text === 'Short. Second sentence. Third one.' && r.speak === 'Short. Second sentence.' && r.noPersona && r.intent === 'SKILL', r);
+  r = await Skills.intercept('quick answer what is dns'); check('run: by trigger phrase', calls.at(-1)[1].skill === 'quick' && calls.at(-1)[1].input === 'what is dns');
+  r = await Skills.intercept('/quick'); check('run: no input → asks what to work on, no model call', /What should the \*\*quick\*\* skill work on/.test(r.text) && calls.at(-1)[1].input === 'what is dns');
+  replies['/skill/run'] = { error: 'Local LLM unavailable' };
+  r = await Skills.intercept('/quick hi'); check('run: errors are explained', /couldn’t run the \*\*quick\*\* skill: Local LLM unavailable/.test(r.text));
+  replies['/skill/run'] = b => ({ success: true, text: 'Answer from ' + b.skill });
+
+  // research: the page's own web search builds the prompt; the skill writes the answer; sources are appended
+  global.settings = { online: false }; global.enableOnlineAction = () => [{ label: 'ENABLE ONLINE TOOLS' }];
+  calls.length = 0; r = await Skills.intercept('/research latest node version');
+  check('research: Online tools off → asks, offers ENABLE, does not search', /Online tools\*\* is off/.test(r.text) && r.actions && r.actions[0].label === 'ENABLE ONLINE TOOLS' && !calls.length, r);
+  global.settings.online = true; let researched = null;
+  global.doResearch = async q => { researched = q; return { askLLM: 'Question: ' + q + '\n\n[1] Node (https://nodejs.org)\nv24', after: { sources: '\n\n**Sources**\n1. [Node](https://nodejs.org)', suggestions: ['Search Google for x'] } }; };
+  r = await Skills.intercept('research latest node version');
+  check('research: asks the web search, sends its prompt to the skill, keeps the sources', researched === 'latest node version' && calls.at(-1)[1].skill === 'research' && /\[1\] Node/.test(calls.at(-1)[1].input) && /Answer from research/.test(r.text) && /\*\*Sources\*\*/.test(r.text) && r.suggestions[0] === 'Search Google for x', r);
+  global.doResearch = async () => ({ text: 'I could not search the web right now.', suggestions: ['Search Google for x'] });
+  calls.length = 0; r = await Skills.intercept('/research anything');
+  check('research: a failed search is reported as it is, no model call', /could not search/.test(r.text) && r.noPersona && !calls.length, r);
+
+  // files: the page's own file search finds the excerpts
+  let rag = null;
+  replies['/rag/search'] = b => { rag = b; return { results: [{ file: 'calc.py', start: 3, end: 9, text: 'def add(a,b): return a-b' }], files: 12 }; };
+  global.isCloudModel = () => false; calls.length = 0;
+  r = await Skills.intercept('/code-review check calc.py for bugs');
+  check('files: searches with the file name, sends the excerpts to the skill', rag.file === 'calc.py' && rag.k === 5 && /calc\.py \(lines 3–9\)/.test(calls.at(-1)[1].input) && /def add/.test(calls.at(-1)[1].input) && /^Question: check calc\.py for bugs/.test(calls.at(-1)[1].input), { rag, input: calls.at(-1)[1].input });
+  check('files: sources listed under the answer', /\*\*Sources\*\*\n1\. calc\.py \(lines 3–9\)/.test(r.text), r.text);
+  replies['/rag/search'] = { results: [], files: 12 };
+  r = await Skills.intercept('review my code in zzz.py'); calls.length = 0;
+  check('files: nothing found → says so, no model call', /couldn’t find anything/.test(r.text) && !calls.length, r.text);
+  global.isCloudModel = () => true; global.modelInfo = () => ({ providerLabel: 'Gemini' }); replies['/rag/search'] = { results: [{ file: 'a.py', start: 1, end: 2, text: 'x' }], files: 1 };
+  r = await Skills.intercept('/code-review a.py'); check('files: warns when a cloud model got your file excerpts', /sent to Gemini/.test(r.text));
+  global.isCloudModel = () => false;
+
+  // plan: the existing planner and its confirmations do the work
+  let planned = null;
+  global.Agent = { plan: async (text, ms) => { planned = text; return text.includes('nonsense') ? null : { text: 'Plan done', intent: 'AGENT_RUN' }; } };
+  r = await Skills.intercept('/plan-then-act open vs code then start a focus session');
+  check('plan: hands the request to the planner and returns its result', planned === 'open vs code then start a focus session' && r.text === 'Plan done' && r.intent === 'AGENT_RUN', r);
+  r = await Skills.intercept('/plan-then-act nonsense'); check('plan: not an action → explained, nothing run', /didn’t make a plan/.test(r.text));
+
+  // list / reload
+  r = await Skills.intercept('list my skills');
+  check('list: shows every skill with how to call it', /`\/quick` — Short answers\./.test(r.text) && /`\/mine` — My own\. \*\(yours\)\*/.test(r.text) && /`\/research`/.test(r.text) && r.text.includes('C:\\Users\\x\\jarvis\\Skills'), r.text);
+  r = await Skills.intercept('what skills do you have?'); check('list: natural phrasing', /`\/code-review`/.test(r.text));
+  replies['/skills/reload'] = { success: true, count: 6, skipped: [] };
+  packReply = { success: true, skills: PACKS.concat([{ name: 'extra', hint: 'New.', triggers: [], uses: '', source: 'yours' }]), skipped: [{ folder: 'oops', source: 'yours', reason: 'no description' }], folder: 'F' };
+  r = await Skills.intercept('reload skills');
+  check('reload: refetches the list and reports skipped folders', Skills.packs.length === 6 && /Reloaded: \*\*6\*\* skills/.test(r.text) && /`oops` \(no description\)/.test(r.text), r.text);
+
+  // existing skills still win where they should
+  check('built-in skills unaffected: website start, coach, other commands', (await Skills.intercept('add milk to my list')) === null && (await Skills.intercept('set volume to 30')) === null);
+  r = await Skills.intercept('create a website for my fest'); check('built-in: website still starts', /What should be on it/.test(r.text)); await Skills.intercept('cancel');
+
   // no AI
   global.llmReady = () => false;
+  r = await Skills.intercept('/quick hello'); check('packs: no AI → a clear message, no model call', /AI brain/.test(r.text));
   r = await Skills.intercept('take my OS viva');
   check('no AI → a clear message, nothing started', /AI brain/.test(r.text) && Skills.state.viva === null);
 

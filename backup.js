@@ -13,7 +13,7 @@ const STATE_KEY = /^jarvis\.[\w.-]{1,40}$/;
 const MAX_BYTES = 6 * 1024 * 1024;
 const AREAS = { 'jarvis.todos': 'to-dos', 'jarvis.reminders': 'reminders', 'jarvis.deadlines': 'deadlines', 'jarvis.classes': 'classes', 'jarvis.chat': 'chat messages',
   'jarvis.memory': 'memories', 'jarvis.flashcards': 'flashcards', 'jarvis.snippets': 'snippets', 'jarvis.routines': 'routines', 'jarvis.triggers': 'triggers',
-  'jarvis.studyPlans': 'study plans', 'jarvis.sessions': 'focus sessions', 'jarvis.learned': 'learned phrases', 'jarvis.attendance': 'attendance', 'jarvis.marks': 'semester results' };
+  'jarvis.studyPlans': 'study plans', 'jarvis.sessions': 'focus sessions', 'jarvis.learned': 'learned phrases', 'jarvis.attendance': 'attendance', 'jarvis.marks': 'semester results', 'jarvis.exams': 'exam results' };
 
 /* ---------- sealing secrets ---------- */
 function seal(obj, password) {

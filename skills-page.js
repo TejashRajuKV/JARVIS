@@ -217,8 +217,86 @@ const Skills = (() => {
     return say(fb + '\n\n' + vivaQ(), { intent: 'VIVA', speak: g.score + ' out of 10. ' + (g.feedback || '') + ' Next question. ' + v.qs[v.i] });
   }
 
+  /* ================= skill packs (SKILL.md folders; server side: skillpack.js) ================= */
+  let packs = [], packSkipped = [], packFolder = '';
+  async function loadPacks() {
+    try {
+      const r = await fetch(API + '/skills').then(x => x.json());
+      if (r && r.success) { packs = r.skills || []; packSkipped = r.skipped || []; packFolder = r.folder || ''; }
+      return r;
+    } catch (e) { return null; }
+  }
+  const findPack = n => packs.find(p => p.name === String(n || '').toLowerCase());
+  // "/quick what is a mutex", "use the research skill to …": unambiguous, so checked before the built-in starts.
+  function packExplicit(t) {
+    let m = t.match(/^\/([a-z0-9][a-z0-9-]*)(?:\s+([\s\S]*))?$/i);
+    if (m && findPack(m[1])) return { pack: findPack(m[1]), input: (m[2] || '').trim() };
+    m = t.match(/^(?:please\s+)?use\s+(?:the\s+|my\s+)?([a-z0-9-]+)\s+skill(?:\s+(?:to|for|on|with)\s+([\s\S]+?))?[.!]?$/i);
+    if (m && findPack(m[1])) return { pack: findPack(m[1]), input: (m[2] || '').trim() };
+    return null;
+  }
+  // A skill's own trigger phrases count only at the start of the message ("research the latest node version").
+  function packByTrigger(t) {
+    const low = t.toLowerCase();
+    for (const p of packs) for (const tr of p.triggers || []) {
+      if (low.startsWith(tr) && (low.length === tr.length || /[\s:,]/.test(low[tr.length]))) return { pack: p, input: t.slice(tr.length).replace(/^[\s:,]+/, '').trim() };
+    }
+    return null;
+  }
+  const PACK_LIST = /^(?:(?:list|show)(?: me)?(?: all)?(?: (?:my|the))? skills|what skills (?:do you have|are installed)|which skills do you have)[.!?]?$/i;
+  const PACK_RELOAD = /^(?:reload|refresh|rescan)(?: (?:my|the))? skills[.!]?$/i;
+  async function packMeta(t) {
+    if (PACK_RELOAD.test(t)) {
+      const r = await callTool('/skills/reload', {});
+      if (r.error) return say('I couldn’t reload the skills: ' + r.error, { intent: 'SKILL' });
+      await loadPacks();
+      return say('✓ Reloaded: **' + packs.length + '** skill' + (packs.length === 1 ? '' : 's') + '.' + packSkippedNote(), { intent: 'SKILL' });
+    }
+    if (PACK_LIST.test(t)) {
+      if (!packs.length) return say('I have no extra skills loaded. Put a folder with a `SKILL.md` in ' + (packFolder ? '`' + packFolder + '`' : '`~/jarvis/Skills`') + ', then say **reload skills**.', { intent: 'SKILL' });
+      return say('**Skills** — say `/name …` or “use the name skill to …”:\n' + packs.map(p => '- `/' + p.name + '` — ' + p.hint + (p.source === 'yours' ? ' *(yours)*' : '')).join('\n') + packSkippedNote()
+        + '\n\nAdd your own: a folder with a `SKILL.md` in ' + (packFolder ? '`' + packFolder + '`' : '`~/jarvis/Skills`') + ', then **reload skills**.', { intent: 'SKILL' });
+    }
+    return null;
+  }
+  const packSkippedNote = () => packSkipped.length ? '\n\n⚠ Skipped: ' + packSkipped.map(s => '`' + s.folder + '` (' + s.reason + ')').join('; ') : '';
+  const firstSentences = s => String(s || '').replace(/[*_`#>]/g, '').split(/(?<=[.!?])\s/).slice(0, 2).join(' ').slice(0, 300);
+  const FILE_RE = [/["“']([^"”']+?\.(?:pdf|md|txt|markdown|csv|py|js|c|cpp|java))["”']/i, /(?:^|[\s(])([\w().-]+\.(?:pdf|md|txt|markdown|csv|py|js|c|cpp|java))\b/i];
+  // What a skill does depends on its `uses`: nothing special (just the AI with its instructions), the web, your files, or the planner.
+  async function runPack(pack, input) {
+    if (!input) return say('What should the **' + pack.name + '** skill work on? Say it like `/' + pack.name + ' …`.', { intent: 'SKILL' });
+    if (needAI()) return needAI();
+    if (pack.uses === 'plan') {
+      if (typeof Agent === 'undefined' || !Agent.plan) return say('The planner isn’t available right now.', { intent: 'SKILL' });
+      const r = await Agent.plan(input, 0);
+      return r || say('That doesn’t look like something I can do with my tools, so I didn’t make a plan. Try describing the steps — e.g. “open VS Code, then start a 25 minute focus session”.', { intent: 'SKILL' });
+    }
+    let content = input, tail = '', extra = {};
+    if (pack.uses === 'research') {
+      if (typeof settings !== 'undefined' && !settings.online)
+        return say('The **' + pack.name + '** skill searches the web, and **Online tools** is off.', { intent: 'SKILL', actions: typeof enableOnlineAction === 'function' ? enableOnlineAction() : undefined });
+      const r = await doResearch(input);                         // the search + the "only from these sources" prompt, as for any web question
+      if (!r.askLLM) return Object.assign({ noPersona: true, intent: 'SKILL' }, r);
+      content = r.askLLM; tail = (r.after && r.after.sources) || ''; extra.suggestions = r.after && r.after.suggestions;
+    } else if (pack.uses === 'files') {
+      const fm = FILE_RE[0].exec(input) || FILE_RE[1].exec(input);
+      setState('PROCESSING', 'Searching your files…');
+      const rs = await callTool('/rag/search', { query: input, k: 5, file: fm ? fm[1].trim() : undefined });
+      if (rs.error) return say(cap(rs.error) + '.', { intent: 'SKILL' });
+      if (!rs.results || !rs.results.length) return say('I couldn’t find anything about that in your files' + (rs.files ? ' (I searched ' + plural(rs.files, 'file') + ' in ~/jarvis and your project folders)' : '') + '. Name the file — e.g. `/' + pack.name + ' calc.py` — or add the folder in Settings → Project folders.', { intent: 'SKILL' });
+      const where = x => x.page ? 'page ' + x.page : 'lines ' + x.start + '–' + x.end;
+      content = 'Question: ' + input + '\n\n' + rs.results.map((x, i) => '[' + (i + 1) + '] ' + x.file + ' (' + where(x) + ')\n' + x.text).join('\n\n---\n\n');
+      tail = '\n\n**Sources**\n' + rs.results.map((x, i) => (i + 1) + '. ' + x.file + ' (' + where(x) + ')').join('\n')
+        + (typeof isCloudModel === 'function' && isCloudModel(llm.model) ? '\n\n⚠ These snippets from your files were sent to ' + modelInfo(llm.model).providerLabel + ' to write this answer.' : '');
+    }
+    setState('PROCESSING', 'Running the ' + pack.name + ' skill…');
+    const r = await callTool('/skill/run', { skill: pack.name, input: content, model: llm.model });
+    if (r.error) return say('I couldn’t run the **' + pack.name + '** skill: ' + r.error, { intent: 'SKILL' });
+    return say((r.text || '(no answer)') + tail, Object.assign({ intent: 'SKILL', speak: firstSentences(r.text) }, extra));
+  }
+
   /* ================= router ================= */
-  async function intercept(text) {
+  async function intercept(text, source) {
     const t = String(text || '').trim();
     if (!t) return null;
     // 1. an active viva takes every answer
@@ -264,6 +342,13 @@ const Skills = (() => {
       if (S.site.step < SITE_Q.length) return siteAsk();
       return siteNext();
     }
+    // 2b. skill packs: "/name …", "use the X skill …", "list my skills", "reload skills"
+    const px = packExplicit(t);
+    if (px) return runPack(px.pack, px.input);
+    const pmeta = await packMeta(t);
+    if (pmeta) return pmeta;
+    // 2c. the extra tools (extras-page.js): AI health, watchdog, nearby, CSV, wiki, images, PDFs; explicit wording only
+    if (typeof Extras !== 'undefined') { const ex = await Extras.intercept(t, source); if (ex) return ex; }
     // 3. starts
     const um = t.match(UIP_START);
     if (um) {
@@ -298,11 +383,14 @@ const Skills = (() => {
     if (cm && (/^(?:coach me|dsa coach|i(?:'m| am) stuck|give me (?:a\s+)?hints?|teach me (?:how )?to solve)/i.test(t) || DSA_WORDS.test(cm[1]))) return coachStart(cm[1]);
     // 4. an active coaching session
     if (S.coach) { const r = await coachTurn(t); if (r) return r; }
+    // 4b. a skill pack's own trigger phrase ("research …", "quick answer …")
+    const pt = packByTrigger(t);
+    if (pt) return runPack(pt.pack, pt.input);
     // 5. change the website that was just built
     if (S.lastSite && SITE_EDIT.test(t) && SITE_WORDS.test(t) && !/\b(to-?do|todo|list|reminder|volume|brightness|timer|alarm)\b/i.test(t)) return siteEdit(t);
     if (S.lastSite && /^(?:go back to the (?:previous|old|last) version|revert the (?:website|site|page))/i.test(t)) { const x = await callTool('/skill/siteRevert', { name: S.lastSite, dir: S.lastSiteAbs || undefined }); return say(x.error ? 'Couldn’t go back: ' + x.error : '✓ The website is back to the previous version (reopened).'); }
     if (S.lastSite && /^open (?:the |my )?(?:website|site) in (?:vs ?code|editor)$/i.test(t)) { const x = await callTool('/tool/openInEditor', { name: S.lastSiteDir || ('Projects/' + S.lastSite) }); return say(x.error ? cap(x.error) + '.' : 'Opening the website in **VS Code**.'); }
     return null;
   }
-  return { intercept, state: S, SITE_START, VIVA_START, COACH_START, DSA_WORDS };
+  return { intercept, state: S, SITE_START, VIVA_START, COACH_START, DSA_WORDS, loadPacks, packExplicit, packByTrigger, get packs() { return packs; } };
 })();

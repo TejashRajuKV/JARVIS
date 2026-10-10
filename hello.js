@@ -16,7 +16,7 @@ const fromB64 = s => Buffer.from(String(s || '').replace(/-/g, '+').replace(/_/g
 // lookup normalizes the same way — "/api/tool/SHUTDOWNSYSTEM/" must not slip past the guard.
 const GUARDED = {
   'POST /api/tool/shutdownsystem': 'power', 'POST /api/tool/restartsystem': 'power', 'POST /api/tool/sleepsystem': 'power',
-  'POST /api/tool/deleteitem': 'files', 'POST /api/tool/clearsandbox': 'files',
+  'POST /api/tool/deleteitem': 'files', 'POST /api/tool/clearsandbox': 'files', 'POST /api/disk/applypermanent': 'files', 'POST /api/chatarchive/forget': 'files',   // permanent clean-ups (diskcare.js)
   'DELETE /api/state': 'wipe', 'POST /api/backup/import': 'wipe', 'POST /api/backup/restore': 'wipe',
   'POST /api/lock/enable': 'lock', 'POST /api/lock/disable': 'lock',   // the app lock (applock.js)
 };

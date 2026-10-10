@@ -2,10 +2,10 @@
    Rules: same-origin GET files only â†’ network-first, cache as offline fallback; /api/* is NEVER cached; everything else
    (chat with the AI, laptop control) still needs the backend running on this machine. */
 'use strict';
-const VERSION = 'jarvis-v33';   // bump when the app shell changes (new fonts/styles), so old caches are dropped
+const VERSION = 'jarvis-v35';   // bump when the app shell changes (new fonts/styles), so old caches are dropped
 const SHELL = ['index.html', 'style.css', 'themes.css', 'ui.css', 'manifest.webmanifest',
   'api/state.js', 'lock-client.js', 'vendor/qrcode.js',
-  'speechfix.js', 'places.js', 'decider.js', 'nlu.js', 'persona.js', 'lang.js', 'study.js', 'voice.js', 'triggers.js', 'undo.js', 'skills-page.js',
+  'speechfix.js', 'places.js', 'decider.js', 'nlu.js', 'persona.js', 'lang.js', 'study.js', 'voice.js', 'triggers.js', 'undo.js', 'speech-stream.js', 'skillrouter.js', 'skills-page.js', 'scanmath.js', 'camera-page.js', 'watch-page.js', 'ttparse.js', 'student-page.js', 'extras-page.js',
   'palette.js', 'codepanel.js', 'script.js', 'wizard.js', 'routines.js', 'agent.js',
   // added by the later commits (boot cinema, HUD, dashboard, transitions, face greeting, gestures, Qwen assist, thresholds)
   'thresholds.js', 'nlu-qwen.js', 'boot-cinema.js', 'hud-overlay.js', 'dashboard.js', 'learn.js', 'transitions.js', 'face-greet.js', 'gesture.js',

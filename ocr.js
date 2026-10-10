@@ -149,6 +149,59 @@ $lines = @($res.Lines | ForEach-Object { $_.Text })
     res.json({ success: true, text: String(r.text || '').slice(0, 20000), lines: r.lines, engine: r.engine, ms: Date.now() - t0 });
   });
 
+  /* ---- word boxes: the same Windows OCR, but also where each word is (x, y, width, height in image pixels) ----
+     Used by the document scanner (invisible text layer in the PDF) and the timetable import (rebuilding a grid).
+     Windows only: tesseract.js is not installed, and without it there is nothing to fall back to. */
+  const WORDS_SCRIPT = `
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
+function Await($op, [Type]$type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
+[void][Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]
+[void][Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
+[void][Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime]
+$file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($env:JARVIS_OCR_PNG)) ([Windows.Storage.StorageFile])
+$stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+$dec = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+$sb = Await ($dec.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+$eng = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+if (-not $eng) { [Console]::Out.WriteLine((@{ error = 'no OCR language installed' } | ConvertTo-Json -Compress)); return }
+$res = Await ($eng.RecognizeAsync($sb)) ([Windows.Media.Ocr.OcrResult])
+$stream.Dispose()
+$words = New-Object System.Collections.ArrayList
+$li = 0
+foreach ($l in $res.Lines) {
+  foreach ($w in $l.Words) { $r = $w.BoundingRect; [void]$words.Add(@{ t = $w.Text; x = [int]$r.X; y = [int]$r.Y; w = [int]$r.Width; h = [int]$r.Height; l = $li }) }
+  $li++
+}
+[Console]::Out.WriteLine((@{ width = $sb.PixelWidth; height = $sb.PixelHeight; words = @($words); lines = @($res.Lines | ForEach-Object { $_.Text }) } | ConvertTo-Json -Compress -Depth 4))`;
+
+  const isImage = b => Buffer.isBuffer(b) && b.length > 12 && ((b[0] === 0xFF && b[1] === 0xD8) || (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47));
+  // buf: a JPEG or PNG. → { width, height, words:[{t,x,y,w,h,l}], lines:[text], text } or { error }
+  async function ocrWords(buf) {
+    if (!IS_WIN) return { error: 'Reading word positions needs Windows OCR, which this computer does not have.' };
+    if (!isImage(buf)) return { error: 'That is not a JPEG or PNG picture.' };
+    const imgPath = path.join(os.tmpdir(), `jarvis_ocrw_${process.pid}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}.${buf[0] === 0xFF ? 'jpg' : 'png'}`);
+    try { fs.writeFileSync(imgPath, buf); } catch (e) { return { error: 'Could not write the picture: ' + e.message }; }
+    try {
+      const r = await ps(WORDS_SCRIPT, { JARVIS_OCR_PNG: imgPath }, 45000);
+      if (r.error) return { error: r.error === 'no OCR language installed' ? 'Windows has no OCR language installed, so I cannot read text from pictures.' : 'Reading the picture failed: ' + r.error };
+      const words = (Array.isArray(r.words) ? r.words : (r.words ? [r.words] : [])).map(w => ({ t: String(w.t), x: w.x, y: w.y, w: w.w, h: w.h, l: w.l }));
+      const lines = Array.isArray(r.lines) ? r.lines.map(String) : (r.lines ? [String(r.lines)] : []);
+      return { width: r.width, height: r.height, words, lines, text: lines.join('\n'), engine: 'winrt' };
+    } finally { fs.unlink(imgPath, () => {}); }
+  }
+  app.locals.ocrWords = ocrWords;
+  // POST { image: base64 (JPEG/PNG) } → { width, height, words, lines, text }
+  app.post('/api/ocr/words', async (req, res) => {
+    const b64 = String((req.body && req.body.image) || '').replace(/^data:image\/\w+;base64,/, '');
+    if (!b64) return res.status(400).json({ error: 'image (base64) required' });
+    if (b64.length > 4 * 1024 * 1024) return res.status(413).json({ error: 'That picture is too large to read; use a smaller one.' });
+    const t0 = Date.now();
+    const r = await ocrWords(Buffer.from(b64, 'base64'));
+    if (r.error) return res.status(/not a JPEG/.test(r.error) ? 400 : /needs Windows/.test(r.error) ? 501 : 500).json({ error: r.error });
+    res.json({ success: true, ...r, ms: Date.now() - t0 });
+  });
+
   // ---- /api/ocr/screen — like /api/sys/screenRead but with monitor targeting ----
   // Body: { source?: 'screen'|'window'|'clipboard', monitor?: 1|2|3|..., vision?: bool, delay?: 0-10 }
   // monitor is 1-based; 1 = primary, 2 = secondary, etc. Default = primary (or whole virtual screen).

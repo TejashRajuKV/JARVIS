@@ -235,7 +235,7 @@ Output ONLY the prompt. No code, no intro sentence, no closing remarks.`;
     const q = String(b.question || '').slice(0, 500), a = String(b.answer || '').slice(0, 2500);
     if (!q) return res.status(400).json({ error: 'No question' });
     try {
-      const out = await llm.complete({ model: model(req), system: VIVA_GRADE_SYSTEM, messages: [{ role: 'user', content: 'Topic: ' + String(b.topic || '').slice(0, 120) + '\nQuestion: ' + q + '\nStudent answer: ' + (a || '(no answer)') }], json: true, temperature: 0.1, maxTokens: 500, timeoutMs: 180000 });
+      const out = await llm.complete({ model: model(req), system: VIVA_GRADE_SYSTEM + (b.reference ? '\nA reference answer taken from the student’s own notes is given: judge the answer against it.' : ''), messages: [{ role: 'user', content: 'Topic: ' + String(b.topic || '').slice(0, 120) + '\nQuestion: ' + q + (b.reference ? '\nReference answer (from the student’s notes): ' + String(b.reference).slice(0, 700) : '') + '\nStudent answer: ' + (a || '(no answer)') }], json: true, temperature: 0.1, maxTokens: 500, timeoutMs: 180000 });
       const j = parseJsonLoose(out) || {};
       res.json({ success: true, score: clampScore(j.score), feedback: String(j.feedback || '').slice(0, 400), missed: (Array.isArray(j.missed) ? j.missed : []).map(String).slice(0, 4), model: String(j.model_answer || '').slice(0, 600) });
     } catch (e) { fail(res, e); }

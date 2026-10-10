@@ -127,6 +127,7 @@
         <div class="input-row">
           <button class="btn" id="attachBtn" type="button" title="Add a PDF or notes file (or drag it here)" aria-label="Attach a file">📎</button><input type="file" id="attachFile" accept=".pdf,.txt,.md,.csv,.json,.py,.js,.ts,.c,.cpp,.h,.java,.cs,.go,.rs,.html,.css,.sql,.ipynb" hidden>
           <input id="chatInput" type="text" placeholder='Ask anything or give a command…  e.g. "remind me to submit the lab at 5pm"' autocomplete="off">
+          <button class="btn danger" id="stopBtn" type="button" hidden title="Stop speaking and stop the answer (Esc)" aria-label="Stop speaking and stop the answer">■ STOP</button>
           <button class="btn primary" id="sendBtn">SEND ▸</button>
           <button class="btn" id="codeModeBtn" type="button" title="JARVIS Code — build or change a project; JARVIS writes the files">JARVIS CODE</button>
         </div>
@@ -234,6 +235,14 @@
         <button class="btn" id="providerAddBtn">ADD</button>
       </div>
       <div class="s-note" id="providerNote" style="margin-top:6px"></div>
+      <h3 style="margin-top:14px">IMAGE SERVICE <small style="letter-spacing:.1em;color:var(--faint)">· KEY FOR “DRAW ME …”</small></h3>
+      <div class="s-note" style="margin-bottom:8px">Pictures are made by an online service (<em>Pollinations</em>), which may ask for a free key. Create one at <a href="https://enter.pollinations.ai" target="_blank" rel="noopener noreferrer">enter.pollinations.ai</a> and paste it here. It stays on this laptop in <em>~/jarvis/.config.json</em> and is never shown again. If you run Stable Diffusion (Automatic1111) on this PC, JARVIS uses that first and nothing leaves the laptop.</div>
+      <div class="root-add" style="flex-wrap:wrap">
+        <input type="password" id="imageKey" placeholder="Image service key" autocomplete="off" spellcheck="false">
+        <button class="btn" id="imageKeySave" type="button">SAVE</button>
+        <button class="btn" id="imageKeyRemove" type="button" hidden>REMOVE</button>
+      </div>
+      <div class="s-note" id="imageNote" style="margin-top:6px"></div>
     </div>
     <div class="s-sec">
       <h3>VOICE</h3>
@@ -244,6 +253,7 @@
       <div class="s-row"><label>Mic sensitivity<small>HIGHER HEARS YOU FROM FARTHER AWAY</small></label><select id="micBoostSelect"><option value="normal">NORMAL</option><option value="high">HIGH</option><option value="max">MAX · ACROSS THE ROOM</option></select></div>
       <div class="s-row"><label>Reply language</label><select id="replyLangSelect"><option value="auto">SAME AS I SPOKE</option><option value="en">ENGLISH</option><option value="te" lang="te">తెలుగు</option><option value="kn" lang="kn">ಕನ್ನಡ</option></select></div>
       <div class="s-row"><label>Online translation<small>GOOGLE · BETTER TELUGU/KANNADA REPLIES · SENDS REPLY TEXT ONLINE</small></label><button class="switch on" id="translateOnlineToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Speak while writing<small>STARTS SPEAKING THE FIRST SENTENCE AS SOON AS IT IS WRITTEN · ENGLISH CHAT ANSWERS · SAY “STOP” OR PRESS ESC TO CUT IT OFF</small></label><button class="switch on" id="speakWhileWritingToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Neural voice<small>FRIDAY · TELUGU · KANNADA · MICROSOFT · SENDS REPLY TEXT ONLINE</small></label><button class="switch on" id="neuralVoiceToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Voice check<small>WHAT THIS BROWSER SUPPORTS</small></label><button class="btn" id="voiceCheckBtn">CHECK</button></div>
       <div class="s-note" id="voiceCheckOut" style="margin:-4px 0 12px"></div>
@@ -262,6 +272,8 @@
       <div class="s-row"><label>Answer length</label><select id="lenSelect"><option value="concise">CONCISE</option><option value="balanced">BALANCED</option><option value="detailed">DETAILED</option></select></div>
       <div class="s-row"><label>Online tools<small>WEATHER · WEB ANSWERS · NO API KEYS</small></label><button class="switch" id="onlineToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-row"><label>Home city<small>USED FOR WEATHER</small></label><input type="text" id="cityInput" maxlength="40" placeholder="e.g. Bengaluru"></div>
+      <div class="s-row"><label>Suggest skills<small>A BUTTON UNDER AN ANSWER WHEN ONE OF YOUR SKILLS FITS THE QUESTION · NOTHING IS SENT ANYWHERE</small></label><button class="switch on" id="skillSuggestToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Save chats for search<small>EVERY MESSAGE IS KEPT ON THIS LAPTOP, ONE FILE PER MONTH · “WHAT DID I DECIDE ABOUT X LAST WEEK?” · SAY “FORGET MY CHAT ARCHIVE” TO ERASE</small></label><button class="switch on" id="chatArchiveToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Smart alerts<small>LOW BATTERY · HIGH RAM · DEADLINES SOON</small></label><button class="switch on" id="alertsToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Charger alerts<small>SAYS WHEN PLUGGED IN OR UNPLUGGED</small></label><button class="switch on" id="chargerAlertsToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Show how I understood you<small>UNDER EACH REPLY: INTENT · CONFIDENCE · DETAILS · CONTEXT · ROUTE · PERMISSION</small></label><button class="switch" id="inspectToggle" role="switch" aria-checked="false"></button></div>
@@ -278,6 +290,9 @@
       <div class="s-row"><label>Port scan watch<small>WATCH FOR NEW LISTENING PORTS EVERY 60s · ALERTS ON SUSPICIOUS ACTIVITY</small></label><button class="switch" id="portwatchToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-row"><label>Face recognition greeting<small>WEBCAM SINGLE-SHOT ON IDLE · GREETS YOU BY NAME · DESCRIPTOR ONLY, NO IMAGE STORED</small></label><button class="switch" id="faceGreetToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-row"><label>Hand gesture control<small>WEBCAM + MEDIAPIPE HANDS · UI-ONLY (TOGGLE/DISMISS/SCROLL) · NO TOOL FIRING</small></label><button class="switch" id="gestureToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-row"><label>Lock when I leave<small>WEBCAM LOOKS FOR A FACE EVERY 2 S · LOCKS JARVIS WHEN NOBODY IS THERE · NO PICTURE SAVED OR SENT · NEEDS “LOCK JARVIS” BELOW</small></label><button class="switch" id="presenceToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-row"><label>…after nobody is seen for<small>FOR THE LOCK WHEN I LEAVE</small></label><select id="presenceSecsSelect"><option value="30">30 SECONDS</option><option value="60">1 MINUTE</option><option value="120">2 MINUTES</option><option value="300">5 MINUTES</option></select></div>
+      <div class="s-row"><label>Also lock Windows<small>WHEN “LOCK WHEN I LEAVE” FIRES · OFF = ONLY JARVIS LOCKS</small></label><button class="switch" id="presenceWinToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-note" style="margin:8px 0 4px;font-size:10px;color:var(--faint)">ALERT THRESHOLDS · change these to tune when JARVIS warns you</div>
       <div class="s-row"><label>Low battery at<small>% BELOW WHICH I WARN</small></label><input type="number" id="thrBatteryLow" min="5" max="50" value="20"></div>
       <div class="s-row"><label>Critical battery at<small>% BELOW WHICH I ESCALATE</small></label><input type="number" id="thrBatteryCrit" min="1" max="30" value="10"></div>
@@ -343,11 +358,19 @@
   <script src="persona.js"></script>
   <script src="lang.js"></script>
   <script src="vendor/qrcode.js"></script>
+  <script src="scanmath.js"></script>
   <script src="study.js"></script>
   <script src="voice.js"></script>
   <script src="triggers.js"></script>
   <script src="undo.js"></script>
+  <script src="speech-stream.js"></script>
+  <script src="skillrouter.js"></script>
   <script src="skills-page.js"></script>
+  <script src="camera-page.js"></script>
+  <script src="watch-page.js"></script>
+  <script src="ttparse.js"></script>
+  <script src="student-page.js"></script>
+  <script src="extras-page.js"></script>
   <script src="script.js"></script>
   <script src="palette.js"></script>
   <script src="codepanel.js"></script>

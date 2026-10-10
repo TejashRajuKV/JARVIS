@@ -31,6 +31,18 @@ check('attendance & marks entries present', items.some(i => /attendance report/i
 check('panic + resume present', items.some(i => /panic/i.test(i.label)) && items.some(i => /resume/i.test(i.label)));
 check('learned phrases only when Agent exists', !items.some(i => i.group === 'Learned'));
 
+// skill packs: loaded SKILL.md skills get a "/name…" entry in the Skills group (label ends in … so "/" fills the box)
+check('no skill-pack entries when none are loaded', !items.some(i => i.group === 'Skills' && /^\//.test(i.label)));
+{
+  const sb2 = { module: { exports: {} }, addEventListener: () => {}, console, Skills: { packs: [{ name: 'quick', hint: 'Short answers.' }, { name: 'research', hint: 'Web answer with sources.' }] } };
+  vm.createContext(sb2); vm.runInNewContext(src, sb2);
+  const its = sb2.module.exports.buildItemsRef();
+  const q = its.find(i => i.label === '/quick…');
+  check('skill pack entry: label, command, group, hint', q && q.cmd === '/quick' && q.group === 'Skills' && q.hint === 'Short answers.', q);
+  check('skill pack entries: one per skill, labels still unique', its.filter(i => /^\/.+…$/.test(i.label)).length === 2 && new Set(its.map(i => i.label)).size === its.length);
+  check('skill pack entries are found by fuzzy search on the hint', fuzzy('sources', q.label + ' ' + q.group + ' ' + q.hint) === null && sb2.module.exports.fuzzy('sources', '/research… Skills Web answer with sources.') !== null);
+}
+
 // fuzzy finds entries by label or group text (what render() searches)
 const hit = items.filter(it => fuzzy('bunk', it.label + ' ' + it.group + ' ' + it.hint) !== null);
 check('searching "bunk" finds the bunk checker', hit.some(i => /bunk/i.test(i.label)));

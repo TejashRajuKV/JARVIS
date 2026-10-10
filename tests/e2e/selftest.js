@@ -452,5 +452,129 @@
     await post(TAB_ID, 'my own echo');
     await sleepMs(1500);
     check('Tabs', 'a change this tab made itself is not applied again (no ping-pong)', !chatLog.some(m => m.text === 'my own echo')); }
+  /* ========== camera tools, watchers, speak-while-writing, chat archive, student tools (fake camera + fake recogniser) ========== */
+  { const click = (sel, re) => { const b = [...document.querySelectorAll(sel)].find(x => re.test(x.textContent)); if (b) b.click(); return !!b; };
+    // ---- the capture panel with the browser's fake camera
+    const pcap = Camera.capture({ title: 'E2E PHOTO' });
+    await sleepMs(1800);
+    const vid = document.querySelector('.cam-panel video'), pill = document.getElementById('camPill');
+    check('Camera', 'the capture panel opens a live camera and the on-screen indicator says so', !!vid && vid.videoWidth > 0 && !!pill && /CAMERA ON/.test(pill.innerText), { w: vid && vid.videoWidth, pill: pill && pill.innerText });
+    click('.cam-row button', /TAKE PHOTO/);
+    const shot = await pcap;
+    check('Camera', 'TAKE PHOTO returns a real picture; the panel and the indicator are gone afterwards', !!shot && shot.canvas.width > 0 && shot.canvas.height > 0 && !document.querySelector('.cam-panel') && !document.getElementById('camPill'));
+    const pc2 = Camera.capture({ title: 'E2E 2' }); await sleepMs(1200);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    check('Camera', 'Esc closes the panel, returns nothing, and switches the camera off', (await pc2) === null && !document.querySelector('.cam-panel') && !document.getElementById('camPill'));
+    r = await say('scan a qr code', { limit: 4000 }).catch(() => null);
+    // (the QR panel is open now: cancel it with its button)
+    await sleepMs(500); click('.cam-row button', /CANCEL/); await sleepMs(300);
+    check('Camera', 'the QR reader opens a panel with the camera and can be cancelled', !document.querySelector('.cam-panel') && !document.getElementById('camPill'));
+    // ---- presence lock: real camera, mocked face detector and clock, mocked lock
+    const realGetJSON = window.getJSON; window.getJSON = async ep => (ep === '/lock/status' ? { enabled: true, active: true } : realGetJSON(ep));
+    let clock = Date.now(), locks = 0, present = true;
+    Watch.deps.now = () => clock; Watch.deps.detect = async () => present; Watch.deps.lock = async () => { locks++; };
+    settings.presenceSecs = 60;
+    await Watch.intercept('lock when I leave', 'text'); await sleepMs(500);
+    check('Presence', 'it switches on, shows the camera indicator with the seconds, and the setting follows', Watch.presenceOn() && /PRESENCE LOCK ON/.test((document.getElementById('camPill') || {}).innerText || '') && settings.presenceLock === true);
+    for (let i = 0; i < 10; i++) { clock += 2000; await Watch.presenceStep(); }
+    present = false; for (let i = 0; i < 28; i++) { clock += 2000; await Watch.presenceStep(); }
+    check('Presence', 'someone leaving for 56 seconds does not lock', locks === 0 && Watch.presenceOn());
+    for (let i = 0; i < 3; i++) { clock += 2000; await Watch.presenceStep(); }
+    check('Presence', 'after 60 seconds it locks once, and the camera and indicator are switched off', locks === 1 && !Watch.presenceOn() && !document.getElementById('camPill'));
+    present = true; await Watch.intercept('lock when I leave', 'text'); await sleepMs(300);
+    click('#camPill button', /STOP/);
+    check('Presence', 'the STOP button on the indicator turns it off and the settings switch with it', !Watch.presenceOn() && settings.presenceLock === false && !document.getElementById('camPill'));
+    Watch.deps.now = () => Date.now(); Watch.deps.detect = null; Watch.deps.lock = null; window.getJSON = realGetJSON;
+    // ---- room watch: real camera and real snapshot upload, scripted movement
+    const origSG = Camera.smallGray; let moving = false, kk = 0; const still = new Uint8Array(4800).fill(100);
+    Camera.smallGray = () => { if (!moving) return still; const f = still.slice(); for (let i = 0; i < 400; i++) f[(kk * 450 + i) % 4800] = 230; kk++; return f; };
+    let clock2 = Date.now(); Watch.deps.now = () => clock2;
+    r = await say('watch my room', { confirm: 'yes', limit: 12000 });
+    await sleepMs(800);
+    check('Room watch', 'after the confirmation it starts, with the indicator on', Watch.roomOn() && /WATCHING THE ROOM/.test((document.getElementById('camPill') || {}).innerText || ''), r.text);
+    for (let i = 0; i < 14; i++) { clock2 += 1000; await Watch.roomStep(); }
+    moving = true; for (let i = 0; i < 3; i++) { clock2 += 1000; await Watch.roomStep(); }
+    await sleepMs(1500);
+    const alerts = [...document.querySelectorAll('#messages .msg.jarvis')].filter(m => /Movement seen in the room/.test(m.innerText));
+    check('Room watch', 'three moving frames raise one alert in the chat with the name of the picture saved on this laptop', alerts.length === 1 && /Watch\/watch-\d{8}-\d{6}\.jpg/.test(alerts[0].innerText), alerts.map(m => m.innerText));
+    check('Room watch', 'the picture went to the laptop\'s own server only (a snapshot upload; no phone call, since phone alerts are off)', calls.every(c => c.endpoint !== '/phone/alert'));
+    r = await say('stop watching the room');
+    check('Room watch', 'stopping it switches the camera and indicator off', !Watch.roomOn() && !document.getElementById('camPill') && has(r, /stopped watching/i), r.text);
+    Camera.smallGray = origSG; Watch.deps.now = () => Date.now();
+    // ---- speak while writing, Stop, the skill button, the archive (the chat model is a fake stream; the voice is a recorder)
+    const realFetch = window.fetch.bind(window), spoken = []; let aborted = false, streamEnd = 0, t00 = 0;
+    const realSpeak = speechSynthesis.speak.bind(speechSynthesis), realCancel = speechSynthesis.cancel.bind(speechSynthesis);
+    speechSynthesis.speak = u => { spoken.push({ t: u.text, at: Math.round(performance.now() - t00) }); setTimeout(() => u.onend && u.onend(), 150); };
+    speechSynthesis.cancel = () => {};
+    let script = [];
+    window.fetch = async (url, opts) => {
+      if (String(url).endsWith('/chat') && opts && opts.method === 'POST') {
+        aborted = false; if (opts.signal) opts.signal.addEventListener('abort', () => { aborted = true; });
+        const enc = new TextEncoder();
+        const body = new ReadableStream({ async start(c) { for (const p of script) { await sleepMs(350); if (aborted) { c.error(new DOMException('aborted', 'AbortError')); return; } c.enqueue(enc.encode(JSON.stringify({ message: { role: 'assistant', content: p }, done: false }) + '\n')); } streamEnd = Math.round(performance.now() - t00); c.enqueue(enc.encode(JSON.stringify({ message: { role: 'assistant', content: '' }, done: true }) + '\n')); c.close(); } });
+        return new Response(body, { status: 200, headers: { 'Content-Type': 'application/x-ndjson' } });
+      }
+      return realFetch(url, opts);
+    };
+    settings.persona = 'jarvis'; settings.voice = '';   // FRIDAY speaks through the online neural voice (a network clip), which this recorder does not see
+    settings.tts = true; settings.llm = true; llm.online = true; llm.warm = true; llm.model = llm.model || 'qwen3.5:4b';   // llmReady() needs a model name; the chat answers below come from a fake stream
+    script = ['The moon is Earth’s only natural satellite. ', 'It orbits us roughly every 27 days. ', 'Its gravity causes the ocean tides. ', 'Astronauts last walked on it in 1972.'];
+    t00 = performance.now(); spoken.length = 0;
+    await idle(8000); ctx.pending = null;
+    await handleUser('tell me something interesting about the moon', 'text'); await sleepMs(600);
+    check('Speak while writing', 'the first sentence is spoken while the answer is still being written, then the rest in order', spoken.length >= 3 && spoken[0].t.startsWith('The moon is Earth') && spoken[0].at < streamEnd && spoken.map(s => s.at).every((a, i, arr) => !i || a >= arr[i - 1]), { spoken, streamEnd, lang: Lang.replyLang(), tts: settings.tts, sww: settings.speakWhileWriting, persona: settings.persona, voice: settings.voice, synth: 'speechSynthesis' in window, q: speechQueue.active });
+    script = Array.from({ length: 12 }, (_, i) => 'This is sentence number ' + (i + 1) + ' of a long story. ');
+    spoken.length = 0; t00 = performance.now();
+    const longTurn = handleUser('tell me a very long story about a dragon', 'text');
+    await sleepMs(1900);
+    const during = { busy, stopShown: !document.getElementById('stopBtn').hidden };
+    await handleUser('stop', 'text'); await longTurn.catch(() => {}); await sleepMs(900);
+    const nAfter = spoken.length; await sleepMs(900);
+    check('Stop', 'while JARVIS is writing and speaking the STOP button is visible; saying "stop" aborts the answer, silences the voice, and the button goes away', during.busy && during.stopShown && aborted && spoken.length === nAfter && !busy && document.getElementById('stopBtn').hidden, { during, aborted, nAfter, now: spoken.length });
+    r = await say('stop');
+    check('Stop', 'when nothing is happening, "stop" is an ordinary word again (nothing to cancel)', has(r, /nothing to cancel/i), r.text);
+    await Skills.loadPacks(); SkillRouter.reset(); script = ['Sure. Paste the function and I will look for bugs.'];
+    r = await say('please review my code and point out any bugs in the function', { limit: 12000 });
+    check('Skills', 'a message that fits a skill gets a "USE THE CODE-REVIEW SKILL" button under the answer, and the answer itself is not delayed', has(r, /USE THE CODE-REVIEW SKILL/) && has(r, /look for bugs/), r.text);
+    settings.tts = false; speechSynthesis.speak = realSpeak; speechSynthesis.cancel = realCancel;
+    // archive: what was said above is saved, searchable, and can be erased
+    await Extras.archiveFlush();
+    let st = await (await realFetch('api/chatarchive/status')).json();
+    check('Chat archive', 'the messages of this session were saved by the server (one monthly file)', st.success && st.messages >= 4 && st.files.length >= 1, st);
+    r = await say('what did I ask about the dragon story', { limit: 15000 });
+    check('Chat archive', 'a question about an old chat finds it, with the date', has(r, /1 conversation|conversations/) && has(r, /dragon/i), r.text);
+    r = await say('forget my chat archive', { confirm: 'yes', limit: 15000 });
+    st = await (await realFetch('api/chatarchive/status')).json();
+    check('Chat archive', 'forgetting it (after a confirmation) erases everything', st.messages === 0 && has(r, /Erased the chat archive/), r.text);
+    window.fetch = realFetch;
+    // ---- timetable import from text, bunking, undo
+    const before = classes.length;
+    r = await say('import my timetable: Mon 9-10 DBMS; Tue 10-11 OS', { confirm: 'yes', limit: 12000 });
+    check('Timetable', 'importing from text shows what it read, asks, and adds the two classes', has(r, /2 classes/) && classes.length === before + 2 && classes.filter(c => c.batch).length === 2 && classes.some(c => c.name === 'DBMS' && c.day === 1 && c.h === 9), r.text);
+    r = await say('undo');
+    check('Timetable', 'one "undo" removes exactly the imported classes', classes.length === before && has(r, /Removed the 2 classes/), r.text);
+    // ---- exam mode and lecture mode (the AI parts are fakes)
+    FAKE['/exam/questions'] = b => ({ success: true, questions: [1, 2, 3].map(i => ({ q: 'E2E question ' + i + '?', a: 'E2E model answer ' + i + '.' })), topic: '', file: 'Notes/e2e_notes.md', fromNotes: true });
+    FAKE['/skill/viva/grade'] = b => ({ success: true, score: /question 1/.test(b.question) ? 9 : 3, feedback: 'ok', missed: ['a point'], model: 'x' });
+    llm.online = true; settings.llm = true; llm.model = llm.model || 'qwen3.5:4b';
+    r = await say('start an exam on e2e_notes.md with 3 questions', { limit: 12000 });
+    check('Exam', 'it starts from a note: question 1 is shown with the rules', has(r, /Exam on e2e_notes\.md/) && has(r, /Question 1 of 3/) && Student.active(), r.text);
+    await say('first answer text here', { limit: 8000 }); await say('second answer text here', { limit: 8000 });
+    r = await say('third answer text here', { limit: 30000 });
+    check('Exam', 'after the last answer it is marked, the result is shown, weak answers go to the Mistakes deck, and it is kept in history', has(r, /Exam result: 5\d%/) && !Student.active() && flashcards.filter(c => c.deck === 'Mistakes').length === 2 && store.get('jarvis.exams', []).length === 1, r.text);
+    r = await say('how did my exams go?'); check('Exam', 'the history lists it', has(r, /Your exams/) && has(r, /e2e_notes\.md/), r.text);
+    delete FAKE['/exam/questions']; delete FAKE['/skill/viva/grade'];
+    FAKE['/lecture/notes'] = b => ({ success: true, file: 'Notes/lecture-e2e-notes.md', name: 'lecture-e2e-notes.md', preview: '# E2E\n\n## Notes\n- a point', chunks: 1, truncated: 0, seconds: 1 });
+    r = await say('start lecture mode for E2E', { confirm: 'yes', limit: 12000 });
+    await sleepMs(1200);
+    check('Lecture', 'it starts listening (the fake recogniser is running) and shows the microphone indicator', has(r, /Lecture mode is on/) && !!(window.__sr && window.__sr.active) && /MIC ON/.test((document.getElementById('camPill') || {}).innerText || ''), { r: r.text, active: !!(window.__sr && window.__sr.active) });
+    window.__srSay('Normalization reduces redundancy in relational tables and improves integrity of the data.', true);
+    window.__srSay('Boyce Codd normal form is a stricter version of third normal form used in database design.', true);
+    await sleepMs(300);
+    const w0 = calls.length;
+    r = await say('stop the lecture', { limit: 20000 });
+    check('Lecture', 'stopping saves the transcript (appended, in the notes folder on the isolated server), asks for notes, and shows them', calls.slice(w0).some(c => c.endpoint === '/tool/writeFile' && c.data.append === true && /Normalization reduces/.test(c.data.content)) && calls.slice(w0).some(c => c.endpoint === '/lecture/notes' && /Boyce Codd/.test(c.data.transcript)) && has(r, /Notes saved to/) && !document.getElementById('camPill'), r.text);
+    delete FAKE['/lecture/notes'];
+  }
   T.done = true;
 })().catch(e => { window.__selftest.results.push({ feature: 'Harness', desc: 'self-test ran to the end', ok: false, detail: String(e && e.stack || e) }); window.__selftest.done = true; });
