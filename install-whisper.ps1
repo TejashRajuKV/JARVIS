@@ -33,9 +33,12 @@ function Get-File($url, $out) {
 # 1. the program
 $exe = Get-ChildItem -Path $Dir -Recurse -Filter 'whisper-cli.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $exe) {
-  $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/ggml-org/whisper.cpp/releases/latest' -Headers @{ 'User-Agent' = 'jarvis-install-whisper' }
-  $asset = $rel.assets | Where-Object { $_.name -eq 'whisper-bin-x64.zip' } | Select-Object -First 1
-  if (-not $asset) { Write-Host "The latest release ($($rel.tag_name)) has no 'whisper-bin-x64.zip'. Download a Windows CPU build by hand from https://github.com/ggml-org/whisper.cpp/releases and unzip it into $Dir" -ForegroundColor Yellow; exit 1 }
+  # the newest release that has a Windows CPU build (some tagged releases carry no files; the build releases "bNNNN" do)
+  $rels = Invoke-RestMethod -Uri 'https://api.github.com/repos/ggml-org/whisper.cpp/releases?per_page=20' -Headers @{ 'User-Agent' = 'jarvis-install-whisper' }
+  $asset = $null
+  foreach ($rel in $rels) { $asset = $rel.assets | Where-Object { $_.name -eq 'whisper-bin-x64.zip' } | Select-Object -First 1; if ($asset) { break } }
+  if (-not $asset) { Write-Host "No recent release has 'whisper-bin-x64.zip'. Download a Windows CPU build by hand from https://github.com/ggml-org/whisper.cpp/releases and unzip it into $Dir" -ForegroundColor Yellow; exit 1 }
+  Write-Host ("Using release {0}: {1} ({2:N1} MB)" -f $rel.tag_name, $asset.name, ($asset.size / 1MB))
   $zip = Join-Path $Dir $asset.name
   Get-File $asset.browser_download_url $zip
   Expand-Archive -Path $zip -DestinationPath $Dir -Force
