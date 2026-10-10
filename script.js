@@ -96,7 +96,7 @@ const store = (() => {
 
 /* ============ data ============ */
 const settings = Object.assign(
-  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '', qwenNlu: false, hudOverlay: false, bootCinema: true },
+  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '', qwenNlu: false, hudOverlay: false, bootCinema: true, attendancePrompt: true, offlineStt: false },
   store.get('jarvis.settings', {})
 );
 Persona.setAddressSource(() => {
@@ -1322,6 +1322,7 @@ function tasksTick(now) {
       jarvisSay({ text: Persona.Sir() + ', **' + c.name + '** begins in ten minutes, at ' + fmtTime(at) + '.', intent: 'TIMETABLE' });
     }
   }
+  try { if (typeof Student !== 'undefined' && Student.attendanceTick) Student.attendanceTick(now); } catch (e) {}
   if (changed) saveTasks();
 }
 setInterval(() => {
@@ -2066,7 +2067,7 @@ async function smartAlerts() {
   // ---- RAM high (existing, now uses Thresholds) ----
   if (Thresholds.isRamHigh(sys.ram)) alertOnce('ram', Thresholds.reAlertMinutes * 6e4, '⚠ Memory is at **' + sys.ram + '%** — things may slow down. Close something heavy?', ['What are the top processes?']);
   // ---- Disk low (NEW — proactive, not just diagnostics) ----
-  if (Thresholds.isDiskLow(sys.diskFree)) alertOnce('disk', Thresholds.reAlertMinutes * 6e4, '💾 Storage is low — only **' + sys.diskFree + ' GB** free on the system drive. Want me to find what is using it?', ['What is taking up disk space?', 'Clean my temp files', 'Find large files']);
+  if (Thresholds.isDiskLow(sys.diskFree)) alertOnce('disk', Thresholds.reAlertMinutes * 6e4, '💾 Storage is low — only **' + sys.diskFree + ' GB** free on the system drive. Want me to find what is using it?', ['What is taking up disk space?', 'Clean my temp files', 'Find old node_modules', 'Find large files']);
   // ---- CPU sustained load (NEW — fires only after cpuSustainedSec seconds above cpuSustained) ----
   if (sys.cpu >= Thresholds.cpuSustained) {
     if (!cpuSustainedSince) cpuSustainedSince = now;
@@ -5701,6 +5702,8 @@ function bindSwitch(id, key, after) {
 }
 bindSwitch('#ttsToggle', 'tts', v => { if (!v) stopSpeaking(); loadVoices(); });
 bindSwitch('#soundToggle', 'sound');
+bindSwitch('#attendancePromptToggle', 'attendancePrompt');
+bindSwitch('#offlineSttToggle', 'offlineStt', v => { if (v) Stt.ready().then(ok => { if (!ok) { settings.offlineStt = false; saveSettings(); bindSwitchState('#offlineSttToggle', 'offlineStt'); jarvisSay({ text: 'Offline speech is not installed yet. Say **“is offline speech installed”** for how to install it.', noPersona: true }); } }); });
 bindSwitch('#translateOnlineToggle', 'translateOnline', v => log('info', 'online translation ' + (v ? 'on' : 'off — replies translated by the local model')));
 bindSwitch('#neuralVoiceToggle', 'neuralVoice', v => log('info', 'online neural voice (FRIDAY, Telugu, Kannada) ' + (v ? 'on' : 'off')));
 bindSwitch('#hotkeyToggle', 'hotkey', v => { log('info', 'global hotkey ' + (v ? 'on' : 'off')); setTimeout(updateHotkeyNote, 5500); });
@@ -6014,6 +6017,38 @@ $('#wipeBtn').addEventListener('click', () => {
     catch (e) { toast('Nothing was erased — ' + (/403/.test(e.message) ? 'Windows Hello approval is required.' : e.message), true); Hello.refresh(); }
   });
 });
+
+/* ============ keep JARVIS running (keepalive.js: a scheduled task that restarts it) ============ */
+(function KeepaliveUI() {
+  const sw = $('#keepaliveToggle'), note = $('#keepaliveNote');
+  const fmt = ms => new Date(ms).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  const render = async () => {
+    const st = await getJSON('/keepalive/status').catch(() => ({}));
+    if (st.error) { note.textContent = st.error; return st; }
+    if (!st.supported) { note.textContent = 'Available on Windows.'; sw.style.display = 'none'; return st; }
+    sw.style.display = ''; sw.classList.toggle('on', !!st.on); sw.setAttribute('aria-checked', String(!!st.on));
+    note.textContent = st.note || (st.on ? 'On: if JARVIS stops by itself, it is started again within 5 minutes (without opening a window).' : 'Off.');
+    return st;
+  };
+  sw.addEventListener('click', async () => {
+    sfx.key();
+    const on = !sw.classList.contains('on');
+    const r = await callTool('/keepalive/set', { on });
+    if (r.error) return toast(r.error, true);
+    toast(on ? 'JARVIS will be kept running' : 'JARVIS will no longer be restarted automatically');
+    render();
+  });
+  $('#settingsBtn').addEventListener('click', render);
+  // after an automatic restart: say so once
+  setTimeout(async () => {
+    const st = await render();
+    if (st && st.restarted && st.restarted.at) {
+      jarvisSay({ text: '🔁 **JARVIS was restarted automatically** at ' + fmt(st.restarted.at) + ' because it had stopped. Reminders and chats from the time it was down were not delivered; check ~/jarvis/.keepalive.log if it keeps happening.', noPersona: true, intent: 'KEEPALIVE', alert: true });
+      callTool('/keepalive/ack', {}).catch(() => {});
+    }
+  }, 5000);
+  window.__keepalive = { render };
+})();
 
 /* ============ start with Windows + stop JARVIS (no-terminal running) ============ */
 (function AutostartUI() {

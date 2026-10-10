@@ -17,3 +17,6 @@ Desktop.ini
 
 # Answer-quality runs (node tests/quality-eval.js) — regenerated each run
 tests/quality-report*.json
+
+# Offline speech (whisper.cpp program + model), installed by install-whisper.ps1 — large, not part of the source
+.whisper/

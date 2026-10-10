@@ -410,13 +410,16 @@ const Extras = (() => {
   const DISK_CLEAN_SIMILAR = new RegExp('^(?:please\\s+)?(?:(?:clean\\s*up|remove|trash|get rid of|deal with)\\s+(?:the\\s+|those\\s+|all\\s+(?:the\\s+)?)?' + SIM_WORD + '\\s+(?:photos?|pictures?|images?)|move\\s+(?:all\\s+)?(?:the\\s+)?smaller\\s+(?:copies|ones))\\s*[.!?]*$', 'i');
   const DISK_PICK_SETS = /^(?:please\s+)?(?:clean(?:\s*up)?|trash|remove|move)\s+(?:the\s+)?sets?\s+(\d+(?:\s*(?:,|and|&)\s*\d+)*)\s*[.!?]*$/i;
   const DISK_SHRINK = /^(?:please\s+)?(?:(?:shrink|compress|reduce|make smaller)\s+(?:my\s+|the\s+)?(?:big\s+|large\s+|huge\s+|old\s+)?(?:photos?|pictures?|images?|jpe?gs?)(?:\s+(?:in|on|from)\s+(?:my\s+|the\s+)?(.+?))?|\/shrink(?:\s+(.+?))?)\s*[.!?]*$/i;
+  const DISK_REGEN = /^(?:please\s+)?(?:(?:find|show|list|clean(?:\s*up)?|clear|free(?:\s+up)?)\s+(?:my\s+|the\s+|all\s+|old\s+|unused\s+)*(?:node_?modules|project\s+caches?|build\s+caches?|virtual\s+environments?|venvs?|pycache|old\s+project\s+(?:folders|dependencies)|regenerable\s+(?:folders|files))|free\s+up\s+(?:some\s+)?space\s+(?:from|in|on)\s+(?:my\s+)?(?:projects|code\s+folders)|\/regen)(?:\s+(?:in|on|from)\s+(?:my\s+|the\s+)?(.+?))?(\s+(?:of\s+)?any\s+age|\s+even\s+(?:the\s+)?recent(?:\s+ones)?)?\s*[.!?]*$/i;
+  const DISK_REGEN_PICK = /^(?:please\s+)?(?:clear|clean(?:\s*up)?|move)\s+(?:numbers?\s+|folders?\s+|items?\s+)?(\d+(?:\s*(?:,|and|&)\s*\d+)*)\s*[.!?]*$/i;
+  const DISK_REGEN_ALL = /^(?:please\s+)?(?:clear|clean(?:\s*up)?|remove|move|trash)\s+(?:(?:them|those|these)(?:\s+all)?|all(?:\s+of\s+them)?|all\s+(?:the\s+)?(?:old\s+)?folders|everything(?:\s+in\s+the\s+list)?)\s*[.!?]*$/i;
   const DISK_EMPTY_TRASH = /^(?:please\s+)?empty\s+(?:my\s+|the\s+)?jarvis(?:'s)?\s+trash\s*[.!?]*$/i;
   const GB = 1073741824;
   const fmt = b => (b >= GB ? Math.round(b / GB * 10) / 10 + ' GB' : b >= 1048576 ? Math.round(b / 1048576 * 10) / 10 + ' MB' : b >= 1024 ? Math.round(b / 1024) + ' KB' : b + ' B');
   const fresh = s => s && Date.now() - s.at < 14 * 60000;
   const pl = (n, one, many) => n + ' ' + (n === 1 ? one : many);
-  const disk = { large: null, dupes: null, photos: null };
-  const diskHelp = () => say('**Disk care** — say:\n- **“what’s using my C: drive?”** — where the space went, and what to do about it\n- **“tidy my downloads”** (or desktop, documents, a folder path; add “by month”) — sorts files into folders, shows you first, **undo** puts it all back\n- **“find large files”** (“over 500 MB on D drive”) — then **“trash 1, 3 and 5”**\n- **“find duplicate files”** — then **“clean up the duplicates”** (keeps one copy of each)\n- **“find similar photos”** (“in my Pictures”) — look-alikes, even resized ones; then **“clean sets 1 and 3”** or **“clean up the similar photos”** (keeps the biggest of each set)\n- **“shrink my big photos”** — re-saves JPEGs over 3 MB (older than 90 days) smaller; the original stays in the JARVIS trash\n- **“clean my temp files”** — deletes temp files older than 3 days (permanent)\n- **“empty my JARVIS trash”** — frees the space of everything I set aside (permanent)\n\nMoving to the **JARVIS trash** can be undone but doesn’t free space until the trash is emptied. Scans only read. OneDrive folders are skipped.');
+  const disk = { large: null, dupes: null, photos: null, regen: null };
+  const diskHelp = () => say('**Disk care** — say:\n- **“what’s using my C: drive?”** — where the space went, and what to do about it\n- **“tidy my downloads”** (or desktop, documents, a folder path; add “by month”) — sorts files into folders, shows you first, **undo** puts it all back\n- **“find large files”** (“over 500 MB on D drive”) — then **“trash 1, 3 and 5”**\n- **“find duplicate files”** — then **“clean up the duplicates”** (keeps one copy of each)\n- **“find old node_modules”** (or “clear project caches”) — folders your projects can make again, in projects untouched for 30 days; then **“clear 1 and 3”** or **“clear them all”**\n- **“find similar photos”** (“in my Pictures”) — look-alikes, even resized ones; then **“clean sets 1 and 3”** or **“clean up the similar photos”** (keeps the biggest of each set)\n- **“shrink my big photos”** — re-saves JPEGs over 3 MB (older than 90 days) smaller; the original stays in the JARVIS trash\n- **“clean my temp files”** — deletes temp files older than 3 days (permanent)\n- **“empty my JARVIS trash”** — frees the space of everything I set aside (permanent)\n\nMoving to the **JARVIS trash** can be undone but doesn’t free space until the trash is emptied. Scans only read. OneDrive folders are skipped.');
   const ask = (text, yes) => confirmCard(text, yes);
   function matchDisk(t) {
     let m;
@@ -427,6 +430,9 @@ const Extras = (() => {
     if ((m = t.match(DISK_TIDY))) { const f = m[1] || m[2] || 'downloads'; return { op: 'tidy', folder: /^downloads?$/i.test(f) ? 'downloads' : f, by: m[3] ? 'month' : '' }; }
     if ((m = t.match(DISK_LARGE2))) return { op: 'large', minMB: /^g/i.test(m[2]) ? +m[1] * 1024 : +m[1], where: m[3] };
     if ((m = t.match(DISK_LARGE))) return { op: 'large', minMB: m[1] ? (/^g/i.test(m[2]) ? +m[1] * 1024 : +m[1]) : undefined, where: m[3] };
+    if ((m = t.match(DISK_REGEN))) return { op: 'regen', where: m[1], anyAge: !!m[2] };
+    if (DISK_REGEN_ALL.test(t) && fresh(disk.regen)) return { op: 'regenAll' };
+    if ((m = t.match(DISK_REGEN_PICK)) && fresh(disk.regen)) return { op: 'regenPick', nums: m[1].split(/\D+/).filter(Boolean).map(Number) };
     if ((m = t.match(DISK_SIMILAR))) return { op: 'similar', where: m[1] };
     if (DISK_CLEAN_SIMILAR.test(t) && fresh(disk.photos)) return { op: 'cleanSimilar' };
     if ((m = t.match(DISK_PICK_SETS)) && fresh(disk.photos)) return { op: 'pickSets', nums: m[1].split(/\D+/).filter(Boolean).map(Number) };
@@ -578,6 +584,34 @@ const Extras = (() => {
     return say(r.moved ? '✓ Made **' + plural(r.moved, 'photo') + '** smaller — **' + fmt(r.saved) + ' saved** once the originals are gone from the JARVIS trash.' + (why.length ? ' ' + plural(why.length, 'photo') + ' left as they were (' + why[0].why + ').' : '') + '\n\nSay **“undo”** to put the originals back, or **“empty my JARVIS trash”** to free the space.' + (p.totalFound > p.count ? ' Ask again for the next batch.' : '') : 'I did not change any photo' + (why.length ? ': ' + why[0].why + '.' : '.'),
       { speak: r.moved ? 'Done. I saved ' + fmt(r.saved).replace('.', ' point ') + '.' : 'Nothing was changed.' });
   }
+  async function diskRegen(o) {
+    setState('PROCESSING', 'Looking at your projects…');
+    jarvisSay({ text: '⏳ Looking through your project folders for things that can be made again (up to 40 seconds)…', intent: 'DISK', noTTS: true, noPersona: true });
+    const r = await callTool('/disk/plan', { kind: 'regen', where: o.where, olderDays: o.anyAge ? 0 : undefined });
+    if (r.error) return say(r.error);
+    if (!r.count) return say('I found **nothing to clear**' + (o.where ? ' in ' + o.where : ' in your project folders') + (r.partial ? ' in the time I had' : '') + ': no ' + (r.olderDays ? 'untouched-for-' + r.olderDays + '-days ' : '') + '`node_modules`, virtual environments or caches that a project can rebuild.' + (r.olderDays ? ' Say **“find node_modules of any age”** to include projects you used recently.' : ''));
+    disk.regen = { planId: r.planId, items: r.items, at: Date.now(), count: r.count, bytes: r.bytes };
+    const nm = p => String(p).split(/[\\/]/).slice(-2).join('/');
+    const lines = r.items.slice(0, 12).map(i => i.n + '. **' + i.project + '** — `' + i.kind + '` · **' + fmt(i.size) + '** · ' + i.how);
+    return say('Found **' + plural(r.count, 'folder') + '** that your projects can make again — **' + fmt(r.bytes) + '** in all' + (r.totalFound > r.count ? ' *(the biggest ' + r.count + ' of ' + r.totalFound + ')*' : '') + (r.partial ? ' *(I ran out of time, so there may be more)*' : '') + (r.olderDays ? ', each in a project untouched for ' + r.olderDays + '+ days' : ', **including projects you used recently**') + ':\n' + lines.join('\n') + (r.count > 12 ? '\n…and ' + (r.count - 12) + ' more.' : '') + '\n\nSay **“clear 1 and 3”** for some, or **“clear them all”**. They go to the JARVIS trash (**“undo”** puts them back); the space is freed when you empty the trash. Code, `package.json` and `dist` folders are never touched.',
+      { speak: 'I found ' + fmt(r.bytes).replace('.', ' point ') + ' of folders your projects can rebuild.', suggestions: ['Clear them all'] });
+  }
+  async function diskRegenDo(nums) {
+    const s = disk.regen, items = s.items;
+    const chosen = nums ? [...new Set(nums)] : null;
+    if (chosen && chosen.some(n => n < 1 || n > items.length)) return say('I only have numbers 1 to ' + items.length + ' in that list.');
+    const pick = chosen ? chosen.map(n => items[n - 1]) : items;
+    const bytes = pick.reduce((a, b) => a + b.size, 0);
+    const go = await ask('Move **' + plural(pick.length, 'folder') + '** (' + fmt(bytes) + ') to the JARVIS trash?\n' + pick.slice(0, 8).map(i => '- **' + i.project + '** — `' + i.kind + '` (' + fmt(i.size) + ')').join('\n') + (pick.length > 8 ? '\n…and ' + (pick.length - 8) + ' more' : '') + '\n\nA project that is **open in an editor or running a dev server** may not let go of its folder; I will say so. Getting one back: **“undo”**, or just run the install command again (`npm install` and so on).', 'YES, MOVE THEM');
+    if (!go) return say('Okay, I left your project folders as they are.');
+    setState('PROCESSING', 'Moving folders…');
+    const r = await callTool('/disk/apply', { planId: s.planId, pick: chosen || undefined });
+    if (r.error) return say(r.error);
+    disk.regen = null;
+    pushUndo('cleared project folders', r.runId, x => 'Put ' + plural(x.restored, 'folder') + ' back.');
+    const why = [...(r.skipped || []), ...(r.failed || [])];
+    return say(r.moved ? '✓ Moved **' + plural(r.moved, 'folder') + '** (' + fmt(r.bytes) + ') to the JARVIS trash.' + (why.length ? ' ' + plural(why.length, 'folder') + ' left (' + why[0].why + ').' : '') + '\n\nSay **“undo”** to bring them back, or **“empty my JARVIS trash”** to free the space on your drive.' : 'I did not move anything' + (why.length ? ': ' + why[0].why + '.' : '.'), { speak: r.moved ? 'Done.' : 'Nothing was moved.', suggestions: r.moved ? ['Empty my JARVIS trash'] : [] });
+  }
   async function diskEmptyTrash() {
     const p = await callTool('/disk/plan', { kind: 'trash' });
     if (p.error) return say(p.error);
@@ -600,6 +634,9 @@ const Extras = (() => {
       case 'pick': return diskPick(m.nums);
       case 'dupes': return diskDupes(m);
       case 'cleanDupes': return diskCleanDupes();
+      case 'regen': return diskRegen(m);
+      case 'regenAll': return diskRegenDo(null);
+      case 'regenPick': return diskRegenDo(m.nums);
       case 'similar': return diskSimilar(m);
       case 'cleanSimilar': return diskCleanSimilar();
       case 'pickSets': return diskCleanSimilar(m.nums);
@@ -723,7 +760,7 @@ const Extras = (() => {
     if (HEALTH_CLEAR.test(t)) { const r = await callTool('/ai/health/clear', {}); return say(r.error ? 'Couldn’t clear it: ' + r.error : '✓ Cleared the AI call history.'); }
     if (HEALTH.test(t)) return health(t);
     // camera, watchers and student tools live in their own files (camera-page.js, watch-page.js, student-page.js); each answers only explicit wording
-    for (const mod of [typeof Student !== 'undefined' && Student, typeof Camera !== 'undefined' && Camera, typeof Watch !== 'undefined' && Watch]) {      // Student first: during an exam every message is an answer
+    for (const mod of [typeof Student !== 'undefined' && Student, typeof Life !== 'undefined' && Life, typeof Dev !== 'undefined' && Dev, typeof Camera !== 'undefined' && Camera, typeof Watch !== 'undefined' && Watch]) {      // Student first: during an exam every message is an answer
       if (!mod) continue;
       const r = await mod.intercept(t, source);
       if (r) return r;

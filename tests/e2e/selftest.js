@@ -442,7 +442,7 @@
     check('Sweep · ' + f.area, f.intent + ' — “' + f.example + '” responds', x.ok && answered && !x.errors.length,
       (!x.ok ? 'did not finish in time. ' : '') + (!answered ? 'no reply. ' : '') + (x.errors.length ? 'errors: ' + x.errors.join(' | ') : ''));
   }
-  check('Safety', 'no real laptop action escaped the fakes during the whole run', calls.every(c => FAKE[c.endpoint] || !/^\/(sys\/(volume|brightness|theme|radio|displayOff|window|powerPlan)|tool\/(open|close|lock|sleep|shutdown|restart|screenshot|paste|media|showDesktop|writeClipboard|readClipboard|codeAsk|gitClone))/.test(c.endpoint)));
+  check('Safety', 'no real laptop action escaped the fakes during the whole run', calls.every(c => FAKE[c.endpoint] || !/^\/(sys\/(volume|brightness|theme|radio|displayOff|window|powerPlan)|tool\/(open|close|lock|sleep|shutdown|restart|screenshot|paste|media|showDesktop|writeClipboard|readClipboard|codeAsk|gitClone)|keepalive\/set|mirror\/(setdest|run|config))/.test(c.endpoint)));
   // ---- a second tab of the same JARVIS changes the chat: this tab shows it (server push), and ignores its own writes
   { await idle(8000);
     const post = (src, text) => fetch('api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src, set: { 'jarvis.chat': [{ role: 'user', text, source: 'text', t: Date.now() }] } }) });
@@ -575,6 +575,49 @@
     r = await say('stop the lecture', { limit: 20000 });
     check('Lecture', 'stopping saves the transcript (appended, in the notes folder on the isolated server), asks for notes, and shows them', calls.slice(w0).some(c => c.endpoint === '/tool/writeFile' && c.data.append === true && /Normalization reduces/.test(c.data.content)) && calls.slice(w0).some(c => c.endpoint === '/lecture/notes' && /Boyce Codd/.test(c.data.transcript)) && has(r, /Notes saved to/) && !document.getElementById('camPill'), r.text);
     delete FAKE['/lecture/notes'];
+    // ---- everyday tools: expenses, habits, quick capture, keep-alive, backup folder, screenshot search, calculators, attendance prompt, assignment, dev helpers
+    FAKE['/keepalive/set'] = b => ({ success: true, on: !!b.on });                                   // never touch the real Task Scheduler
+    FAKE['/mirror/setdest'] = b => ({ success: true, dest: b.dest, approved: b.dest });
+    FAKE['/mirror/run'] = () => ({ success: true, started: true });
+    FAKE['/dev/explain'] = () => ({ success: true, answer: '**What happened:** e2e.\n**Why:** a test.\n**Fix:** none.', type: 'TypeError', files: [], foundFrames: 0 });
+    FAKE['/dev/git/message'] = () => ({ success: true, name: 'e2e', message: 'Add e2e checks', subject: 'Add e2e checks', files: 2, staged: true, truncated: false });
+    r = await say('spent 120 on lunch');
+    check('Expenses', 'logging an expense answers with the amount, category and totals', has(r, /Logged \*?\*?₹120/) && has(r, /Food/) && store.get('jarvis.expenses', []).length === 1, r.text);
+    r = await say('how much did I spend this month');
+    check('Expenses', 'the summary shows the total, and a chart is attached', has(r, /₹120/) && !!document.querySelector('svg[aria-label="Spending by category"]'), r.text);
+    r = await say('undo'); check('Expenses', 'one "undo" removes the expense', store.get('jarvis.expenses', []).length === 0, r.text);
+    r = await say('track habit gym'); r = await say('I did gym'); r = await say('my gym streak');
+    check('Habits', 'tracking, ticking and the streak work in the page (1 day)', has(r, /1 day in a row/) && store.get('jarvis.habits', []).length === 1, r.text);
+    const wk = calls.length; r = await say('jot down buy a charger'); const ibx = calls.slice(wk).find(c => c.endpoint === '/tool/writeFile');
+    check('Quick capture', 'a note is appended to the inbox file of today', ibx && ibx.data.append === true && /^Notes\/inbox-\d{4}-\d\d-\d\d\.md$/.test(ibx.data.name) && /buy a charger/.test(ibx.data.content), ibx);
+    r = await say('show my inbox'); check('Quick capture', 'the inbox shows it', has(r, /buy a charger/), r.text);
+    r = await say('keep JARVIS running', { confirm: 'yes' }); check('Keep-alive', 'asks first, then switches it on (faked scheduler)', calls.some(c => c.endpoint === '/keepalive/set' && c.data.on === true && c.faked) && has(r, /Keep-alive is on/), r.text);
+    r = await say('stop keeping JARVIS alive'); check('Keep-alive', 'switching off needs no confirmation (the real status says it is already off, because the scheduler is faked)', has(r, /Keep-alive is (already )?off/), r.text);
+    r = await say('backup status'); check('Backup', 'with no folder set it says how to set one', has(r, /No backup folder is set/), r.text);
+    r = await say('set my backup folder to D:', { confirm: 'yes' }); check('Backup', 'the card names D:\\JARVIS-Backup and the faked setdest is called with it', calls.some(c => c.endpoint === '/mirror/setdest' && c.data.dest === 'D:\\JARVIS-Backup' && c.faked) && has(r, /folder set/i), r.text);
+    r = await say('find the screenshot with the wifi password'); check('Screenshots', 'with no screenshots on this isolated computer it says where it looks', has(r, /no screenshots/) && has(r, /Pictures/), r.text);
+    r = await say('git summary today'); check('Dev tools', 'with no project folders it says how to add one (or lists commits)', has(r, /no git projects|Your commits today|No commits today/), r.text);
+    r = await say('why did my build fail'); check('Dev tools', 'reads the clipboard or screen and explains (faked server answer), or says the AI is off', has(r, /What happened/) || has(r, /AI brain|could not find an error/), r.text);
+    r = await say('write a commit message'); check('Dev tools', 'a commit message is shown, and nothing is committed', (has(r, /Add e2e checks/) && has(r, /nothing was staged or committed/)) || has(r, /AI brain/), r.text);
+    r = await say('I got 32/40 in internals, what do I need in the end sem to get 80%?'); check('Calculators', 'the end-sem calculator answers 48 of 60', has(r, /48 out of 60/), r.text);
+    r = await say('fit my study plan to my timetable'); check('Study plan', 'with a timetable and no plan it lists the free gaps', has(r, /free gaps|import my timetable|fitted to your timetable/), r.text);
+    {   // the attendance prompt: a class that ended 20 minutes ago
+      const n = new Date(Date.now() - 80 * 60000), cls0 = classes.slice();
+      if (n.getDate() === new Date().getDate()) {
+        classes.push({ id: 'e2e-att', name: 'E2EATT', day: n.getDay(), h: n.getHours(), m: n.getMinutes() }); store.set('jarvis.attAsked', []);
+        const q = Student.attendanceTick(Date.now());
+        check('Attendance prompt', 'a class that just ended is asked about, with ATTENDED / MISSED / SKIP', q && /E2EATT/.test(q.text) && q.actions.length === 3, q && q.text);
+        if (q) { q.actions[0].fn(); await sleepMs(100); }
+        check('Attendance prompt', 'pressing I ATTENDED marks it present', attendance.E2EATT && attendance.E2EATT.attended === 1, attendance.E2EATT);
+        classes.length = 0; classes.push(...cls0); delete attendance.E2EATT; store.set('jarvis.attAsked', []); saveTasks();
+      }
+    }
+    await realCallTool('/tool/writeFile', { name: 'Notes/e2e_assign.md', content: 'Subject: Operating Systems\nAssignment 3\nSubmit by 15/10/2099 5 pm\n1. Explain paging with a diagram.\n2. Compare FCFS and SJF scheduling.', overwrite: true });
+    const dl0 = deadlines.length; r = await say('add assignment from Notes/e2e_assign.md', { confirm: 'yes', limit: 12000 });
+    check('Assignment', 'the sheet becomes a deadline (17:00) and two to-dos', deadlines.length === dl0 + 1 && deadlines[deadlines.length - 1].title.includes('Assignment 3') && new Date(deadlines[deadlines.length - 1].due).getHours() === 17, r.text);
+    r = await say('undo'); check('Assignment', 'undo removes the deadline and its to-dos', deadlines.length === dl0 && !todos.some(x => /Q1: Explain paging/.test(x.text)), r.text);
+    r = await say('is offline speech installed'); check('Offline speech', 'the page asks the server and answers (installed, or how to install)', has(r, /Offline speech is/), r.text);
+    for (const k of ['/keepalive/set', '/mirror/setdest', '/mirror/run', '/dev/explain', '/dev/git/message']) delete FAKE[k];
   }
   T.done = true;
 })().catch(e => { window.__selftest.results.push({ feature: 'Harness', desc: 'self-test ran to the end', ok: false, detail: String(e && e.stack || e) }); window.__selftest.done = true; });

@@ -17,7 +17,8 @@ const ScanMath = require('./scanmath');
 const DAY = 864e5, MIN = 6e4, MB = 1048576;
 const LIMITS = { planTtl: 15 * MIN, tempAgeDays: 3, tidyQuietMs: 10 * MIN, largeMB: 100, dupMinMB: 1, maxPlanItems: 5000, maxEntries: 300000, maxShown: 30, dupFilesCap: 20000, maxDepth: 12, maxPlans: 20,
   photoCap: 8000, photoMinKB: 30, photoDist: 6, hashBatch: 100, hashCacheMax: 60000,
-  shrinkMinMB: 3, shrinkAgeDays: 90, shrinkMax: 60, shrinkBatch: 10, shrinkQuality: 82, shrinkMaxSide: 2560, shrinkMinSaving: 0.1 };
+  shrinkMinMB: 3, shrinkAgeDays: 90, shrinkMax: 60, shrinkBatch: 10, shrinkQuality: 82, shrinkMaxSide: 2560, shrinkMinSaving: 0.1,
+  regenAgeDays: 30, regenMax: 60 };
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.venv', 'venv', '__pycache__', '.next', 'target', 'out', '.idea', '.vscode', '$recycle.bin', 'system volume information']);
 const KNOWN_KEYS = ['downloads', 'desktop', 'documents', 'pictures', 'videos', 'music'];
 
@@ -450,6 +451,76 @@ foreach ($line in $jobs) {
   }
   const looksLikeJpeg = file => { try { const fd = fs.openSync(file, 'r'); try { const head = Buffer.alloc(3), tail = Buffer.alloc(2), size = fs.fstatSync(fd).size; if (size < 1000) return false; fs.readSync(fd, head, 0, 3, 0); fs.readSync(fd, tail, 0, 2, size - 2); return head[0] === 0xFF && head[1] === 0xD8 && head[2] === 0xFF && tail[0] === 0xFF && tail[1] === 0xD9; } finally { fs.closeSync(fd); } } catch { return false; } };
 
+  /* ----- folders a project rebuilds by itself (node_modules and friends) ----- */
+  // Only folders that are safe to lose: each one is offered only when the project beside it can make it again (a package.json for node_modules,
+  // a requirements file for a virtual environment…), and by default only when nothing in that project has been touched for 30 days. dist/ and build/
+  // are NOT here: they can be the thing you hand in.
+  const REGEN = {
+    node_modules: { needs: ['package.json'], how: 'npm install brings it back' },
+    '.next': { needs: ['package.json'], how: 'the next dev/build command makes it again' }, '.nuxt': { needs: ['package.json'], how: 'the nuxt command makes it again' },
+    '.parcel-cache': { needs: ['package.json'], how: 'rebuilt on the next build' }, '.turbo': { needs: ['package.json'], how: 'rebuilt on the next build' },
+    '.venv': { needs: ['requirements.txt', 'pyproject.toml', 'Pipfile', 'setup.py'], how: 'python -m venv and pip install bring it back' },
+    venv: { needs: ['requirements.txt', 'pyproject.toml', 'Pipfile', 'setup.py'], how: 'python -m venv and pip install bring it back' },
+    __pycache__: { needs: null, how: 'Python rebuilds it when the code runs' }, '.pytest_cache': { needs: null, how: 'pytest rebuilds it' },
+    '.mypy_cache': { needs: null, how: 'mypy rebuilds it' }, '.ruff_cache': { needs: null, how: 'ruff rebuilds it' },
+  };
+  async function findRegenerable({ where, olderDays, ms = 40000 } = {}) {
+    const days = Number(olderDays) >= 0 ? Number(olderDays) : LIMITS.regenAgeDays, cutoff = now() - days * DAY;
+    const roots = scanRoots(where), budget = makeBudget(ms), found = [];
+    const visit = async (dir, depth) => {
+      if (budget.over() || depth > 8) { if (budget.over()) budget.partial = true; return; }
+      let d; try { d = await fsp.opendir(dir); } catch { return; }
+      const kids = []; for await (const ent of d) kids.push(ent);
+      for (const ent of kids) {
+        if (ent.isSymbolicLink() || !ent.isDirectory()) continue;
+        const full = path.join(dir, ent.name), low = ent.name.toLowerCase();
+        if (blockedPath(full) || skipOwn(full) || low.startsWith('$') || /^onedrive/i.test(ent.name)) continue;
+        const rule = REGEN[ent.name] || REGEN[low];
+        if (rule) {
+          const beside = rule.needs ? rule.needs.find(n => fs.existsSync(path.join(dir, n))) : 'x';
+          if (!beside) continue;                                                 // nothing says how to make it again: leave it
+          let st; try { st = fs.lstatSync(full); } catch { continue; }
+          let newest = st.mtimeMs; if (rule.needs) { try { newest = Math.max(newest, fs.statSync(path.join(dir, beside)).mtimeMs); } catch { /* none */ } }
+          if (newest >= cutoff) continue;                                        // the project is in use
+          found.push({ from: full, mtimeMs: st.mtimeMs, project: path.basename(dir), kind: ent.name, how: rule.how });
+          continue;                                                              // never look inside it
+        }
+        if (SKIP_DIRS.has(low) && low !== 'node_modules') continue;
+        await visit(full, depth + 1);
+        if (found.length >= 400) return;
+      }
+    };
+    for (const root of roots) { await visit(root, 0); if (budget.partial) break; }
+    const sized = [];
+    for (const f of found) { if (budget.over()) { budget.partial = true; break; } let bytes = 0, files = 0; const b2 = makeBudget(3000); await walk(f.from, { budget: b2, skipDir: () => false, onFile: (p, st) => { bytes += st.size; files++; } });      // everything inside counts, nested node_modules too
+      sized.push({ ...f, size: bytes, files, sizePartial: b2.partial }); }
+    const uniq = new Map(sized.map(x => [x.from.toLowerCase(), x]));
+    const all = [...uniq.values()].sort((a, b) => b.size - a.size);
+    const items = all.slice(0, LIMITS.regenMax).map((x, i) => ({ ...x, n: i + 1 }));
+    return { items, totalFound: all.length, bytes: sumBytes(items), totalBytes: sumBytes(all), partial: budget.partial, roots, olderDays: days };
+  }
+  // Moves each folder into the JARVIS trash (a rename on its own drive: instant, and "undo" puts it back).
+  function applyRegen(plan, indices) {
+    const runId = newRunId(now()), journal = { runId, kind: 'regen', at: now(), items: [], createdDirs: [], trashDirs: [], approvalPaths: plan.approvalPaths || [] };
+    const failed = [], skipped = [];
+    const list = (indices ? indices.map(i => plan.items[i]) : plan.items).filter(Boolean).slice(0, LIMITS.regenMax);
+    let n = 0, bytes = 0;
+    for (const it of list) {
+      if (blockedPath(it.from, { forWrite: true })) { failed.push({ path: it.from, why: 'that location is off-limits' }); continue; }
+      let st; try { st = fs.lstatSync(it.from); } catch { skipped.push({ path: it.from, why: 'it is already gone' }); continue; }
+      if (!st.isDirectory() || st.isSymbolicLink()) { skipped.push({ path: it.from, why: 'it is not a plain folder any more' }); continue; }
+      try {
+        const tdir = trashDirFor(it.from, runId); fs.mkdirSync(tdir, { recursive: true });
+        const to = path.join(tdir, String(++n).padStart(4, '0') + '_' + path.basename(path.dirname(it.from)) + '_' + path.basename(it.from));
+        if (!journal.trashDirs.includes(tdir)) journal.trashDirs.push(tdir);
+        fs.renameSync(it.from, to);
+        journal.items.push({ from: it.from, to, size: it.size, trash: to, dir: true }); bytes += it.size;
+      } catch (e) { failed.push({ path: it.from, why: e.code === 'EBUSY' || e.code === 'EPERM' ? 'a program is using it (close the editor or dev server)' : e.code === 'EXDEV' ? 'it is on another drive' : String(e.code || e.message).slice(0, 40) }); }
+    }
+    if (journal.items.length) writeJournal(journal);
+    return { runId: journal.items.length ? runId : null, moved: journal.items.length, bytes, failed, skipped };
+  }
+
   /* ----- temp (the one allowlisted exception to the blocked-areas rule) ----- */
   function tempRoot() {
     const raw = tempDir();
@@ -642,7 +713,7 @@ foreach ($line in $jobs) {
     return { removed, bytes, failed };
   }
 
-  return { usage, dirSize, planTidy, findLarge, findDuplicates, findSimilarPhotos, findShrinkable, applyShrink, planTemp, planTrash, savePlan, getPlan, applyMoves, undoRun, applyTemp, applyTrash, trashDirFor, scanRoots, tempRoot, journals, trashFolders, hashFile, plans };
+  return { usage, dirSize, planTidy, findLarge, findDuplicates, findSimilarPhotos, findShrinkable, applyShrink, findRegenerable, applyRegen, planTemp, planTrash, savePlan, getPlan, applyMoves, undoRun, applyTemp, applyTrash, trashDirFor, scanRoots, tempRoot, journals, trashFolders, hashFile, plans };
 }
 
 /* ---------- routes ---------- */
@@ -703,6 +774,11 @@ module.exports = function setupDiskCare(app, deps) {
       const planId = dc.savePlan('shrink', { items: r.items, approvalPaths: [...new Set(r.items.map(i => path.dirname(i.from)))].slice(0, 5) });
       return res.json({ success: true, kind, planId, count: r.items.length, totalFound: r.totalFound, bytes: r.bytes, totalBytes: r.totalBytes, protectedFiles: r.protectedFiles, partial: r.partial, minMB: r.minMB, olderDays: r.olderDays, items: r.items.slice(0, 15), quality: LIMITS.shrinkQuality, maxSide: LIMITS.shrinkMaxSide, roots: r.roots });
     }
+    if (kind === 'regen') {
+      const r = await dc.findRegenerable({ where: b.where, olderDays: b.olderDays });
+      const planId = dc.savePlan('regen', { items: r.items, approvalPaths: [...new Set(r.items.map(i => path.dirname(i.from)))].slice(0, 5) });
+      return res.json({ success: true, kind, planId, count: r.items.length, totalFound: r.totalFound, bytes: r.bytes, totalBytes: r.totalBytes, partial: r.partial, olderDays: r.olderDays, items: r.items.slice(0, 20).map(i => ({ n: i.n, from: i.from, size: i.size, project: i.project, kind: i.kind, how: i.how })), roots: r.roots });
+    }
     if (kind === 'temp') {
       const r = await dc.planTemp();
       const planId = dc.savePlan('temp', { items: r.items });
@@ -713,13 +789,13 @@ module.exports = function setupDiskCare(app, deps) {
       const planId = dc.savePlan('trash', { items: r.items, roots: r.roots });
       return res.json({ success: true, kind, planId, count: r.items.length, bytes: r.bytes, partial: r.partial, permanent: true });
     }
-    throw new DiskError('I can plan: tidy, large, duplicates, photos, shrink, temp or trash.');
+    throw new DiskError('I can plan: tidy, large, duplicates, photos, shrink, regen, temp or trash.');
   }));
 
   app.post('/api/disk/apply', wrap(async (req, res) => {
     if (!laptopOnly(req, res)) return;
     const b = req.body || {};
-    const plan = dc.getPlan(b.planId, ['tidy', 'large', 'duplicates', 'photos', 'shrink']);
+    const plan = dc.getPlan(b.planId, ['tidy', 'large', 'duplicates', 'photos', 'shrink', 'regen']);
     let indices = null;
     if (plan.kind === 'large') {
       const pick = Array.isArray(b.pick) ? b.pick.map(Number) : [];
@@ -732,15 +808,15 @@ module.exports = function setupDiskCare(app, deps) {
       if ([...sets].some(n => !Number.isInteger(n) || n < 1 || n > maxG)) throw new DiskError('I only have sets 1 to ' + maxG + ' in that list.');
       indices = plan.items.map((it, i) => (sets.has(it.group + 1) ? i : -1)).filter(i => i >= 0);
     }
-    if (plan.kind === 'shrink' && Array.isArray(b.pick) && b.pick.length) {
+    if ((plan.kind === 'shrink' || plan.kind === 'regen') && Array.isArray(b.pick) && b.pick.length) {
       const pick = b.pick.map(Number);
       if (pick.some(n => !Number.isInteger(n) || n < 1 || n > plan.items.length)) throw new DiskError('I only have numbers 1 to ' + plan.items.length + ' in that list.');
       indices = [...new Set(pick)].map(n => n - 1);
     }
     if (!plan.items.length) throw new DiskError('Nothing to do: the plan has no files.');
-    const verb = plan.kind === 'tidy' ? 'tidy the files in' : plan.kind === 'duplicates' ? 'move extra copies out of' : plan.kind === 'photos' ? 'move similar photos out of' : plan.kind === 'shrink' ? 'replace photos with smaller copies in' : 'move large files out of';
+    const verb = plan.kind === 'tidy' ? 'tidy the files in' : plan.kind === 'duplicates' ? 'move extra copies out of' : plan.kind === 'photos' ? 'move similar photos out of' : plan.kind === 'shrink' ? 'replace photos with smaller copies in' : plan.kind === 'regen' ? 'move old project folders (node_modules and the like) out of' : 'move large files out of';
     if (approvedChange && !approvedChange(req, res, verb, ...(plan.approvalPaths || []))) return;
-    const r = plan.kind === 'shrink' ? await dc.applyShrink(plan, indices) : dc.applyMoves(plan, indices);
+    const r = plan.kind === 'shrink' ? await dc.applyShrink(plan, indices) : plan.kind === 'regen' ? dc.applyRegen(plan, indices) : dc.applyMoves(plan, indices);
     dc.plans.delete(String(b.planId));
     res.json({ success: true, kind: plan.kind, ...r, trashNote: plan.kind !== 'tidy' });
   }));

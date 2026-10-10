@@ -275,6 +275,8 @@
       <div class="s-row"><label>Suggest skills<small>A BUTTON UNDER AN ANSWER WHEN ONE OF YOUR SKILLS FITS THE QUESTION · NOTHING IS SENT ANYWHERE</small></label><button class="switch on" id="skillSuggestToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Save chats for search<small>EVERY MESSAGE IS KEPT ON THIS LAPTOP, ONE FILE PER MONTH · “WHAT DID I DECIDE ABOUT X LAST WEEK?” · SAY “FORGET MY CHAT ARCHIVE” TO ERASE</small></label><button class="switch on" id="chatArchiveToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Smart alerts<small>LOW BATTERY · HIGH RAM · DEADLINES SOON</small></label><button class="switch on" id="alertsToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Ask about attendance after class<small>A FEW MINUTES AFTER EACH CLASS IN YOUR TIMETABLE · ONLY WHILE JARVIS IS OPEN</small></label><button class="switch on" id="attendancePromptToggle" role="switch" aria-checked="true"></button></div>
+      <div class="s-row"><label>Offline lecture transcription<small>WHISPER ON THIS LAPTOP · AUDIO NEVER LEAVES THE COMPUTER · NEEDS install-whisper.ps1</small></label><button class="switch" id="offlineSttToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-row"><label>Charger alerts<small>SAYS WHEN PLUGGED IN OR UNPLUGGED</small></label><button class="switch on" id="chargerAlertsToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Show how I understood you<small>UNDER EACH REPLY: INTENT · CONFIDENCE · DETAILS · CONTEXT · ROUTE · PERMISSION</small></label><button class="switch" id="inspectToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-row"><label>Global hotkey<small>CTRL+SHIFT+J · SEND SELECTED TEXT FROM ANY APP</small></label><button class="switch" id="hotkeyToggle" role="switch" aria-checked="false"></button></div>
@@ -332,6 +334,8 @@
       <div class="s-note" id="appLockNote" hidden></div>
       <div class="s-row"><label>Start with Windows<small>JARVIS RUNS QUIETLY IN THE BACKGROUND AFTER EVERY REBOOT</small></label><button class="switch" id="autostartToggle" role="switch" aria-checked="false"></button></div>
       <div class="s-note" id="autostartNote" style="margin:-4px 0 12px"></div>
+      <div class="s-row"><label>Keep JARVIS running<small>IF IT EVER STOPS, WINDOWS STARTS IT AGAIN WITHIN 5 MINUTES · NOT WHEN YOU STOP IT YOURSELF</small></label><button class="switch" id="keepaliveToggle" role="switch" aria-checked="false"></button></div>
+      <div class="s-note" id="keepaliveNote" style="margin:-4px 0 12px"></div>
       <div class="s-row"><label>Stop JARVIS<small>ENDS THE BACKGROUND SERVER · THE DESKTOP ICON STARTS IT AGAIN</small></label><button class="btn danger" id="quitBtn">STOP</button></div>
       <div class="s-row"><label>Erase all local data</label><button class="btn danger" id="wipeBtn">WIPE</button></div>
       <div class="s-row"><label>Updates<small>ASKS GITHUB ONLY WHEN YOU CLICK · NEEDS ONLINE TOOLS</small></label><button class="btn" id="updateCheckBtn">CHECK</button></div>
@@ -359,6 +363,8 @@
   <script src="lang.js"></script>
   <script src="vendor/qrcode.js"></script>
   <script src="scanmath.js"></script>
+  <script src="wavutil.js"></script>
+  <script src="stt-page.js"></script>
   <script src="study.js"></script>
   <script src="voice.js"></script>
   <script src="triggers.js"></script>
@@ -369,7 +375,12 @@
   <script src="camera-page.js"></script>
   <script src="watch-page.js"></script>
   <script src="ttparse.js"></script>
+  <script src="assignparse.js"></script>
   <script src="student-page.js"></script>
+  <script src="lifeparse.js"></script>
+  <script src="life-page.js"></script>
+  <script src="traceparse.js"></script>
+  <script src="dev-page.js"></script>
   <script src="extras-page.js"></script>
   <script src="script.js"></script>
   <script src="palette.js"></script>

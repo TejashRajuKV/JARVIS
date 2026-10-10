@@ -56,7 +56,8 @@ There is also a **cinematic landing page** that introduces JARVIS: open `http://
 | 🎙 **Voice & chat** | Hold the mic or say the wake word. English, Telugu, Kannada — even typed in English letters ("volume penchu"). Natural neural voices. Two personalities: **JARVIS** and **FRIDAY**. |
 | 🧠 **Context & control** | A rolling summary carries the conversation forward — "what were we talking about?" picks the thread back up. JARVIS remembers the folder/file it just showed, so **"create a folder there"**, **"open it"**, **"open the second one"** just work. **"Did you mean…?"** for half-remembered names. **Ctrl+K** or **/** puts every command and skill one keystroke away. Say **"panic"** to pause all automation, **"resume"** to continue. |
 | 💻 **Controls your laptop** | Opens **any Start-menu app**, volume, brightness, dark mode, Bluetooth/Wi-Fi, power plans, window layouts, screenshots, clipboard tools, screen reading & vision. |
-| 📚 **Study** | Tasks, deadlines, timetable, reminders, focus sessions, **multi-day study planner**, progress dashboard, flashcards with spaced repetition, **viva practice** by voice, contests and web research. **Attendance with a 75% bunk-o-meter**, marks → SGPA/CGPA. |
+| 📚 **Study** | Tasks, deadlines, timetable, reminders, focus sessions, **multi-day study planner**, progress dashboard, flashcards with spaced repetition, **viva practice** by voice, contests and web research. **Attendance with a 75% bunk-o-meter** (asks “did you attend?” after each class), marks → SGPA/CGPA, **assignments from a photo**, a study plan fitted to your timetable, an end-sem marks calculator, **lecture mode** with optional **offline Whisper** transcription. |
+| 🧰 **Everyday life** | Expenses with a chart, habit streaks, quick-capture inbox, **keep JARVIS running** after a crash, a plain **backup to another drive**, **screenshot search** by the text inside them, and developer helpers (git summary, standup, commit message, “why did my build fail”). |
 | 📄 **Your files & notes** | Drop in PDFs, notes, **.docx / .pptx / .xlsx** and ask questions — **hybrid keyword + semantic search**, answers with **page numbers**. Summaries and flashcards from any file. |
 | ⌨ **JARVIS Code** | A coding chat of its own (**JARVIS CODE** button): pick a project folder in the Windows folder picker, choose **Build / Plan / Ask** and a model, describe what you want — JARVIS writes real files into the folder, opens the page, and **undo** takes it back. |
 | 🛠 **Coding** | Write → save → run code, **EXPLAIN & FIX** crashes in one click, **DSA coach** (hints before solutions), **website generator**, "open VS Code in *folder* and tell Copilot to…", and **dev environments that recover from failures** (missing dependencies → install → restart → verify). |
@@ -459,8 +460,26 @@ All explicit wording (a plain sentence never switches a camera or microphone on)
 **For students**
 - **Import my timetable** — from a **photo** (the table is rebuilt from word positions: days down the side or across the top), a **calendar file** (`.ics`, weekly repeating events) or **pasted lines** (“Mon 9:00-10:00 DBMS”). You see what was read and say yes; classes already there are skipped; **one “undo”** removes the new ones. If the photo cannot be read as a table, the text it saw is offered for you to correct.
 - **Can I bunk tomorrow?** — tomorrow’s classes from the timetable and, per subject, your attendance now and after missing them against 75%.
-- **Lecture mode** (“start lecture mode for DBMS”, “stop the lecture”) — the browser’s speech recogniser listens until you stop; the transcript is appended to `~/jarvis/Notes/lecture-<subject>-<date>.md` every 3 minutes, and at the end the AI writes notes (Notes / Key terms / Questions to revise / Announcements) from the transcript in pieces it can hold. *The tab must stay visible; the recogniser sends audio to Google or Microsoft, so it needs the internet (this computer has no offline speech-to-text); the wake word is paused meanwhile.*
+- **Lecture mode** (“start lecture mode for DBMS”, “stop the lecture”) — the browser’s speech recogniser listens until you stop; the transcript is appended to `~/jarvis/Notes/lecture-<subject>-<date>.md` every 3 minutes, and at the end the AI writes notes (Notes / Key terms / Questions to revise / Announcements) from the transcript in pieces it can hold. *By default the browser’s recogniser sends the audio to Google or Microsoft, so it needs the internet and the tab must stay visible. For audio that never leaves the laptop, install **offline speech** (below) and say “turn on offline speech”; the wake word is paused meanwhile either way.*
+- **Offline speech (Whisper)** — `install-whisper.ps1` (you run it; JARVIS never downloads on its own) puts the whisper.cpp program (a few MB) and one model (`base.en`, ~150 MB) in the `.whisper` folder next to JARVIS. With the Settings switch **Offline lecture transcription** (or “turn on offline speech”) lecture mode records the microphone in the page, cuts it at pauses into ~25-second pieces, converts each to 16 kHz mono WAV and has the local server transcribe it. Quiet pieces are never sent to Whisper (it invents words for silence). *CPU-only, so it can lag behind a fast speaker; English models are best; expect some wrong words.* “Is offline speech installed?” says what is missing.
+- **Assignment from a photo or file** (“add assignment from a photo”, “add assignment from dbms_assign.pdf”) — the text is read (Windows OCR, or the file), and the title, subject, due date (day first: 03/04 is 3 April; “by Friday” is the next Friday; a time like “5 pm” is used, else 23:59), marks and numbered questions are found. You see the result and any assumptions first; “yes” adds one **deadline** and one **to-do per question**, and one **undo** removes them together. If no date is found it says so and adds nothing without you.
+- **Did you attend?** — a few minutes after each class in your timetable ends JARVIS asks **I ATTENDED / I MISSED IT / SKIP** (once per class per day, only while JARVIS is open; a subject you already marked today is skipped). Switch it in Settings or say “stop asking me about attendance”. Each mark has an undo.
+- **Fit my study plan to my timetable** — “fit my study plan to my timetable” puts each open day of your study plan into the longest free gap of that day (between 8 am and 9 pm, 60-minute sessions by default; “…with 90 minute sessions”), shows the result, and only a button adds a reminder at each slot’s start (one undo). Without a plan it lists your free gaps for the week.
+- **What do I need in the end-sem?** — “I got 32/40 in internals, what do I need in the end sem to get 80%?” (also a grade letter, “pass” = 40%, or “end sem is out of 70”). It shows the working and says plainly when the target is out of reach. Grade cut-offs (90/80/70/60/55/50/40) differ between colleges.
 - **Exam mode** (“start an exam on dbms_notes.md”, “exam me on normalization for 10 minutes”) — questions with model answers from a note, PDF or topic, a countdown, answers typed or spoken (everything you say is an answer until “stop the exam”), marked at the end against the answers in your notes. Weak answers go to a **Mistakes** flashcard deck (no duplicates, one undo); every result is kept: “how did my exams go?”.
+
+### Everyday tools, screenshots & developer helpers
+
+All explicit wording; anything that changes the system asks first, and the page’s own data changes with one undo. Phone messages are refused for anything that changes the laptop or reads your code.
+
+- **Expenses** — “spent 120 on lunch”, “paid 80 for auto”, “spent 1.5k on recharge yesterday”; “how much did I spend this month / on food this week” (with a small chart), “export my expenses” (CSV in `Notes`), “delete all my expenses” (asks; undoable). Categories are guessed from the words (Food, Transport, Study…). Sentences like “I spent the whole day studying” are not taken.
+- **Habits** — “track habit gym”, “I did gym” (or “…yesterday”), “my gym streak”, “habits” (🟩 for the last 7 days). A streak counts back from today, or from yesterday when today is not ticked yet.
+- **Quick capture** — “jot down buy a charger”, “note to self: …”, “capture: …” append a timed line to `Notes/inbox-<date>.md`; “show my inbox”. **Ctrl+Shift+N** opens a one-box panel while JARVIS is the active window (a system-wide key would need the desktop hotkey helper). Plain “capture the flag” or “inbox zero” are not taken.
+- **Keep JARVIS running** — “keep JARVIS running” (asks first) adds a Windows scheduled task, **JARVIS Keepalive**, that checks every 5 minutes and starts JARVIS again only if it is not running; it never restarts it after *you* stopped it (Stop JARVIS or “quit”). “Stop keeping JARVIS alive” removes it. A Settings switch does the same, and a restart is announced next time you open the page.
+- **Back up to another drive** — “back up my files to D:” (or “set my backup folder to D:\JARVIS-Backup”, then “run a backup”, “backup status”, “turn on weekly backup”, “include my projects in the backup”). A plain folder of plain files: new and changed files only, an older version of a changed file kept 30 days in `_previous`, **nothing deleted from the backup**, every copy checked, never your API keys, the trash, or the screenshot index. The folder must be one you approve and is marked so it is never mixed with other things. Weekly runs happen while JARVIS is open.
+- **Free space from projects** — “find old node_modules” / “clean regenerable folders” lists `node_modules`, `__pycache__`, build folders and similar in projects untouched for 30+ days (they can be rebuilt); moves them to the JARVIS trash with undo. A low-disk alert offers it.
+- **Screenshot search** — “find the screenshot with the wifi password”, “index my screenshots”, “add D:\Shots to my screenshot folders”. Windows OCR reads each picture once, on this laptop; the words are kept in `~/jarvis/.shotindex.json` (skipped by the drive backup; “forget my screenshot index” deletes it). Screenshots can show passwords, so it works only from the laptop page. Handwriting and small text can be missed.
+- **Developer helpers** — “git summary today / yesterday / this week” (your commits in the project folders you gave JARVIS, plus uncommitted files), “write my standup” (last working day + today + near deadlines), “write a commit message” (the AI reads your uncommitted diff; files like `.env` and keys are left out; **it writes text only — nothing is staged or committed**), “why did my build fail?” / “explain the error on my screen” (reads the clipboard, else the screen; finds your own files and lines in the trace, reads ±15 lines around them, and explains). With an online AI model each of these asks before sending code.
 
 ### Phone — alerts and commands
 
@@ -488,6 +507,11 @@ All explicit wording (a plain sentence never switches a camera or microphone on)
 | Focus | `start a focus session` · `focus on DBMS for 25 minutes` · `block distractions` |
 | Plan study | `plan my day` · `plan my GATE prep, exam on 12 Feb, topics: OS, DBMS, CN` · `what should I study today?` |
 | Track attendance & marks | `mark dbms present` · `attendance report` · `can i bunk tomorrow?` · `add s3: 8.6 gpa, 24 credits` · `what is my cgpa?` |
+| Student extras | `start lecture mode for DBMS` · `add assignment from a photo` · `fit my study plan to my timetable` · `I got 32/40 in internals, what do I need in the end sem to get 80%?` · `turn on offline speech` |
+| Money, habits, notes | `spent 120 on lunch` · `how much did I spend this month` · `track habit gym` → `I did gym` · `jot down buy a charger` · `show my inbox` |
+| Keep it safe | `keep JARVIS running` · `back up my files to D:` · `backup status` · `turn on weekly backup` · `find old node_modules` |
+| Screenshots | `index my screenshots` · `find the screenshot with the wifi password` |
+| Developer day | `git summary today` · `write my standup` · `write a commit message` · `why did my build fail` |
 | Practise | `take my DBMS viva` · `quiz me on DBMS` · `coach me on two sum` |
 | Ask my files | `what do my notes say about paging?` · `what does lecture3.pdf say about 3NF?` |
 | Code | `write fizzbuzz in python and save it as fizz.py and run it` · `run main.py` → 🛠 EXPLAIN & FIX |
@@ -527,6 +551,9 @@ Open **SETTINGS** (top right).
 | | Smart alerts · Charger alerts · Global hotkey | Battery/RAM/deadline alerts; "charger connected / disconnected"; Ctrl+Shift+J. |
 | | Phone alerts · Phone access | ntfy alerts & commands (+ authenticator); Tailscale access. |
 | | Focus / break (min) | Pomodoro lengths. |
+| | **Ask about attendance after class** | A few minutes after each class in your timetable ends, JARVIS asks *I attended / I missed it / skip* (on by default; only while JARVIS is open). |
+| | **Offline lecture transcription** | Lecture mode uses Whisper on this laptop instead of the browser’s recogniser (audio never leaves the computer). Off by default; needs `install-whisper.ps1`. |
+| | **Keep JARVIS running** | Adds / removes the Windows scheduled task *JARVIS Keepalive* (checks every 5 minutes; never restarts JARVIS after you stopped it). |
 | | Semantic search · Embedding model | Meaning-based file search ("wifi problem" finds "no internet"); needs an Ollama embed model such as `nomic-embed-text`. |
 | **Backup & restore** | Export · Import · Include my API keys · snapshots | See [Undo, backup & your data](#undo-backup--your-data). |
 | **Project folders** | Add/remove folders | Used for preparing environments, starting backends and frontends, git, and searching your notes. JARVIS can open files anywhere without adding them here. |
@@ -551,6 +578,8 @@ Open **SETTINGS** (top right).
 - **No shell injection:** apps open by exact Windows IDs, prompts to coding agents are passed as data (stdin or an encoded literal), never as shell text.
 - **Secrets stay put:** API keys and the phone key live in `~/jarvis/.config.json`, are shown only masked, can't be read through JARVIS's own file tools, and are included in backups only when you choose (encrypted with your password).
 - **Phone commands** need a fresh one-time authenticator code; dangerous and data-leaking commands are refused from the phone.
+- **Private data stays on the laptop page.** Expenses, the screenshot text index, the drive backup, keep-alive and the developer helpers (your commits, diffs and error traces) answer only requests from the JARVIS page on this laptop (`Sec-Fetch-Site: same-origin` on localhost); another site or the phone gets a refusal. Nothing is downloaded by JARVIS itself — `install-whisper.ps1` is run by you.
+- **Code and errors go to an online AI only after you say yes.** If your model is online, “write a commit message” and “why did my build fail” ask first; the commit-message diff leaves out `.env`, keys and certificates.
 
 **Where your data lives** (all in your user folder):
 
@@ -560,6 +589,10 @@ Open **SETTINGS** (top right).
 | `~/jarvis/.config.json` | Project folders, API keys, phone key, Windows Hello public key |
 | `~/jarvis/.jarvis.lock`, `.jarvis.pid`, `.jarvis-port` | Which JARVIS is running (pid and port); keeps it to one copy and lets Stop JARVIS find it |
 | `~/jarvis/.backups/` | Automatic snapshots |
+| `~/jarvis/.shotindex.json` | Words read from your screenshots (never copied by the drive backup; “forget my screenshot index” deletes it) |
+| `~/jarvis/.mirror.json`, `.keepalive.json` | Drive-backup settings and last run · whether keep-alive is on |
+| `D:\jarvis\.whisper\` (next to the program) | whisper.cpp and the speech model, only if you ran `install-whisper.ps1` |
+| `~/jarvis/Notes/inbox-<date>.md`, `expenses-<date>.csv` | Quick-capture inbox · expense exports |
 | `~/jarvis/.trash/` | Deleted files (restorable) |
 | `~/jarvis/Notes`, `Code`, `Documents`, `Projects` | Your files |
 
@@ -895,6 +928,11 @@ When **Settings → Show how I understood you** is on (or you ask "how did you u
 | `skillrouter.js`, `speech-stream.js` | Skill suggestions (keyword ranking) · speak-while-writing: sentence splitting, the 320-character rule, the speech queue, the “stop” words |
 | `chatarchive.js` | The monthly chat archive, date phrases (“last week”), search, forget |
 | `ttparse.js`, `student-page.js`, `studyserver.js` | Timetable reading (text, `.ics`, OCR word boxes) · timetable import, bunk-tomorrow, lecture and exam mode · lecture notes and exam questions (server) |
+| `lifeparse.js`, `life-page.js` | Expense, habit and quick-capture sentences (pure) · the chat side of expenses, habits, capture, keep-alive, drive backup and screenshot search |
+| `keepalive.js`, `keepalive.ps1/.vbs`, `mirror.js`, `shotindex.js` | Keep-alive scheduled task and its checker · the plain drive backup · the screenshot text index (all laptop-page-only routes) |
+| `assignparse.js`, `traceparse.js` | Assignment sheet text → title/due/questions · error text → error type and your own file:line frames (pure) |
+| `devtools.js`, `dev-page.js` | Git summary, commit message, error explainer (server) · their chat side |
+| `wavutil.js`, `whisper.js`, `stt-page.js`, `install-whisper.ps1` | Audio conversion · whisper.cpp runner and routes · page recorder for lecture mode · the installer you run yourself |
 | `backup.js` | Export/import, encryption of secrets, snapshots |
 | `hello.js` | Windows Hello (WebAuthn) approvals |
 | `thresholds.js`, `boot-cinema.js/.css`, `transitions.js/.css`, `hud-overlay.js/.css`, `dashboard.js/.css`, `learn.js`, `nlu-qwen.js`, `face-greet.js`, `gesture.js` | Optional extras (see *Looks, camera & extras*): central alert thresholds, boot animation, state-change effects, HUD overlay, DIAG dashboard, pattern learning, Qwen NLU assist, face greeting (server-side match), hand gestures |
@@ -946,7 +984,7 @@ Opt-in checks on the real laptop — sets volume and brightness and opens/closes
 npm run test:live
 ```
 
-62 suites check every feature, not just the phrases:
+74 suites check every feature, not just the phrases:
 
 | Suite | Checks | What it covers |
 |---|---|---|
@@ -975,7 +1013,13 @@ npm run test:live
 | `photocare.test.js` | 48 | Similar photos (cache, project protection, plan → apply → undo) and JPEG shrink (original always kept, refusals, undo) with fakes, then **real Windows image tools** on drawn pictures including EXIF rotation |
 | `skillrouter.test.js` · `speechstream.test.js` | 48 · 174 | Which messages suggest which skill (and 22 that must not) · sentence splitting however the text arrives, the 320-character rule, code blocks, the queue and Stop, the stop words |
 | `chatarchive.test.js` | 70 | ~35 date phrases, search, monthly files and the size cap, forgetting, laptop-only routes |
-| `ttparse.test.js` · `studyserver.test.js` · `student-page.test.js` | 35 · 28 · 148 | Timetable text / `.ics` / OCR grids · lecture notes in pieces and exam questions with a fake AI · import, bunking, lecture and exam flows with a fake recogniser and clock |
+| `ttparse.test.js` · `studyserver.test.js` · `student-page.test.js` | 35 · 28 · 246 | Timetable text / `.ics` / OCR grids · lecture notes in pieces and exam questions with a fake AI · import, bunking, lecture and exam flows with a fake recogniser and clock |
+| `lifeparse.test.js` · `life-page.test.js` | 130 · 129 | Expense, habit, streak and capture sentences (and ordinary sentences that must not be taken) · keep-alive, drive backup, expenses, habits, capture and screenshot-search flows with fake servers: confirmations, undo, phone refusal |
+| `keepalive.test.js` · `mirror.test.js` · `regen.test.js` | 21 · 36 · 23 | The scheduled-task checker and its states · the drive backup on temp folders (changed files, kept versions, never deleting, markers, full drive) · regenerable-folder cleanup |
+| `shotindex.test.js` | 38 | Screenshot text index on temp folders with a fake reader: depth, changes, deletions, budgets, forgetting, `open` only for indexed files |
+| `assigntrace.test.js` · `studyplus.test.js` | 46 · 43 | Assignment sheets (day-first dates, times, questions) and stack traces (Node, Python, Java, gcc, TypeScript) · classes that just ended, free gaps, plan fitting, end-sem marks |
+| `devtools.test.js` · `dev-page.test.js` | 42 · 96 | Real temp git repositories: summary windows, my commits only, secret files kept out of the diff, error frames read only inside project folders · the chat side with a fake AI |
+| `whisper.test.js` · `stt-page.test.js` | 36 · 16 | WAV conversion and checks, finding the program and model, silence skipping, one-at-a-time, with a fake program · the page recorder with a fake microphone: cuts at pauses, ordered pieces, error reporting, release |
 | `diskcare.test.js` | 97 | Real folder trees in a temp folder: classifying and tidying (name clashes, in-progress downloads, links), large files, duplicates (identical edges but different middle is *not* a duplicate), the temp cleaner and its escape attempts, JARVIS's trash, journals and undo, plans that expire, the routes |
 | `reliability.test.js` | 84 | The presentation review: many wordings → one intent (create/count/list folders, frontends, saving code), misheard speech repaired (and ordinary sentences left alone), "did you mean" ranking, the frontend-for-a-project flow |
 | `decider.test.js` | 96 | The decision engine: ~45 requests → each route, ~30 **conflicts** (action + place, local + fresh, this-laptop + version, show vs explain, statements), place reading (category / location / sort), Online-tools-off offers, payloads, confidence, a reason for every decision |
@@ -1130,7 +1174,9 @@ node -e "const D=require('./decider.js'); console.log(D.decide(D.signals('neares
 ## 15. Known limitations
 
 - Windows-first: many laptop controls, notifications and the hotkey are Windows-only.
-- Browser speech recognition needs the internet; everything else can run offline with a local model.
+- Browser speech recognition needs the internet; everything else can run offline with a local model. Offline lecture transcription needs you to run `install-whisper.ps1` once, is CPU-only (it can lag), and is best in English.
+- Keep-alive, the attendance prompt, the weekly backup and screenshot indexing work only while the laptop is on (JARVIS itself must be open for the attendance prompt and the backup).
+- Screenshot search uses Windows OCR (English); the standup, git summary and commit message read only the project folders you gave JARVIS.
 - Routines, scheduled routines and phone *commands* need a JARVIS tab open (reminders don't).
 - Small local models occasionally misread instructions or answer briefly; cloud models are stronger.
 - Scanned PDFs, password-protected PDFs and images aren't text-searchable. (.docx/.pptx/.xlsx are read directly.)

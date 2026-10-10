@@ -40,7 +40,7 @@ const NOT_TESTABLE = {
 // Every route declared in the server files, as "METHOD /path" with :params, for the gate.
 const ROUTE_FILES = ['server.js', 'system-tools.js', 'agent-tools.js', 'rag.js', 'skills.js', 'scheduler.js', 'backup.js', 'codetools.js',
   'hotkey.js', 'hello.js', 'applock.js', 'llm.js', 'update.js', 'tts.js', 'autostart.js', 'wakeword.js',
-  'skillpack.js', 'aihealth.js', 'watchdog.js', 'nearby.js', 'csvtools.js', 'projectwiki.js', 'imagegen.js', 'pdftools.js', 'diskcare.js', 'ocr.js', 'scan.js', 'chatarchive.js', 'studyserver.js'];
+  'skillpack.js', 'aihealth.js', 'watchdog.js', 'nearby.js', 'csvtools.js', 'projectwiki.js', 'imagegen.js', 'pdftools.js', 'diskcare.js', 'ocr.js', 'scan.js', 'chatarchive.js', 'studyserver.js', 'keepalive.js', 'mirror.js', 'shotindex.js', 'devtools.js', 'whisper.js'];
 const ROUTES = [];
 for (const f of ROUTE_FILES) {
   const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -78,7 +78,8 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
   // the disk-care temp cleaner is pointed at a throwaway folder named Temp, never at the real %TEMP%
   const diskTemp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'api-disk-')), 'Temp'); fs.mkdirSync(diskTemp);
   const S = await startServer({ env: { JARVIS_TEMP_DIR: diskTemp, GIT_AUTHOR_NAME: 'JARVIS test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'JARVIS test', GIT_COMMITTER_EMAIL: 'test@example.invalid',
-    JARVIS_WTTR_URL: wttr.url } });
+    JARVIS_WTTR_URL: wttr.url, JARVIS_WHISPER_DIR: path.join(diskTemp, '..', 'no-whisper-here'),
+    npm_config_update_notifier: 'false', npm_config_fund: 'false', npm_config_audit: 'false' } });   // a fresh profile would make npm check the network for updates, which can take longer than the 4 s the dev-server checks allow
   const rec = (method, p) => { const r = routeOf(method, p); if (r) hit.add(r); };
   const post = (p, b, x) => { rec('POST', p); return S.post(p, b, x); };
   const get = (p, x) => { rec('GET', p); return S.get(p, x); };
@@ -622,6 +623,38 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
       r = await post('/api/lecture/notes', { subject: 'DBMS', transcript: 'The lecture explains normalization and transactions in detail. '.repeat(10) });
       check('Study', 'lecture notes: with no AI running it fails with a message, and writes no half-made file', r.status === 502 && typeof r.json.error === 'string' && !fs.existsSync(path.join(S.sandbox, 'Notes')) || r.status === 502 && !fs.readdirSync(path.join(S.sandbox, 'Notes')).some(f => /^lecture-dbms/.test(f)), r.text.slice(0, 200));
       check('Study', 'exam questions: needs a note or a topic; a missing file is "not found"; with no AI a topic fails cleanly', (await post('/api/exam/questions', {})).status === 400 && (await post('/api/exam/questions', { name: 'no-such-note-zz.md' })).status === 404 && (await post('/api/exam/questions', { topic: 'normalization' })).status === 502);
+    }
+
+    /* ---------- keep JARVIS running + backup to another folder (nothing is scheduled and nothing is copied here: only status and refusals) ---------- */
+    {
+      const X = { headers: { 'Sec-Fetch-Site': 'cross-site' } };
+      r = await get('/api/keepalive/status');
+      check('Keep-alive', 'status answers (supported on Windows, off at first, the interval is 5 minutes)', r.status === 200 && r.json.success === true && (process.platform !== 'win32' || (r.json.supported === true && r.json.on === false && r.json.minutes === 5)), r.text.slice(0, 200));
+      check('Keep-alive', 'switching it and acknowledging a restart are refused from another site', (await post('/api/keepalive/set', { on: true }, X)).status === 403 && (await post('/api/keepalive/ack', {}, X)).status === 403);
+      r = await get('/api/mirror/status');
+      check('Backup', 'status of a fresh install: no folder, not on, not running', r.status === 200 && r.json.dest === null && r.json.enabled === false && r.json.running === false, r.text.slice(0, 200));
+      check('Backup', 'every route refuses another site', (await get('/api/mirror/status', X)).status === 403 && (await post('/api/mirror/setdest', { dest: 'D:\\JARVIS-Backup' }, X)).status === 403 && (await post('/api/mirror/run', {}, X)).status === 403 && (await post('/api/mirror/config', { enabled: true }, X)).status === 403);
+      check('Backup', 'running with no folder set, a relative path, a whole drive, and turning weekly on with no folder are plain 400s', (await post('/api/mirror/run', {})).status === 400 && (await post('/api/mirror/setdest', { dest: 'backup' })).status === 400 && (await post('/api/mirror/setdest', { dest: 'C:\\' })).status === 400 && (await post('/api/mirror/config', { enabled: true })).status === 400);
+      check('Backup', 'a folder inside ~/jarvis (the thing being backed up) is refused', (await post('/api/mirror/setdest', { dest: path.join(S.sandbox, 'Backups') })).status === 400);
+      // screenshot search: the test home has no screenshots, so nothing is read
+      r = await get('/api/shots/status');
+      check('Screenshots', 'status of a computer with no screenshot folder: nothing found, nothing indexed', r.status === 200 && r.json.total === 0 && r.json.indexed === 0 && r.json.running === false && Array.isArray(r.json.folders), r.text.slice(0, 200));
+      check('Screenshots', 'every route refuses another site', (await get('/api/shots/status', X)).status === 403 && (await post('/api/shots/update', {}, X)).status === 403 && (await post('/api/shots/search', { q: 'wifi' }, X)).status === 403 && (await post('/api/shots/folders', { add: 'C:\\x' }, X)).status === 403 && (await post('/api/shots/forget', {}, X)).status === 403 && (await post('/api/shots/open', { path: 'C:\\x.png' }, X)).status === 403);
+      check('Screenshots', 'search with only filler words is a 400; with real words and an empty index it is an empty list', (await post('/api/shots/search', { q: 'the screenshot' })).status === 400 && (r = await post('/api/shots/search', { q: 'wifi password' })).status === 200 && r.json.results.length === 0);
+      check('Screenshots', 'updating with no screenshots found is a plain 404 (or 501 off Windows); a missing or whole-drive folder is refused', [404, 501].includes((await post('/api/shots/update', {})).status) && (await post('/api/shots/folders', { add: path.join(S.sandbox, 'no-such-folder') })).status === 400 && (await post('/api/shots/folders', { add: path.parse(S.sandbox).root })).status === 400);
+      check('Screenshots', 'a file that is not in the index cannot be opened, even a real one', (await post('/api/shots/open', { path: path.join(S.sandbox, '.config.json') })).status === 404 && (await post('/api/shots/open', { path: 'C:\\Windows\\notepad.exe' })).status === 404);
+      check('Screenshots', 'forgetting an empty index is fine', (await post('/api/shots/forget', {})).json.forgotten === 0);
+      // developer helpers: git summary, commit message, error explainer (no AI is called by any of these checks)
+      check('Dev tools', 'every route refuses another site', (await post('/api/dev/git/summary', {}, X)).status === 403 && (await post('/api/dev/git/message', {}, X)).status === 403 && (await post('/api/dev/explain', { text: 'TypeError: x is not defined' }, X)).status === 403);
+      r = await post('/api/dev/git/summary', { window: 'today' });
+      check('Dev tools', 'a git summary with no projects is an empty, successful answer (or a clear 501 if git is missing)', (r.status === 200 && r.json.success === true && Array.isArray(r.json.repos) && r.json.total === 0) || r.status === 501, r.text.slice(0, 200));
+      check('Dev tools', 'an unknown project name is a 404 and an unknown window falls back to today', (await post('/api/dev/git/summary', { repo: 'no-such-project-zz' })).status === 404 && (await post('/api/dev/git/message', { repo: 'no-such-project-zz' })).status === 404);
+      check('Dev tools', 'a commit message with no project that has changes is a plain 400 (or 501 without git)', [400, 501].includes((await post('/api/dev/git/message', {})).status));
+      r = await get('/api/whisper/status');
+      check('Offline speech', 'status answers: not installed on a fresh install (no program, no model)', r.status === 200 && r.json.installed === false && r.json.success === true, r.text.slice(0, 200));
+      check('Offline speech', 'both routes refuse another site; an empty body is a 400; audio with nothing installed is a clear 501', (await get('/api/whisper/status', X)).status === 403 && (await post('/api/whisper/transcribe', {}, X)).status === 403 && (await post('/api/whisper/transcribe', {})).status === 400);
+      { const wavBytes = require('./../wavutil.js').encodeWav(new Float32Array(16000).fill(0.3), 16000); rec('POST', '/api/whisper/transcribe'); const rr = await fetch(S.base + '/api/whisper/transcribe', { method: 'POST', headers: { 'Content-Type': 'audio/wav', Origin: S.base, 'Sec-Fetch-Site': 'same-origin' }, body: wavBytes }); const rj = await rr.json().catch(() => ({})); check('Offline speech', 'a real WAV with nothing installed is a 501 that says so (and tells which flag)', rr.status === 501 && rj.notInstalled === true && /install-whisper/.test(rj.error || ''), rj); }
+      check('Dev tools', 'explain: too little text is a 400, and text that is not an error is a 400', (await post('/api/dev/explain', { text: 'hi' })).status === 400 && (await post('/api/dev/explain', { text: 'what is the capital of france and why' })).status === 400);
     }
 
     /* ---------- read-only laptop info (real, but changes nothing) ---------- */

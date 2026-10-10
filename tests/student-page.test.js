@@ -201,6 +201,113 @@ const reset = () => { calls.length = 0; said.length = 0; undo.length = 0; replie
   r = await S('show my exam history');
   check('history: the last six with date, topic, score, answered and time, and the trend of the last 3 against the 3 before', /7 so far/.test(r.text) && /\*\*7 Oct\*\* — DBMS: \*\*90%\*\* \(8\/8 answered, 10:00\)/.test(r.text) && !/\*\*1 Oct\*\*/.test(r.text) && /Last 3 average \*\*77%\*\*/.test(r.text) && /▲ 8 points up/.test(r.text) && /90 percent/.test(r.speak), r.text);
 
+  /* ---------- attendance prompt, study plan fitting, end-sem calculator ---------- */
+  const NOWF = new Date(2026, 9, 9, 15, 0).getTime();                     // Friday 15:00
+  global.reminders = []; global.studyPlans = []; global.askNotify = () => {}; global.notify = () => {};
+  global.settings = { speechLang: 'en', attendancePrompt: true };
+  global.saveSettings = () => {};
+  for (const t of ['fit my study plan to my timetable', 'fit my dbms study plan into my timetable', 'schedule my study sessions around my classes', 'fit my study plan to my timetable with 90 minute sessions', 'when can I study?', 'show my free slots', 'show me my free gaps this week']) check('wording: fit: "' + t + '"', k(t) === 'fit', Student.match(t));
+  check('wording: fit: the plan name and the session length are read', Student.match('fit my dbms study plan to my timetable').name === 'dbms' && Student.match('fit my study plan to my timetable with 90 minute sessions').min === 90 && Student.match('fit my study plan to my timetable').name === '');
+  for (const t of ['stop asking me about attendance', "don't ask about attendance", 'turn off attendance prompts', 'ask me about attendance after class', 'turn on attendance prompts']) check('wording: attendance switch: "' + t + '"', k(t) === 'attsw', Student.match(t));
+  check('wording: attendance switch direction', Student.match('stop asking me about attendance').on === false && Student.match('ask me about attendance after class').on === true && Student.match('turn on attendance prompts').on === true && Student.match('turn off attendance prompts').on === false);
+  check('wording: end-sem question is taken', k('I got 32/40 in internals, what do I need in the end sem to get 80%?') === 'endsem');
+  for (const t of ['schedule my day', 'fit this in my schedule', 'when can I meet you', 'show my free space', 'what do I need to pass', 'I need 80% in end sem']) check('wording: not taken: "' + t + '"', Student.match(t) === null, Student.match(t));
+
+  reset(); classes = [{ id: 'k1', name: 'DBMS', day: 5, h: 13, m: 30 }, { id: 'k2', name: 'OS', day: 5, h: 16, m: 0 }]; attendance = { DBMS: { held: 4, attended: 3, log: [] } }; store.d['jarvis.attAsked'] = undefined; delete store.d['jarvis.attAsked'];
+  let q = Student.attendanceTick(NOWF);
+  check('prompt: a class that ended is asked about, with three answers and no speech', q && /DBMS/.test(q.text) && /Did you attend/.test(q.text) && q.actions.map(a => a.label).join() === 'I ATTENDED,I MISSED IT,SKIP' && q.noTTS === true && said.length === 1, q);
+  check('prompt: a class still to come (OS at 16:00) is not asked', !said.some(x => /OS/.test(x.text)));
+  check('prompt: asked once — a second tick says nothing, and the memory survives in the store', Student.attendanceTick(NOWF + 60000) === null && store.d['jarvis.attAsked'].length === 1);
+  undo.length = 0; said.length = 0; q.actions[0].fn();
+  check('prompt: I ATTENDED marks DBMS present, with today\'s date, now 4/5, one undo', attendance.DBMS.held === 5 && attendance.DBMS.attended === 4 && attendance.DBMS.log[0].d === '2026-10-09' && attendance.DBMS.log[0].s === 'p' && undo.length === 1 && /80%/.test(said[0].text), [attendance, said.map(x => x.text)]);
+  undo[0][1](); check('prompt: undo takes the mark back', attendance.DBMS.held === 4 && attendance.DBMS.attended === 3 && attendance.DBMS.log.length === 0);
+  reset(); classes = [{ id: 'k1', name: 'dbms', day: 5, h: 13, m: 30 }]; attendance = { DBMS: { held: 4, attended: 3, log: [] } }; delete store.d['jarvis.attAsked'];
+  q = Student.attendanceTick(NOWF); q.actions[1].fn();
+  check('prompt: I MISSED IT marks absent on the existing DBMS key (case-insensitive)', attendance.DBMS.held === 5 && attendance.DBMS.attended === 3 && attendance.DBMS.log[0].s === 'a' && !attendance.dbms, attendance);
+  reset(); classes = [{ id: 'k1', name: 'DBMS', day: 5, h: 13, m: 30 }]; delete store.d['jarvis.attAsked']; q = Student.attendanceTick(NOWF); q.actions[2].fn();
+  check('prompt: SKIP marks nothing', !attendance.DBMS && /did not mark/.test(said[said.length - 1].text));
+  reset(); classes = [{ id: 'k1', name: 'DBMS', day: 5, h: 13, m: 30 }]; delete store.d['jarvis.attAsked']; settings.attendancePrompt = false;
+  check('prompt: with the setting off nothing is asked', Student.attendanceTick(NOWF) === null && said.length === 0); settings.attendancePrompt = true;
+  reset(); check('prompt: no timetable → nothing', Student.attendanceTick(NOWF) === null);
+  reset(); classes = [{ id: 'k1', name: 'DBMS', day: 5, h: 13, m: 30 }]; delete store.d['jarvis.attAsked']; attendance = { DBMS: { held: 1, attended: 1, log: [{ d: '2026-10-09', s: 'p' }] } };
+  check('prompt: already marked today by hand → not asked', Student.attendanceTick(NOWF) === null);
+  r = await S('stop asking me about attendance'); check('switch: off is saved and answered', settings.attendancePrompt === false && /will not ask/.test(r.text)); r = await S('ask me about attendance after class'); check('switch: on again', settings.attendancePrompt === true && /did you attend/i.test(r.text));
+
+  // fitting a study plan
+  reset(); studyPlans = []; reminders = [];
+  r = await S('fit my study plan to my timetable'); check('fit: no timetable → how to import it', /import my timetable/.test(r.text));
+  classes = [{ id: 'm1', name: 'DBMS', day: 1, h: 9, m: 0 }, { id: 'm2', name: 'OS', day: 1, h: 10, m: 0 }];
+  r = await S('fit my study plan to my timetable'); check('fit: a timetable but no plan → lists the free gaps and how to make a plan', /free gaps/.test(r.text) && /study plan/i.test(r.text), r.text);
+  const realNowF = Date.now; Date.now = () => NOWF; const RD = global.Date;
+  studyPlans = [{ id: 'sp1', name: 'DBMS', examDate: '2026-10-20', days: [{ date: '2026-10-12', topic: 'Normalization', done: false }, { date: '2026-10-13', topic: 'SQL', done: false }, { date: '2026-10-05', topic: 'old', done: true }] }];
+  r = await S('fit my study plan to my timetable'); Date.now = realNowF;
+  check('fit: the plan\'s open days are given a time in the longest gap, with an ADD REMINDERS button; nothing is set yet', /fitted to your timetable/.test(r.text) && /Normalization/.test(r.text) && /SQL/.test(r.text) && !/old/.test(r.text) && r.actions && /ADD \d+ REMINDERS/.test(r.actions[0].label) && reminders.length === 0 && /Nothing is set/.test(r.text), r.text);
+  undo.length = 0; r.actions[0].fn();
+  check('fit: pressing it adds one reminder per placed session, saved, with one undo', reminders.length === 2 && reminders.every(x => /Study:/.test(x.text) && x.fired === false) && undo.length === 1, reminders);
+  undo[0][1](); check('fit: undo removes them', reminders.length === 0);
+  r = await S('fit my os study plan to my timetable'); check('fit: an unknown plan name is told, with the real names', /no study plan called/.test(r.text) && /DBMS/.test(r.text));
+
+  // end-sem
+  r = await S('I got 32/40 in internals, what do I need in the end sem to get 80%?');
+  check('endsem: needs 48 of 60, shows the working and lower grades for comparison', /48 out of 60/.test(r.text) && /32\/40/.test(r.text) && /A \(70%\)/.test(r.text), r.text);
+  r = await S('what do I need in the end sem to get 90%, I got 10/40 in internals, end sem is out of 60'); check('endsem: out of reach is said plainly with the best possible', /out of reach/.test(r.text) && /70%/.test(r.text), r.text);
+  r = await S('what do I need in the end sem to pass, internals 38/40'); check('endsem: a pass is 40% of the total, so 2 more marks', /2 out of 60/.test(r.text) && /pass/.test(r.text), r.text);
+  r = await S('what do I need in the end sem for 35%, internals 38/40'); check('endsem: already enough', /already have it/.test(r.text), r.text);
+
+  /* ---------- an assignment sheet → deadline + to-dos ---------- */
+  global.AssignParse = require(root('assignparse.js')); global.todos = []; global.deadlines = [];
+  for (const t of ['add assignment from a photo', 'add my assignment from photo', 'read the assignment from the camera', 'import homework from a picture', 'add assignment from dbms_assign.pdf', 'add assignment from file dbms assign.pdf', 'capture assignment from a photo', 'log the tutorial sheet from my camera']) check('wording: assignment: "' + t + '"', k(t) === 'assign', Student.match(t));
+  check('wording: assignment: photo vs file', Student.match('add assignment from a photo').how === 'photo' && Student.match('add assignment from dbms_assign.pdf').how === 'file' && Student.match('add assignment from dbms_assign.pdf').file === 'dbms_assign.pdf' && Student.match('add assignment from file my sheet.pdf').file === 'my sheet.pdf');
+  for (const t of ['scan my assignment', 'add assignment', 'when is my assignment due', 'submit my assignment', 'add assignment deadline friday', 'read the news from a photo', 'take a photo']) check('wording: not taken: "' + t + '"', Student.match(t) === null, Student.match(t));
+  const SHEET = 'Subject: Operating Systems\nAssignment 3\nMax Marks: 10\nLast date of submission: 2099-01-01\nSubmit by 15/10/2099 5 pm\n1. Explain paging with a diagram.\n2. Compare FCFS and SJF scheduling.\n3) What is a deadlock? How is it avoided?';
+  reset(); todos = []; deadlines = []; replies['/tool/readFile'] = { success: true, name: 'Documents/os_assign.pdf', content: SHEET };
+  r = await S('add assignment from os_assign.pdf');
+  const ac = said.find(x => x.confirmCard);
+  check('assignment: the card shows title, due date, marks and the questions, asks before adding, and warns to check the date', ac && /Operating Systems/.test(ac.text) && /Assignment 3/.test(ac.text) && /15 Oct 2099/.test(ac.text) && /Marks: 10/.test(ac.text) && /paging/.test(ac.text) && /3 to-dos/.test(ac.text) && /Check the date/.test(ac.text) && ac.yes === 'YES, ADD', ac && ac.text);
+  check('assignment: after "yes": one deadline at 5 pm and three to-dos, saved, one undo', deadlines.length === 1 && new Date(deadlines[0].due).getHours() === 17 && /Assignment 3/.test(deadlines[0].title) && todos.length === 3 && /Q1: Explain paging/.test(todos[0].text) && undo.length === 1 && /Added the \*\*deadline\*\*/.test(r.text), [deadlines, todos.map(x => x.text), r.text]);
+  undo[0][1](); check('assignment: undo removes the deadline and the to-dos together', deadlines.length === 0 && todos.length === 0);
+  reset(); todos = []; deadlines = []; yes = false; replies['/tool/readFile'] = { success: true, name: 'a.pdf', content: SHEET }; r = await S('add assignment from a.pdf'); check('assignment: "no" adds nothing', deadlines.length === 0 && todos.length === 0 && /did not add/.test(r.text));
+  reset(); todos = []; deadlines = []; replies['/tool/readFile'] = { success: true, name: 'a.pdf', content: 'Lab record 2\nQ&A session notes with nothing numbered here and no dates at all anywhere' }; r = await S('add assignment from a.pdf'); check('assignment: no date and no questions → nothing added, how to add by hand', deadlines.length === 0 && /could not find a due date/.test(r.text) && /add deadline/.test(r.text), r.text);
+  reset(); replies['/tool/readFile'] = { error: 'not found' }; r = await S('add assignment from nothing.pdf'); check('assignment: a missing file is said so', /could not read/.test(r.text));
+  reset(); replies['/tool/readFile'] = { success: true, content: 'Tutorial sheet 2\n1. First question about heaps and trees in detail\n2. Second question about graphs' }; todos = []; deadlines = []; await S('add assignment from t.pdf');
+  check('assignment: with no date, only the to-dos are offered and added', /only add the \*\*2 to-dos/.test(said.find(x => x.confirmCard).text) && deadlines.length === 0 && todos.length === 2);
+  reset(); todos = []; deadlines = []; global.__shot = undefined; replies['/ocr/words'] = { text: SHEET, words: [] };
+  r = await Student.intercept('add assignment from a photo', 'text'); check('assignment: from a photo it uses the capture panel and OCR, then the same card', cameraLog.includes('ASSIGNMENT · PHOTO') && calls.some(c => c[0] === '/ocr/words') && said.some(x => x.confirmCard && /Operating Systems/.test(x.text)) && deadlines.length === 1, [cameraLog, calls.map(c => c[0])]);
+  reset(); r = await Student.intercept('add assignment from a photo', 'phone'); check('assignment: a photo request from the phone is refused', /laptop/.test(r.text) && !calls.length);
+  reset(); replies['/ocr/words'] = { text: 'ab' }; r = await S('add assignment from a photo'); check('assignment: too little text is said so', /enough text/.test(r.text));
+
+  /* ---------- offline speech (Whisper) in lecture mode ---------- */
+  for (const t of ['turn on offline speech', 'enable offline whisper', 'use offline speech for lectures', 'turn off offline speech', 'disable the offline transcription', 'is offline speech installed', 'is whisper installed?', 'offline speech status', 'switch off offline speech']) check('wording: offline speech: "' + t + '"', k(t) === 'offstt', Student.match(t));
+  check('wording: offline speech: on / off / status', Student.match('turn on offline speech').on === true && Student.match('use offline speech').on === true && Student.match('turn off offline speech').on === false && Student.match('is offline speech installed').on === undefined);
+  for (const t of ['turn on speech', 'turn on the lights', 'offline mode', 'is the wifi installed', 'use whisper', 'what is whisper']) check('wording: not taken: "' + t + '"', Student.match(t) === null, Student.match(t));
+  let sttInstalled = false; const sttLog = { started: 0, stopped: 0, opts: null };
+  global.Stt = { ready: async () => sttInstalled, status: async () => (sttInstalled ? { installed: true, model: 'base.en', dir: 'D:\\jarvis\\.whisper' } : { installed: false, hasProgram: true, hasModel: false }),
+    start: async o => { sttLog.started++; sttLog.opts = o; return { stop: async () => { sttLog.stopped++; o.onText('final piece of the lecture said here'); } }; } };
+  reset(); settings.offlineStt = false;
+  r = await S('is offline speech installed'); check('offline: not installed → says what is missing and how to install (the script, ~150 MB, where from)', /not installed/.test(r.text) && /program is there, but no model/.test(r.text) && /install-whisper\.ps1/.test(r.text) && /150 MB/.test(r.text), r.text);
+  r = await S('turn on offline speech'); check('offline: cannot be turned on while not installed', settings.offlineStt === false && /not installed/.test(r.text));
+  sttInstalled = true; r = await S('is offline speech installed'); check('offline: installed → model and folder, and whether it is on', /installed/.test(r.text) && /base\.en/.test(r.text) && /off/.test(r.text), r.text);
+  r = await S('turn on offline speech'); check('offline: turned on when installed', settings.offlineStt === true && /never sent anywhere/.test(r.text)); r = await S('turn off offline speech'); check('offline: turned off', settings.offlineStt === false && /Google or Microsoft/.test(r.text)); settings.offlineStt = true;
+  // a lecture with it on: no browser recogniser at all
+  reset(); recs.length = 0; replies['/tool/writeFile'] = { success: true }; replies['/lecture/notes'] = { success: true, file: 'Notes/lecture-os-notes.md', name: 'lecture-os-notes.md', chunks: 1, seconds: 2, preview: '# n\n\n## Notes\n- x' }; global.wakeOn = false;
+  r = await S('start lecture mode for OS');
+  const lc = said.find(x => x.confirmCard);
+  check('offline lecture: the card says the audio is turned into text on this laptop, works without the internet, may lag and be imperfect — and does not claim Google/Microsoft', lc && /on this laptop/.test(lc.text) && /no audio leaves the computer/i.test(lc.text) && /without the internet/.test(lc.text) && /wrong words/.test(lc.text) && !/sends the audio to Google/.test(lc.text), lc && lc.text);
+  check('offline lecture: Whisper is started (language from the setting), the browser recogniser is NOT, the indicator says OFFLINE', sttLog.started === 1 && recs.length === 0 && [...indicator.values()].some(v => /OFFLINE/.test(v.l)) && /offline speech/.test(r.text), [sttLog.started, recs.length, [...indicator.values()]]);
+  check('offline lecture: the language code is two letters', /^[a-z]{2}$/.test(sttLog.opts.lang), sttLog.opts.lang);
+  for (let i = 0; i < 3; i++) sttLog.opts.onText('this is a long enough sentence about operating systems and scheduling number ' + i);
+  check('offline lecture: text that comes back is counted', Student._L.words >= 3 * 10 && Student._L.pending.length === 3);
+  r = await S('stop the lecture');
+  check('offline lecture: stopping stops Whisper (which delivers its last piece first), saves the transcript and makes the notes', sttLog.stopped === 1 && calls.some(c => c[0] === '/tool/writeFile' && /final piece of the lecture/.test(c[1].content)) && calls.some(c => c[0] === '/lecture/notes') && /Notes saved/.test(r.text) && !Student.lectureActive() && indicator.size === 0, [calls.map(c => c[0]), r.text]);
+  // on but not installed any more → the browser recogniser, and the card says why
+  reset(); recs.length = 0; sttInstalled = false; settings.offlineStt = true; r = await S('start lecture mode for OS');
+  check('offline lecture: switched on but Whisper missing → falls back to the browser recogniser and says so', /Whisper is not installed, so I am using this/.test(said.find(x => x.confirmCard).text) && recs.length === 1, said.map(x => x.text)); await S('stop the lecture');
+  // the microphone cannot be opened
+  reset(); recs.length = 0; sttInstalled = true; settings.offlineStt = true; const realStart = global.Stt.start; global.Stt.start = async () => { throw new Error('Permission denied'); };
+  r = await S('start lecture mode for OS'); check('offline lecture: a microphone that cannot be opened ends cleanly — no lecture left running, the indicator is gone, the wake word returns', /could not open the microphone/.test(r.text) && !Student.lectureActive() && indicator.size === 0, r.text); global.Stt.start = realStart;
+  // the setting is off → the browser recogniser even when installed
+  reset(); recs.length = 0; settings.offlineStt = false; sttLog.started = 0; await S('start lecture mode for OS'); check('offline lecture: with the setting off the browser recogniser is used and the card offers offline speech', recs.length === 1 && sttLog.started === 0 && /is offline speech installed/.test(said.find(x => x.confirmCard).text)); await S('stop the lecture');
+
   clearInterval(keep);
   console.log(`student-page: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;

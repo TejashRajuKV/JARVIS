@@ -7,7 +7,7 @@
 #   saved to ~/jarvis/.jarvis.pid so "Stop JARVIS" can quit it. The chosen port is remembered
 #   (~/jarvis/.jarvis-port) so the same address works every time. If something needs attention
 #   (Node missing, first-time setup), silent mode shows a message or opens the visible launcher once.
-param([switch]$Silent)
+param([switch]$Silent, [switch]$NoBrowser)   # -NoBrowser: used by keepalive.ps1, so an automatic restart never pops a window up
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 
@@ -16,6 +16,9 @@ $PidFile  = Join-Path $AppData '.jarvis.pid'
 $PortFile = Join-Path $AppData '.jarvis-port'
 $LogFile  = Join-Path $AppData '.launcher.log'
 
+function Open($u) { if (-not $NoBrowser) { Start-Process $u } }
+# Starting JARVIS yourself clears the "stopped on purpose" note, so the keep-alive task may watch it again (an automatic restart does not clear it).
+if (-not $NoBrowser) { Remove-Item -LiteralPath (Join-Path (Join-Path $env:USERPROFILE 'jarvis') '.stopped-by-user') -Force -ErrorAction SilentlyContinue }
 function Say($t, $c = 'Cyan') { if (-not $Silent) { Write-Host $t -ForegroundColor $c } }
 # Fire-and-forget popup via wscript (in-process COM Popup can hang in some spawned contexts).
 function Msg($t) { try { Start-Process wscript.exe -ArgumentList ('//B "' + (Join-Path $PSScriptRoot 'jarvis-msg.vbs') + '" "JARVIS" "' + ($t -replace '"', '') + '"') } catch {} } # auto-closes after 30s so nothing waits on a click forever
@@ -64,7 +67,7 @@ if (-not (Test-Path (Join-Path $PSScriptRoot 'node_modules\express'))) {
 # and there is never a second copy on another port.
 try {
   $lk = Get-Content (Join-Path $AppData '.jarvis.lock') -Raw -ErrorAction Stop | ConvertFrom-Json
-  if ($lk.port -and (IsJarvis ([int]$lk.port))) { Say "  JARVIS is already running - opening it." 'Green'; Start-Process "http://localhost:$($lk.port)"; exit 0 }
+  if ($lk.port -and (IsJarvis ([int]$lk.port))) { Say "  JARVIS is already running - opening it." 'Green'; Open "http://localhost:$($lk.port)"; exit 0 }
 } catch {}
 $sticky = $null
 try { if (Test-Path $PortFile) { $sticky = [int](Get-Content $PortFile -TotalCount 1) } } catch {}
@@ -72,7 +75,7 @@ $candidates = @(3000..3010)
 if ($sticky -ge 3000 -and $sticky -le 3010) { $candidates = @($sticky) + @($candidates | Where-Object { $_ -ne $sticky }) }
 $port = $null
 foreach ($p in $candidates) {
-  if (IsJarvis $p) { Say "  JARVIS is already running - opening it." 'Green'; Start-Process "http://localhost:$p"; exit 0 }
+  if (IsJarvis $p) { Say "  JARVIS is already running - opening it." 'Green'; Open "http://localhost:$p"; exit 0 }
   if (-not (IsBusy $p)) { $port = $p; break }
 }
 if (-not $port) {
@@ -124,7 +127,7 @@ if (-not $Silent) {
 function WaitHealthy($p) { for ($i = 0; $i -lt 90; $i++) { if (IsJarvis $p) { return $true }; Start-Sleep -Milliseconds 700 } return $false }
 
 if ($Silent) {
-  if (IsJarvis $port) { Start-Process "http://localhost:$port"; exit 0 } # someone started it meanwhile
+  if (IsJarvis $port) { Open "http://localhost:$port"; exit 0 } # someone started it meanwhile
   try { New-Item -ItemType Directory -Force -Path $AppData | Out-Null } catch {}
   $node = (Get-Command node).Source
   try { Set-Content -Path $LogFile -Value "[launcher] starting node on port $port at $(Get-Date -Format s)" -Encoding ASCII } catch {}
@@ -134,7 +137,7 @@ if ($Silent) {
           -RedirectStandardOutput $LogFile -RedirectStandardError ($LogFile + '.err')
   } catch { try { Add-Content -Path $LogFile -Value ("[launcher] could not start node: " + $_.Exception.Message) } catch {} }
   if ($p) { try { Set-Content -Path $PidFile -Value "$($p.Id)" -Encoding ASCII } catch {} }
-  if ($p -and (WaitHealthy $port)) { Start-Process "http://127.0.0.1:$port"; exit 0 }
+  if ($p -and (WaitHealthy $port)) { Open "http://127.0.0.1:$port"; exit 0 }
   $why = ''
   try { if (Test-Path ($LogFile + '.err')) { $why = (Get-Content ($LogFile + '.err') -Tail 3) -join ' ' } } catch {}
   if ($p -and $p.HasExited) { $why = "node exited immediately (code $($p.ExitCode)). $why" }

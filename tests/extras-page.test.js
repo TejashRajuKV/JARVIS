@@ -553,6 +553,38 @@ const ex = t => Extras.intercept(t);
   }
   replies['/disk/apply'] = { success: true, runId: '20261008173000-abc123', moved: 10, bytes: 1, failed: [], skipped: [] };
 
+  // regenerable project folders (node_modules and friends)
+  const regenItems = [{ n: 1, from: 'D:\\Proj\\OldApp\\node_modules', size: 1.2 * GBn, project: 'OldApp', kind: 'node_modules', how: 'npm install brings it back' }, { n: 2, from: 'D:\\Proj\\Api\\.venv', size: 400 * MBn, project: 'Api', kind: '.venv', how: 'python -m venv and pip install bring it back' }, { n: 3, from: 'D:\\Proj\\Api\\__pycache__', size: 3 * MBn, project: 'Api', kind: '__pycache__', how: 'Python rebuilds it when the code runs' }];
+  replies['/disk/plan'] = b => (b.kind === 'regen' ? { success: true, kind: 'regen', planId: 'rg1', count: 3, totalFound: 5, bytes: 1.6 * GBn + 3 * MBn, partial: false, olderDays: b.olderDays === 0 ? 0 : 30, items: regenItems, roots: [] } : { error: 'x' });
+  check('disk regen: "clear 1 and 2" / "clear them all" before any list are not taken', (await ex('clear them all')) === null && (await ex('clear 1 and 2')) === null && (await ex('clean up everything')) === null);
+  for (const [t, where, any] of [['find old node_modules', undefined, false], ['Find node_modules.', undefined, false], ['clean up my project caches', undefined, false], ['clear old node_modules in my projects', 'projects', false], ['free up space from my projects', undefined, false], ['find unused virtual environments', undefined, false], ['find node_modules of any age', undefined, true], ['/regen', undefined, false], ['list venvs on D drive', 'D drive', false], ['clear pycache', undefined, false]]) {
+    calls.length = 0; const x = await ex(t); const pc = calls.find(cc => cc[0] === '/disk/plan');
+    check('disk regen: "' + t + '"', x && pc && pc[1].kind === 'regen' && pc[1].where === where && (pc[1].olderDays === 0) === any && /that your projects can make again/.test(x.text), { t, pc: pc && pc[1], x: x && x.text });
+  }
+  c = await ex('find old node_modules');
+  check('disk regen: numbered list with the project, the folder kind, size and how to get it back; the total; what is never touched; how to choose', /\*\*3 folders\*\* that your projects can make again — \*\*1\.6 GB\*\* in all \*\(the biggest 3 of 5\)\*/.test(c.text) && /1\. \*\*OldApp\*\* — \x60node_modules\x60 · \*\*1\.2 GB\*\* · npm install brings it back/.test(c.text) && /untouched for 30\+ days/.test(c.text) && /clear 1 and 3/.test(c.text) && /never touched/.test(c.text), c.text);
+  c = await ex('find node_modules of any age'); check('disk regen: "any age" says recent projects are included', /including projects you used recently/.test(c.text));
+  for (const t of ['clear them all', 'clean up all of them', 'remove everything in the list', 'move all the folders']) {
+    await ex('find old node_modules'); said4.length = 0; calls.length = 0; undo4.length = 0; replies['/disk/apply'] = { success: true, kind: 'regen', runId: '20261010120000-aaa111', moved: 3, bytes: 1.6 * GBn, failed: [], skipped: [], trashNote: true };
+    const x = await ex(t); const ap = calls.find(cc => cc[0] === '/disk/apply');
+    check('disk regen all: "' + t + '"', x && ap && ap[1].planId === 'rg1' && ap[1].pick === undefined && /Move \*\*3 folders\*\* \(1\.6 GB\)/.test(said4[0].text) && /open in an editor or running a dev server/.test(said4[0].text) && /Moved \*\*3 folders\*\*/.test(x.text) && undo4.length === 1 && /project folders/.test(undo4[0][0]), { t, x: x && x.text });
+  }
+  for (const t of ['clear 1 and 2', 'clean 2', 'move number 3', 'please clear 1, 3']) {
+    await ex('find old node_modules'); said4.length = 0; calls.length = 0;
+    const x = await ex(t); const ap = calls.find(cc => cc[0] === '/disk/apply');
+    check('disk regen pick: "' + t + '"', x && ap && Array.isArray(ap[1].pick) && ap[1].pick.every(n => n >= 1 && n <= 3) && /Move \*\*\d folders?\*\*/.test(said4[0].text), { t, ap: ap && ap[1] });
+  }
+  await ex('find old node_modules'); calls.length = 0; c = await ex('clear 9'); check('disk regen pick: a number that is not in the list is explained, nothing is sent', /only have numbers 1 to 3/.test(c.text) && !calls.some(cc => cc[0] === '/disk/apply'));
+  await ex('find old node_modules'); yes = false; calls.length = 0; c = await ex('clear them all'); yes = true; check('disk regen: saying no moves nothing', /left your project folders as they are/.test(c.text) && !calls.some(cc => cc[0] === '/disk/apply'));
+  await ex('find old node_modules'); replies['/disk/apply'] = { success: true, runId: null, moved: 0, bytes: 0, failed: [{ path: 'x', why: 'a program is using it (close the editor or dev server)' }], skipped: [] };
+  c = await ex('clear them all'); check('disk regen: a folder a program is using is reported with the reason, no undo offered', /did not move anything: a program is using it/.test(c.text));
+  await ex('find old node_modules'); await ex('clear them all'); check('disk regen: after clearing the list is spent', (await ex('clear them all')) === null);
+  replies['/disk/plan'] = { success: true, kind: 'regen', planId: 'z', count: 0, totalFound: 0, bytes: 0, olderDays: 30, items: [], partial: false };
+  c = await ex('find old node_modules'); check('disk regen: nothing found says so, and how to include recent projects', /nothing to clear/.test(c.text) && /of any age/.test(c.text));
+  replies['/disk/plan'] = { error: 'Say which drive or folder to look in, e.g. “on D drive” or “in my Documents”.' }; check('disk regen: server errors are shown', /Say which drive or folder/.test((await ex('find old node_modules')).text));
+  for (const t of ['clear my browser cache', 'clear the screen', 'clean my room', 'find modules', 'find node', 'what is node_modules', 'delete node_modules from my project']) { calls.length = 0; const x = await ex(t); check('disk regen: not taken: "' + t + '"', x === null && !calls.some(cc => /^\/disk\//.test(cc[0])), { t, x: x && x.text }); }
+  replies['/disk/apply'] = { success: true, runId: '20261008173000-abc123', moved: 10, bytes: 1, failed: [], skipped: [] };
+
   // empty the JARVIS trash
   replies['/disk/plan'] = b => (b.kind === 'trash' ? { success: true, kind: 'trash', planId: 'tr1', count: 9, bytes: 4.2 * GBn, partial: false, permanent: true } : { error: 'x' });
   replies['/disk/applyPermanent'] = { success: true, kind: 'trash', permanent: true, removed: 9, bytes: 4.2 * GBn, failed: 1 };

@@ -25,9 +25,18 @@ const Student = (() => {
   const EXAM_START = /^(?:please\s+)?(?:(?:start|begin|take|run|give\s+me|set\s+(?:me\s+)?up)\s+(?:me\s+)?(?:an?\s+|the\s+)?(?:(?:(?:mock|practice|timed)\s+)(?:exam|test)|exam)\s*(?:mode)?\s+(?:on|from|about|for)\s+(.+?)|exam\s+me\s+(?:on|from|about)\s+(.+?)|(?:start|begin)\s+(?:an?\s+)?(?:mock\s+|practice\s+|timed\s+)?exam\s+mode)\s*[.!?]*$/i;
   const EXAM_STOP = /^(?:please\s+)?(?:stop|end|finish|quit|exit|cancel)\s+(?:the\s+|my\s+)?(?:mock\s+|practice\s+)?(?:exam|test)(?:\s+mode)?\s*[.!]*$/i;
   const EXAM_HISTORY = /^(?:how\s+did\s+(?:my|the)\s+(?:mock\s+|practice\s+)?exams?\s+go|(?:show|list|what\s+(?:are|is))\s+(?:me\s+)?(?:my\s+)?(?:past\s+|previous\s+|recent\s+)?exam\s+(?:history|results|scores?)|exam\s+history|my\s+exam\s+(?:results|scores|history))\s*[?.!]*$/i;
+  const FIT = /^(?:please\s+)?(?:fit|schedule|arrange|slot|put|plan|place)\s+(?:my\s+|the\s+)?(?:(.+?)\s+)?(?:study\s+(?:plan|sessions?)|revision(?:\s+plan)?)\s+(?:into|around|in|to|with|on|onto)\s+(?:my\s+)?(?:time\s*table|classes|class\s+schedule|free\s+(?:time|slots|periods|gaps?)|gaps?)(?:\s+(?:with|using|in)\s+(\d{2,3})[\s-]*(?:min(?:ute)?s?)\s+(?:sessions?|blocks?|slots?))?\s*[.!]*$|^(?:please\s+)?when\s+(?:can|should)\s+i\s+study\s*(?:this\s+week)?\s*[?.!]*$|^(?:please\s+)?(?:show|find|list|what\s+are)\s+(?:me\s+)?(?:my\s+)?free\s+(?:slots|periods|gaps)(?:\s+(?:this\s+week|this\s+week'?s|for\s+studying))?\s*[?.!]*$/i;
+  const ATT_SW = /^(?:please\s+)?(?:(stop|don'?t|do\s+not)\s+(?:asking|ask)\s+(?:me\s+)?(?:about\s+)?attendance|(?:ask|prompt)\s+me\s+(?:about\s+)?attendance\s+after\s+(?:each\s+|every\s+)?class|(turn\s+off|disable)\s+attendance\s+(?:prompts?|questions?)|(?:turn\s+on|enable)\s+attendance\s+(prompts?|questions?))\s*[.!]*$/i;
+  const ASSIGN = /^(?:please\s+)?(?:add|read|import|log|capture|take|get)\s+(?:my\s+|an?\s+|the\s+|this\s+|new\s+)?(?:assignment|homework|home\s+work|tutorial\s+sheet|worksheet|lab\s+record)(?:\s+(?:sheet|details|question\s+paper))?\s+(?:from|using|via|off)\s+(?:a\s+|an\s+|the\s+|my\s+)?(photo|picture|image|pic|camera|(?:pdf|file|document)\s+.+|.+\.(?:pdf|txt|md|docx?))\s*[.!]*$/i;
+  const OFFSTT = /^(?:please\s+)?(?:(turn\s+on|enable|switch\s+on|use)|(turn\s+off|disable|switch\s+off|stop\s+using))\s+(?:the\s+)?offline\s+(?:speech|transcription|whisper|speech[\s-]to[\s-]text)(?:\s+for\s+(?:my\s+)?lectures?)?\s*[.!]*$|^(?:is\s+)?(?:offline\s+(?:speech|whisper|transcription)|whisper)\s+(?:installed|ready|working|available|set\s*up)\s*\??$|^offline\s+(?:speech|whisper)\s+status\s*$/i;
   function match(t) {
     t = String(t || '').trim();
     let m;
+    if ((m = t.match(OFFSTT))) return { kind: 'offstt', on: m[1] ? true : m[2] ? false : undefined };
+    if ((m = t.match(ASSIGN))) { const s = m[1].trim(); return /^(?:photo|picture|image|pic|camera)$/i.test(s) ? { kind: 'assign', how: 'photo' } : { kind: 'assign', how: 'file', file: s.replace(/^(?:pdf|file|document)\s+/i, '').replace(/^["']|["']$/g, '') }; }
+    if (typeof Study !== 'undefined' && Study.parseEndSem) { const es = Study.parseEndSem(t); if (es) return { kind: 'endsem', ...es }; }
+    if ((m = t.match(ATT_SW))) return { kind: 'attsw', on: !(m[1] || m[2]) };
+    if ((m = t.match(FIT))) return { kind: 'fit', name: (m[1] || '').replace(/^(?:my|the)\s+/i, '').trim(), min: m[2] ? +m[2] : 0 };
     if ((m = t.match(BUNK))) return { kind: 'bunk', day: (m[1] || m[2] || '').toLowerCase().replace(/^the\s+/, '') };
     if ((m = t.match(TT_INLINE))) return { kind: 'tt', source: 'text', text: m[1] };
     if ((m = t.match(TT_IMPORT))) { const s = (m[1] || '').toLowerCase(); return { kind: 'tt', source: /photo|picture|image|pic|camera/.test(s) ? 'photo' : /ics|calendar|file/.test(s) ? 'ics' : /text|paste/.test(s) ? 'text' : '' }; }
@@ -169,6 +178,148 @@ const Student = (() => {
       { speak: plain(verdict) });
   }
 
+  /* ================= attendance prompt after each class ================= */
+  // Called every few seconds by the page's task tick. Asks once per class per day, a few minutes after it ends: PRESENT / ABSENT / SKIP. Nothing is
+  // marked without an answer, and every mark has an Undo. Only while JARVIS is open (it does not run in the background).
+  function markAttendance(c, present, when) {
+    const subject = subjectName(c.name);
+    const e = attendance[subject] || (attendance[subject] = { held: 0, attended: 0, log: [] });
+    const d = Study.ymd(when || new Date());
+    e.log.push({ d, s: present ? 'p' : 'a' }); if (e.log.length > 400) e.log.shift();
+    e.held++; if (present) e.attended++;
+    saveTasks(); if (typeof sfx !== 'undefined') sfx.ok();
+    if (typeof Undo !== 'undefined') Undo.push('marked ' + subject + ' ' + (present ? 'present' : 'absent'), () => {
+      const cur = attendance[subject]; if (!cur) return 'That attendance entry is already gone.';
+      const i = cur.log.map(x => x.d + x.s).lastIndexOf(d + (present ? 'p' : 'a')); if (i < 0) return 'That attendance entry is already gone.';
+      cur.log.splice(i, 1); cur.held = Math.max(0, cur.held - 1); if (present) cur.attended = Math.max(0, cur.attended - 1); saveTasks();
+      return 'Un-marked ' + subject + ' for today.';
+    });
+    const pct = Study.attendancePct(e.held, e.attended);
+    return say('✓ **' + subject + '** marked **' + (present ? 'present' : 'absent') + '** — now **' + pct + '%** (' + e.attended + '/' + e.held + ')' + (pct < 75 ? ' ⚠ below 75%. Attend ' + pl(Study.neededToReach(e.held, e.attended, 75), 'class', 'classes') + ' in a row to get back.' : ', ' + pl(Study.bunkable(e.held, e.attended, 75), 'bunk') + ' still safe.') + ' Say **“undo”** to take it back.', { speak: subject + (present ? ' present.' : ' absent.'), intent: 'ATTENDANCE_MARK' });
+  }
+  function attendanceTick(now) {
+    now = now || Date.now();
+    try {
+      if (typeof settings !== 'undefined' && settings.attendancePrompt === false) return null;
+      if (E || !classes.length) return null;
+      const asked = store.get('jarvis.attAsked', []);
+      const due = Study.attendanceDue({ classes, attendance, now, asked });
+      if (!due.length) return null;
+      const { c, key } = due[0];
+      asked.push(key); store.set('jarvis.attAsked', asked.slice(-200));
+      const at = new Date(now); at.setHours(c.h, c.m || 0, 0, 0);
+      const t = at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const reply = say('📚 **' + c.name + '** (' + t + ') is over. Did you attend?', { noTTS: true, actions: [
+        { label: 'I ATTENDED', fn: () => jarvisSay(markAttendance(c, true, new Date(now))) },
+        { label: 'I MISSED IT', fn: () => jarvisSay(markAttendance(c, false, new Date(now))) },
+        { label: 'SKIP', fn: () => jarvisSay(say('Okay, I did not mark ' + c.name + '. Say **“mark ' + c.name + ' present”** later if you want.')) }] });
+      if (typeof notify === 'function') notify('Class over', 'Did you attend ' + c.name + '?');
+      jarvisSay(reply);
+      return reply;
+    } catch (e) { return null; }
+  }
+  function attendanceSwitch(on) {
+    if (typeof settings === 'undefined') return say('I could not change that setting here.');
+    settings.attendancePrompt = !!on; if (typeof saveSettings === 'function') saveSettings();
+    try { if (typeof bindSwitchState === 'function' && document.getElementById('attendancePromptToggle')) bindSwitchState('#attendancePromptToggle', 'attendancePrompt'); } catch (e) {}
+    return say(on ? '✓ I will ask **“did you attend?”** a few minutes after each class in your timetable (only while JARVIS is open).' : '✓ I will not ask about attendance after classes. You can still say **“mark DBMS present”**.');
+  }
+
+  /* ================= study plan fitted to the timetable ================= */
+  function fitStudy(m) {
+    const today = Study.ymd(new Date());
+    const plans = (typeof studyPlans !== 'undefined' ? studyPlans : []).filter(p => p.examDate >= today && p.days.some(d => !d.done && d.date >= today));
+    const freeOnly = !plans.length || /free/.test(m.raw || '');
+    if (!classes.length) return say('I need your timetable to find the gaps. Say **“import my timetable”** (from a photo, a calendar file or pasted lines) first.');
+    if (!plans.length) {
+      const slots = Study.freeSlots({ classes, from: Date.now(), days: 7, minMin: 45 });
+      if (!slots.length) return say('Your next 7 days have no gap of 45 minutes or more between 8 am and 9 pm.');
+      const byDay = new Map(); for (const s of slots) { if (!byDay.has(s.date)) byDay.set(s.date, []); byDay.get(s.date).push(s); }
+      const f = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const lines = [...byDay.entries()].slice(0, 7).map(([d, ss]) => '- **' + new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) + '** — ' + ss.map(s => f(s.start) + '–' + f(s.end) + ' (' + Math.floor(s.min / 60) + 'h' + (s.min % 60 ? ' ' + s.min % 60 + 'm' : '') + ')').join(', '));
+      return say('**Your free gaps this week** (between 8 am and 9 pm, 45 minutes or more):\n' + lines.join('\n') + '\n\nYou have no study plan yet. Say **“plan my GATE prep, exam on 12 Dec, topics: OS, DBMS”** and then **“fit my study plan to my timetable”**.');
+    }
+    const named = m.name ? plans.find(p => p.name.toLowerCase().includes(m.name.toLowerCase())) : null;
+    if (m.name && !named) return say('I have no study plan called “' + m.name + '”. Your plans: ' + plans.map(p => '**' + p.name + '**').join(', ') + '.');
+    const plan = named || plans.slice().sort((a, b) => (a.examDate < b.examDate ? -1 : 1))[0];
+    const studyMin = Math.max(30, Math.min(180, m.min || 60));
+    const fit = Study.fitPlan({ plan, classes, now: Date.now(), studyMin });
+    if (!fit.length) return say('Nothing is left to schedule in **' + plan.name + '**.');
+    const f = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const dl = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    const placed = fit.filter(x => !x.none), none = fit.filter(x => x.none);
+    const lines = fit.slice(0, 12).map(x => '- **' + dl(x.date) + '** ' + (x.none ? '— *no free gap that day*' : f(x.start) + '–' + f(x.end)) + ' — ' + x.topic);
+    const future = placed.filter(x => x.start > Date.now() + 6e4);
+    return say('**' + plan.name + ' — fitted to your timetable** (exam ' + dl(plan.examDate) + '; ' + pl(studyMin, 'minute') + ' per session, in the longest free gap each day)\n' + lines.join('\n') + (fit.length > 12 ? '\n- …and ' + (fit.length - 12) + ' more' : '') + (none.length ? '\n\n⚠ ' + pl(none.length, 'day') + ' ' + (none.length === 1 ? 'has' : 'have') + ' no gap of ' + Math.min(studyMin, 45) + ' minutes or more. Those topics are not scheduled.' : '') + '\n\nNothing is set until you press the button.',
+      { speak: 'I fitted ' + placed.length + ' study sessions into your free time.', actions: future.length ? [{ label: 'ADD ' + Math.min(future.length, 60) + ' REMINDERS', fn: () => {
+        const ids = []; for (const x of future.slice(0, 60)) { const id = rid(); reminders.push({ id, text: '📚 Study: ' + x.topic + ' (' + plan.name + ') — ' + f(x.start), at: x.start, fired: false }); ids.push(id); }
+        saveTasks(); if (typeof askNotify === 'function') askNotify();
+        if (typeof Undo !== 'undefined') Undo.push('added study reminders', () => { const s = new Set(ids); reminders = reminders.filter(r => !s.has(r.id)); saveTasks(); return 'Removed ' + pl(ids.length, 'study reminder') + '.'; });
+        jarvisSay(say('✓ Added ' + pl(ids.length, 'reminder') + ', each at the start of its slot. **“undo”** removes them.'));
+      } }] : undefined });
+  }
+
+  /* ================= an assignment sheet → deadline + to-dos ================= */
+  // The text comes from a photo (OCR) or a file (a PDF or note in ~/jarvis); assignparse.js finds the title, subject, due date and questions. The result is
+  // shown first; only "yes" adds anything, and one Undo removes the deadline and the to-dos together.
+  async function assignment(m, source) {
+    let text = '', from = '';
+    if (m.how === 'photo') {
+      if (source === 'phone') return say(Camera.PHONE_NO);
+      const shot = await Camera.capture({ title: 'ASSIGNMENT · PHOTO', hint: 'Photograph or choose a picture of the assignment sheet, flat and well lit, with the title and the due date in view.', maxSide: 2000 });
+      if (!shot) return say('Okay, cancelled.');
+      let blob = await Camera.canvasToBlob(shot.canvas, 0.9);
+      for (let q = 0.8; blob.size > 2.2 * 1024 * 1024 && q > 0.4; q -= 0.15) blob = await Camera.canvasToBlob(shot.canvas, q);
+      setState('PROCESSING', 'Reading the assignment…');
+      const ocr = await callTool('/ocr/words', { image: await Camera.blobToBase64(blob) });
+      if (ocr.error) return say('I could not read the picture: ' + ocr.error);
+      text = String(ocr.text || ''); from = 'the photo';
+    } else {
+      const r = await callTool('/tool/readFile', { name: m.file });
+      if (r.error || !r.content) return say('I could not read **' + m.file + '**' + (r.error ? ': ' + r.error : '') + '. Put the file in your JARVIS folder (for example `Documents`) and say its name.');
+      text = String(r.content); from = '`' + (r.name || m.file) + '`';
+    }
+    if (text.trim().length < 15) return say('I could not read enough text from ' + from + ' to find an assignment.');
+    const subjects = [...new Set([...Object.keys(typeof attendance !== 'undefined' ? attendance : {}), ...(typeof classes !== 'undefined' ? classes.map(c => c.name) : [])])];
+    const a = AssignParse.parseAssignment(text, { now: Date.now(), subjects });
+    const title = a.title || 'Assignment';
+    const dueTxt = a.due ? new Date(a.due).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '';
+    const tasks = a.questions.map((q, i) => (a.subject || title).slice(0, 30) + ' — Q' + (i + 1) + ': ' + q.slice(0, 80));
+    const facts = '**' + title + '**' + (a.subject ? ' (' + a.subject + ')' : '') + '\n- Due: ' + (a.due ? '**' + dueTxt + '**' : '*not found*') + (a.marks ? '\n- Marks: ' + a.marks : '') + '\n- Questions: ' + (a.questions.length ? a.questions.map((q, i) => '\n  ' + (i + 1) + '. ' + q.slice(0, 90)).join('') : '*none found*') + (a.notes.length ? '\n\n⚠ ' + a.notes.join(' ') : '');
+    if (!a.due && !tasks.length) return say('I read ' + from + ' but could not find a due date or numbered questions.\n\n' + facts + '\n\nYou can add it by hand: **“add deadline ' + title + ' by 15 Oct”**.');
+    const go = await ask('I read this from ' + from + ':\n\n' + facts + '\n\n' + (a.due ? 'Add it as a **deadline**' + (tasks.length ? ' and ' + pl(tasks.length, 'to-do') + ' (one per question)' : '') : 'No due date, so I can only add the **' + pl(tasks.length, 'to-do') + '**') + '? *Check the date: handwriting and unusual layouts can be misread.* **“undo”** removes what I add.', 'YES, ADD');
+    if (!go) return say('Okay, I did not add anything.');
+    const dl = a.due ? { id: rid(), title, due: a.due, done: false } : null, td = tasks.map(x => ({ id: rid(), text: x, done: false, ts: Date.now() }));
+    if (dl) deadlines.push(dl); if (td.length) todos.push(...td);
+    saveTasks(); if (typeof sfx !== 'undefined') sfx.ok();
+    if (typeof Undo !== 'undefined') Undo.push('added the assignment', () => { if (dl) deadlines = deadlines.filter(x => x.id !== dl.id); const ids = new Set(td.map(x => x.id)); todos = todos.filter(x => !ids.has(x.id)); saveTasks(); return 'Removed the assignment' + (td.length ? ' and its ' + pl(td.length, 'to-do') : '') + '.'; });
+    return say('✓ Added ' + [dl ? 'the **deadline** (' + dueTxt + ')' : '', td.length ? pl(td.length, 'to-do') : ''].filter(Boolean).join(' and ') + '. Say **“undo”** to remove ' + (dl && td.length ? 'them' : 'it') + '.', { speak: 'I added the assignment.', suggestions: ['What are my deadlines?'] });
+  }
+
+  /* ================= what do I need in the end-sem? ================= */
+  function endSem(m) {
+    const r = Study.endSemNeeded(m);
+    if (r.error) return say(r.error);
+    const head = 'With **' + m.internal + '/' + m.internalMax + '** in internals (' + r.internalPct + '%) and an end-sem out of **' + r.endMax + '**, to reach **' + m.target + '** overall (' + r.targetPct + '% of ' + r.total + ' = ' + Math.ceil(r.targetPct * r.total / 100) + ' marks)';
+    if (r.already) return say(head + ': **you already have it** from the internals alone. Even 0 in the end-sem is enough on the total. *(Many colleges also need a minimum in the end-sem paper itself, so check yours.)*', { speak: 'You already have enough from internals.' });
+    if (!r.possible) return say(head + ': you would need **' + r.needed + '/' + r.endMax + '**, which is more than the paper is worth, so **it is out of reach**. The best you can get is ' + Math.round(1000 * (m.internal + r.endMax) / r.total) / 10 + '%.', { speak: 'That target is out of reach.' });
+    const lower = Object.entries(Study.GRADE_CUTS).filter(([, p]) => p < r.targetPct).slice(0, 2).map(([g, p]) => { const q = Study.endSemNeeded({ internal: m.internal, internalMax: m.internalMax, endMax: r.endMax, targetPct: p }); return g + ' (' + p + '%) needs ' + q.needed; });
+    return say(head + ', you need **' + r.needed + ' out of ' + r.endMax + '** in the end-sem (' + Math.round(1000 * r.needed / r.endMax) / 10 + '%).' + (lower.length ? '\n\nFor comparison: ' + lower.join(', ') + '.' : '') + '\n\n*Grade cut-offs differ between colleges; I used 90/80/70/60/55/50/40. Check your own rules.*', { speak: 'You need ' + r.needed + ' out of ' + r.endMax + ' in the end sem.' });
+  }
+
+  /* ================= offline speech (Whisper) switch / status ================= */
+  async function offlineSpeech(m) {
+    if (typeof Stt === 'undefined') return say('Offline speech is not part of this page.');
+    const s = await Stt.status();
+    if (s.error) return say('I could not check: ' + s.error);
+    const inst = 'To install it, run **install-whisper.ps1** in the JARVIS folder (right-click → Run with PowerShell). It downloads the whisper.cpp program (a few MB) and one speech model (about 150 MB for “base.en”) into `.whisper` next to JARVIS, from GitHub and Hugging Face. Then say **“turn on offline speech”**.';
+    if (m.on === undefined) return say(s.installed ? '✓ **Offline speech is installed** (model **' + s.model + '**, in `' + s.dir + '`). It is **' + (settings.offlineStt ? 'on' : 'off') + '** for lecture mode. Say **“' + (settings.offlineStt ? 'turn off' : 'turn on') + ' offline speech”** to change that.' : 'Offline speech is **not installed**' + (s.hasProgram ? ' (the program is there, but no model)' : s.hasModel ? ' (a model is there, but not the program)' : '') + '. ' + inst);
+    if (m.on && !s.installed) return say('I can’t turn it on yet: offline speech is not installed. ' + inst);
+    settings.offlineStt = !!m.on; if (typeof saveSettings === 'function') saveSettings();
+    try { if (typeof bindSwitchState === 'function' && document.getElementById('offlineSttToggle')) bindSwitchState('#offlineSttToggle', 'offlineStt'); } catch (e) {}
+    return say(m.on ? '✓ Lecture mode will now use **offline speech**: the audio is turned into text on this laptop and never sent anywhere.' : '✓ Lecture mode will use the browser’s speech recogniser again (it sends audio to Google or Microsoft).');
+  }
+
   /* ================= lecture mode ================= */
   let L = null;
   const SRClass = () => (typeof window !== 'undefined' ? window.SpeechRecognition || window.webkitSpeechRecognition : null);
@@ -214,20 +365,38 @@ const Student = (() => {
     if (source === 'phone') return say(PHONE_NO);
     if (L) return say('Lecture mode is already on' + (L.subject ? ' for **' + L.subject + '**' : '') + ' (' + pl(L.words, 'word') + ' so far). Say **“stop the lecture”** when it is over.');
     if (E) return say('An exam is running. Finish or stop it first (say **“stop the exam”**).');
-    if (!SRClass()) return say('This browser cannot listen to a lecture (it has no speech recognition). Chrome or Edge can.');
+    // offline (Whisper on this laptop) when the setting is on and it is installed; otherwise the browser's own recogniser
+    const offline = typeof settings !== 'undefined' && settings.offlineStt && typeof Stt !== 'undefined' && await Stt.ready();
+    const offlineMissed = typeof settings !== 'undefined' && settings.offlineStt && !offline;
+    if (!offline && !SRClass()) return say('This browser cannot listen to a lecture (it has no speech recognition). Chrome or Edge can.' + (typeof Stt !== 'undefined' ? ' Offline speech (Whisper) would work in any browser: say **“is offline speech installed”**.' : ''));
     const subj = subject || 'Lecture';
-    const go = await ask('Start **lecture mode** for **' + subj + '**? The microphone stays on until you say **“stop the lecture”** (or 3 hours pass).\n\n- **Keep this JARVIS tab visible**: the browser stops listening in hidden tabs.\n- The browser’s speech recogniser **sends the audio to Google or Microsoft** to turn it into text, so it needs the internet. This computer has no offline speech-to-text.\n- The transcript is saved to `~/jarvis/Notes` every 3 minutes, so a crash loses at most 3 minutes. When you stop, I make study notes from it.\n- The wake word is paused meanwhile.', 'START LISTENING');
+    const how = offline
+      ? '- The speech is turned into text **on this laptop** by Whisper: **no audio leaves the computer** and it works without the internet.\n- Text appears in pieces about every 30 seconds, and a CPU-only laptop can lag behind a fast speaker. Whisper is good but not perfect: expect some wrong words.\n- Keep this JARVIS tab open (the microphone is captured only while it is).'
+      : '- **Keep this JARVIS tab visible**: the browser stops listening in hidden tabs.\n- The browser’s speech recogniser **sends the audio to Google or Microsoft** to turn it into text, so it needs the internet.' + (offlineMissed ? ' *(Offline speech is switched on but Whisper is not installed, so I am using this.)*' : ' For audio that stays on this laptop, install offline speech: say **“is offline speech installed”**.');
+    const go = await ask('Start **lecture mode** for **' + subj + '**? The microphone stays on until you say **“stop the lecture”** (or 3 hours pass).\n\n' + how + '\n- The transcript is saved to `~/jarvis/Notes` every 3 minutes, so a crash loses at most 3 minutes. When you stop, I make study notes from it.\n- The wake word is paused meanwhile.', 'START LISTENING');
     if (!go) return say('Okay, I will not record.');
     const started = Date.now();
-    L = { subject: subj, file: 'Notes/lecture-' + slugOf(subj) + '-' + dayStr(started) + '.md', started, pending: [], words: 0, saved: 0, wrote: false, flushing: false, netErrors: 0, stopped: false, wakeWas: typeof wakeOn !== 'undefined' && !!wakeOn };
+    L = { engine: offline ? 'offline' : 'browser', subject: subj, file: 'Notes/lecture-' + slugOf(subj) + '-' + dayStr(started) + '.md', started, pending: [], words: 0, saved: 0, wrote: false, flushing: false, netErrors: 0, stopped: false, wakeWas: typeof wakeOn !== 'undefined' && !!wakeOn };
     try { if (L.wakeWas && typeof stopWake === 'function') stopWake(); } catch (e) {}
     try { if (navigator.wakeLock) L.lock = await navigator.wakeLock.request('screen'); } catch (e) { L.lock = null; }
     L.onVis = async () => { if (!L) return; if (document.visibilityState === 'visible' && navigator.wakeLock && (!L.lock || L.lock.released)) { try { L.lock = await navigator.wakeLock.request('screen'); } catch (e) {} } if (document.hidden) L.hiddenAt = Date.now(); else if (L.hiddenAt && Date.now() - L.hiddenAt > 60000) { L.gaps = (L.gaps || 0) + 1; L.hiddenAt = 0; } };
     document.addEventListener('visibilitychange', L.onVis);
     L.timer = setInterval(() => { lectureFlush(); if (Date.now() - L.started > 3 * 3600e3) stopAndShow('time'); }, 180000);
-    L.untrack = Camera.track('lecture', 'MIC ON · LECTURE MODE · ' + subj, () => stopAndShow('button'));
-    lectureListen();
-    return say('✓ **Lecture mode is on** for **' + subj + '**. I am listening; the transcript is saved to `' + L.file + '` every 3 minutes. Say **“stop the lecture”** when it ends and I will write the notes.', { speak: 'Lecture mode is on.' });
+    L.untrack = Camera.track('lecture', 'MIC ON · LECTURE MODE' + (offline ? ' (OFFLINE)' : '') + ' · ' + subj, () => stopAndShow('button'));
+    if (offline) {
+      try {
+        L.stt = await Stt.start({
+          lang: (typeof Lang !== 'undefined' && Lang.SPEECH && Lang.SPEECH[settings.speechLang] || 'en-IN').slice(0, 2),
+          onText: text => { if (!L) return; L.pending.push({ t: Date.now(), text }); L.all = ((L.all || '') + text + ' ').slice(0, 130000); L.words += text.split(/\s+/).length; L.lastHeard = Date.now(); },
+          onError: (msg, notInstalled) => { if (L && !L.fatal) { L.fatal = notInstalled ? 'Offline speech is not installed any more.' : 'The offline speech reader keeps failing (' + msg + ').'; stopAndShow('fatal'); } },
+        });
+      } catch (e) {
+        const l = L; L = null; clearInterval(l.timer); document.removeEventListener('visibilitychange', l.onVis); try { l.lock && l.lock.release && l.lock.release(); } catch (x) {} if (l.untrack) l.untrack();
+        try { if (l.wakeWas && typeof startWake === 'function') startWake(); } catch (x) {}
+        return say('I could not open the microphone: ' + String((e && e.message) || e).slice(0, 100) + '. Check that the browser is allowed to use it.');
+      }
+    } else lectureListen();
+    return say('✓ **Lecture mode is on** for **' + subj + '**' + (offline ? ' (offline speech)' : '') + '. I am listening; the transcript is saved to `' + L.file + '` every 3 minutes. Say **“stop the lecture”** when it ends and I will write the notes.', { speak: 'Lecture mode is on.' });
   }
   async function lectureStop(why) {
     if (!L) return say('Lecture mode is not on.');
@@ -236,6 +405,7 @@ const Student = (() => {
     try { l.rec && l.rec.stop(); } catch (e) {}
     try { l.lock && l.lock.release && l.lock.release(); } catch (e) {}
     if (l.untrack) l.untrack();
+    if (l.stt) { try { await l.stt.stop(); } catch (e) {} }               // sends the last piece and waits for its text
     await lectureFlush(true);
     if (l.pending.length) await lectureFlush(true);
     L = null;
@@ -364,6 +534,11 @@ const Student = (() => {
     }
     const m = match(t); if (!m) return null;
     switch (m.kind) {
+      case 'offstt': return offlineSpeech(m);
+      case 'assign': return assignment(m, source);
+      case 'endsem': return endSem(m);
+      case 'attsw': return attendanceSwitch(m.on);
+      case 'fit': return fitStudy({ ...m, raw: t });
       case 'bunk': return bunk(m.day);
       case 'tt': return timetable(m, source);
       case 'lecture-start': return lectureStart(m.subject, source);
@@ -374,6 +549,6 @@ const Student = (() => {
     }
     return null;
   }
-  return { intercept, match, active: () => !!E, lectureActive: () => !!L, get _E() { return E; }, get _L() { return L; }, importEntries, bunk, examHistory, lectureStatus, subjectName };
+  return { intercept, match, attendanceTick, markAttendance, fitStudy, endSem, assignment, active: () => !!E, lectureActive: () => !!L, get _E() { return E; }, get _L() { return L; }, importEntries, bunk, examHistory, lectureStatus, subjectName };
 })();
 if (typeof module !== 'undefined') module.exports = Student;

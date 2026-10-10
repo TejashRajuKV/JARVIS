@@ -19,6 +19,8 @@ function StillListening($p) {
   try { return [bool](Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1) } catch { return $false }
 }
 $stopped = $false
+# Stopped on purpose: the keep-alive task (keepalive.ps1) must not start JARVIS again until you do.
+try { New-Item -ItemType Directory -Force -Path $AppData | Out-Null; Set-Content -Path (Join-Path $AppData '.stopped-by-user') -Value (Get-Date -Format s) -Encoding ASCII } catch {}
 # The server writes its own pid into the lock file (and the pid file), so start there.
 if (Test-Path $LockFile) {
   $lid = $null

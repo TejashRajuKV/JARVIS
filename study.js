@@ -160,7 +160,85 @@ const Study = (() => {
     return need > 10 ? null : Math.round(100 * Math.max(0, need)) / 100;
   }
 
+  /* ---- classes that just ended and have no attendance mark yet ("did you attend DBMS?") ----
+     A class is due once it has ended (start + dur, 60 min when unknown), for up to maxAgeMin minutes after, unless it was asked about already (`asked`
+     holds "classId|date" keys) or the subject already has as many marks today as classes that have ended (so two DBMS classes need two marks). */
+  function attendanceDue({ classes = [], attendance = {}, now = Date.now(), asked = [], maxAgeMin = 240, defaultDur = 60 } = {}) {
+    const d0 = new Date(now), today = ymd(d0), askedSet = new Set(asked), nk = n => String(n).toLowerCase().replace(/\s+/g, ' ').trim();
+    const todays = classes.filter(c => c && c.day === d0.getDay() && c.h >= 0).map(c => { const start = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate(), c.h, c.m || 0).getTime(); return { c, start, end: start + (c.dur || defaultDur) * 60000 }; }).sort((a, b) => a.start - b.start);
+    const seen = new Map(), out = [];
+    for (const t of todays) {
+      const k = nk(t.c.name), nth = (seen.get(k) || 0) + 1; seen.set(k, nth);
+      if (t.end > now || now - t.end > maxAgeMin * 60000) continue;
+      const key = t.c.id + '|' + today;
+      if (askedSet.has(key)) continue;
+      const att = Object.entries(attendance || {}).find(([n]) => nk(n) === k);
+      if (att && (att[1].log || []).filter(x => x.d === today).length >= nth) continue;
+      out.push({ c: t.c, key, end: t.end });
+    }
+    return out;
+  }
+  /* ---- gaps in the day's timetable ---- */
+  // → [{ date:'YYYY-MM-DD', start, end, min }] — for `days` days from `from`: the stretches between classes (and before the first / after the last) inside
+  //   [dayStart, dayEnd] hours that are at least minMin long.
+  function freeSlots({ classes = [], from = Date.now(), days = 14, dayStart = 8, dayEnd = 21, minMin = 45, defaultDur = 60 } = {}) {
+    const out = [], base = new Date(from);
+    for (let i = 0; i < days; i++) {
+      const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
+      const lo = new Date(d.getFullYear(), d.getMonth(), d.getDate(), dayStart).getTime(), hi = new Date(d.getFullYear(), d.getMonth(), d.getDate(), dayEnd).getTime();
+      let cursor = Math.max(lo, i === 0 ? Math.ceil(from / 300000) * 300000 : lo);
+      const busy = classes.filter(c => c && c.day === d.getDay()).map(c => { const s = new Date(d.getFullYear(), d.getMonth(), d.getDate(), c.h, c.m || 0).getTime(); return [s, s + (c.dur || defaultDur) * 60000]; }).sort((a, b) => a[0] - b[0]);
+      const push = (s, e) => { if (e - s >= minMin * 60000) out.push({ date: ymd(d), start: s, end: e, min: Math.round((e - s) / 60000) }); };
+      for (const [s, e] of busy) { if (s > cursor) push(cursor, Math.min(s, hi)); cursor = Math.max(cursor, e); if (cursor >= hi) break; }
+      if (cursor < hi) push(cursor, hi);
+    }
+    return out;
+  }
+  // The plan's days that are still to do, each put into the longest free stretch of ITS day (earliest on a tie); a day with no stretch is returned with
+  // `none: true`. → [{ date, topic, start, end, min }]
+  function fitPlan({ plan, classes = [], now = Date.now(), studyMin = 60, dayStart = 8, dayEnd = 21 } = {}) {
+    if (!plan || !Array.isArray(plan.days)) return [];
+    const slots = freeSlots({ classes, from: now, days: 60, dayStart, dayEnd, minMin: Math.min(studyMin, 45) });
+    const today = ymd(now);
+    return plan.days.filter(d => !d.done && d.date >= today && d.date <= plan.examDate).map(d => {
+      const best = slots.filter(s => s.date === d.date).sort((a, b) => b.min - a.min || a.start - b.start)[0];
+      if (!best) return { date: d.date, topic: d.topic, none: true };
+      const len = Math.min(best.min, studyMin);
+      return { date: d.date, topic: d.topic, start: best.start, end: best.start + len * 60000, min: len };
+    });
+  }
+  /* ---- "what do I need in the end-sem?" ---- */
+  const GRADE_CUTS = { 'O': 90, 'A+': 80, 'A': 70, 'B+': 60, 'B': 55, 'C': 50, 'P': 40 };
+  // internal marks (e.g. 32 of 40), the end-sem paper's maximum (default: what is left of 100), and a target (a % or a grade letter or "pass")
+  // → { needed, endMax, targetPct, total, possible, already, target }
+  function endSemNeeded({ internal, internalMax, endMax, targetPct }) {
+    const ok = n => typeof n === 'number' && isFinite(n);
+    if (!ok(internal) || !ok(internalMax) || internalMax <= 0 || internal < 0 || internal > internalMax) return { error: 'The internal marks have to be between 0 and their maximum.' };
+    if (!ok(targetPct) || targetPct <= 0 || targetPct > 100) return { error: 'The target has to be a percentage between 1 and 100.' };
+    const em = ok(endMax) && endMax > 0 ? endMax : Math.max(1, 100 - internalMax), total = internalMax + em;
+    const need = Math.ceil((targetPct / 100) * total - internal - 1e-9);
+    return { needed: Math.max(0, need), endMax: em, total, targetPct, possible: need <= em, already: need <= 0, internalPct: Math.round(1000 * internal / internalMax) / 10 };
+  }
+  const nums = s => { const x = parseFloat(s); return isFinite(x) ? x : NaN; };
+  // Sentence → inputs for endSemNeeded, or null. Needs "need/require/score" AND the end-sem words.
+  function parseEndSem(text) {
+    const t = String(text || '').trim();
+    if (!/\b(?:end[\s-]?sem(?:ester)?|final\s+exam|finals?|external|semester\s+exam)\b/i.test(t) || !/\b(?:need|require|should\s+(?:i\s+)?(?:score|get)|must\s+(?:i\s+)?(?:score|get)|have\s+to\s+(?:score|get))\b/i.test(t)) return null;
+    let m, internal = NaN, internalMax = NaN;
+    const IN = '(?:internals?|internal\\s+marks?|ia|cia|sessionals?|mid[\\s-]?sems?|continuous\\s+assessment)';
+    if ((m = t.match(new RegExp('(\\d+(?:\\.\\d+)?)\\s*(?:/|out\\s+of)\\s*(\\d+(?:\\.\\d+)?)\\s*(?:marks?\\s*)?(?:in|for|on)?\\s*(?:my\\s+|the\\s+)?' + IN, 'i'))) || (m = t.match(new RegExp(IN + '\\s*(?:marks?\\s*)?(?:are|is|was|=|:|of)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:/|out\\s+of)\\s*(\\d+(?:\\.\\d+)?)', 'i')))) { internal = nums(m[1]); internalMax = nums(m[2]); }
+    else if ((m = t.match(new RegExp('(?:got|scored|have|had)\\s+(\\d+(?:\\.\\d+)?)\\s+(?:in|for|on)\\s+(?:my\\s+|the\\s+)?' + IN + '(?:\\s*(?:\\(|out\\s+of|/)\\s*(\\d+))?', 'i')))) { internal = nums(m[1]); internalMax = m[2] ? nums(m[2]) : 40; }
+    if (!isFinite(internal)) return null;
+    let endMax = NaN;
+    if ((m = t.match(/(?:end[\s-]?sem(?:ester)?|final|external)[^.\d]{0,25}(?:out\s+of|is\s+of|of|is|\/|for)\s*(\d{2,3})\b/i)) || (m = t.match(/\b(\d{2,3})\s*marks?\s+(?:end[\s-]?sem|final|external)/i))) endMax = nums(m[1]);
+    let targetPct = NaN, target = '';
+    if ((m = t.match(/(\d{2,3}(?:\.\d+)?)\s*(?:%|percent|percentage)/i))) { targetPct = nums(m[1]); target = m[1] + '%'; }
+    else if ((m = t.match(/\b(?:an?\s+|the\s+)?(O|A\+|A|B\+|B|C|P)\s+grade\b|\bgrade\s+(?:of\s+)?(O|A\+|A|B\+|B|C|P)\b|\bto\s+(?:get|score|secure|reach)\s+(?:an?\s+)?(O|A\+|A|B\+|B|C)\b(?!\w)/)) ) { const g = m[1] || m[2] || m[3]; targetPct = GRADE_CUTS[g]; target = 'grade ' + g; }
+    else if (/\bpass\b/i.test(t)) { targetPct = 40; target = 'a pass (40%)'; }
+    if (!isFinite(targetPct)) return null;
+    return { internal, internalMax, endMax, targetPct, target };
+  }
   return { ymd, daysBetween, addDays, parseTopics, buildStudyPlan, streak, lastDays, subjectTotals, weekSummary, weekId, fmtMin,
-    attendancePct, bunkable, neededToReach, LETTER_POINTS, sgpa, cgpa, gradeNeeded };
+    attendancePct, bunkable, neededToReach, LETTER_POINTS, sgpa, cgpa, gradeNeeded, attendanceDue, freeSlots, fitPlan, endSemNeeded, parseEndSem, GRADE_CUTS };
 })();
 if (typeof module !== 'undefined') module.exports = Study;

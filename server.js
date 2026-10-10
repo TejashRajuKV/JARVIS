@@ -125,6 +125,7 @@ const scheduler = require('./scheduler');
 scheduler(app, { getState: () => appState, saveState, PORT, IS_WIN, llm, DEFAULT_MODEL, getConfig: () => config, saveConfig, procOf: k => procOf(k) });
 // Ctrl+Shift+J: send the selected text from any app to JARVIS (opt-in in Settings; hotkey.js).
 require('./hotkey')(app, { getState: () => appState, IS_WIN, PORT });
+require('./keepalive')(app, { IS_WIN });  // "Keep JARVIS running": a Task Scheduler task that restarts it if it ever stops (not when you stop it yourself)
 require('./autostart')(app, { IS_WIN }); // "Start with Windows" (Startup-folder link), managed from Settings
 require('./wakeword')(app, { IS_WIN }); // wake word heard by Windows' offline recogniser — works while you're in another tab/app
 
@@ -1465,6 +1466,11 @@ require('./scan')(app, { SANDBOX, llm, DEFAULT_MODEL, rel, openPath, IS_WIN });
 // Your old chats, saved one file per month in ~/jarvis/.chat-archive so they can be searched ("what did I decide about X last week"). Laptop page only (chatarchive.js).
 require('./chatarchive')(app, { SANDBOX, llm, DEFAULT_MODEL });
 // Student tools, server half: lecture transcript → study notes in pieces the local AI can hold; exam questions with model answers from a note or topic (studyserver.js).
+// A second copy of your JARVIS data in a folder on another drive: incremental, old versions kept 30 days, nothing deleted, weekly if you switch it on (mirror.js).
+require('./mirror')(app, { SANDBOX, roots: () => config.roots, blockedPath, approvedChange, snapshot: () => backup.snapshot('mirror') });
+require('./shotindex')(app, { SANDBOX, IS_WIN });   // search your screenshots by what is in them (OCR index, laptop page only)
+require('./devtools')(app, { llm, DEFAULT_MODEL, roots: () => config.roots, blockedPath, SANDBOX });   // git summary, commit message, "why did my build fail" (laptop page only)
+require('./whisper')(app, { SANDBOX });   // offline speech-to-text for lecture mode (whisper.cpp, installed by install-whisper.ps1; laptop page only)
 require('./studyserver')(app, { llm, DEFAULT_MODEL, SANDBOX, findAllowed, rel, readSource: async p => (/\.pdf$/i.test(p) ? (await pdf.pdfPages(p)).pages.join('\n') : fs.readFileSync(p, 'utf8')) });
 require('./jarviscode')(app, { llm, DEFAULT_MODEL, SANDBOX, anyPath, approvedChange, whereDir, rel, TRASH });
 
@@ -2305,6 +2311,7 @@ app.get('/api/health', (req, res) => {
 // Stop JARVIS itself (Settings → Data → Stop). The no-window launcher keeps no console open, so this
 // is the clean way to end the background server; the desktop icon (or Startup link) starts it again.
 app.post('/api/quit', (req, res) => {
+  try { fs.writeFileSync(path.join(SANDBOX, '.stopped-by-user'), new Date().toISOString()); } catch {}   // stopped on purpose: the keep-alive task leaves it stopped (keepalive.ps1)
   res.json({ success: true, bye: true });
   setTimeout(() => process.exit(0), 150); // let the reply flush before quitting
 });
