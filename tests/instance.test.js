@@ -68,9 +68,13 @@ const ok = h => h && h.status === 'online';
     check('Tabs', 'saving the chat pushes a `state` event to other open tabs', ev && ev.key === 'jarvis.chat' && ev.value[0].text === 'hello from tab A', seen.slice(0, 300));
     check('Tabs', 'the event names the writing tab, so it can ignore its own change', ev && ev.src === 'tabA', ev);
     seen = '';
-    await fetch(base + '/api/state', { method: 'POST', headers: hdr, body: JSON.stringify({ src: 'tabA', set: { 'jarvis.todos': [] } }) });
+    await fetch(base + '/api/state', { method: 'POST', headers: hdr, body: JSON.stringify({ src: 'tabA', set: { 'jarvis.settings': { theme: 'gold' } } }) });
     await sleep(400);
-    check('Tabs', 'other data changes are not broadcast as chat', !/event: state/.test(seen), seen.slice(0, 200));
+    check('Tabs', 'settings are per tab and are not broadcast', !/event: state/.test(seen), seen.slice(0, 200));
+    await fetch(base + '/api/state', { method: 'POST', headers: hdr, body: JSON.stringify({ src: 'tabA', set: { 'jarvis.todos': [{ id: 't', text: 'x', done: false }] } }) });
+    await sleep(400);
+    const td = /event: state\ndata: (.+)\n/.exec(seen);
+    check('Tabs', 'a shared list (todos) IS broadcast, under its own key (never as chat)', td && JSON.parse(td[1]).key === 'jarvis.todos' && JSON.parse(td[1]).src === 'tabA', seen.slice(0, 200));
     ctrl.abort();
 
     /* ---------- a clean quit releases the lock ---------- */

@@ -22,7 +22,7 @@ $g.Dispose(); $bmp.Save($env:OUTJ, [System.Drawing.Imaging.ImageFormat]::Jpeg); 
   execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps], { env: { ...process.env, OUTJ: file, LINES: lines.join('|') }, windowsHide: true, timeout: 30000 });
   return fs.readFileSync(file);
 }
-const inflated = buf => [...buf.toString('latin1').matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)].map(m => { try { return zlib.inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'); } catch { return ''; } }).join('\n');
+const inflated = buf => [...buf.toString('latin1').matchAll(/stream\r?\n([\s\S]*?)\nendstream/g)].map(m => { try { return zlib.inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'); } catch { return ''; } }).join('\n');
 
 // the words the page draws (pdf-lib writes them as hex strings: <48656C6C6F> Tj)
 const pdfWords = buf => [...inflated(buf).matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)].map(m => Buffer.from(m[1], 'hex').toString('latin1')).join('').replace(/\s+/g, ' ');
@@ -44,7 +44,7 @@ const pdfWords = buf => [...inflated(buf).matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)].ma
     check('PDF', 'words with a real box are written as a hidden text layer; empty, zero-size and non-Latin words are skipped, not garbled', r.words === 2 && r.skipped === 1, r);
     const body = inflated(r.pdf), said = pdfWords(r.pdf);
     check('PDF', 'the hidden text is really in the page ("Hello world"), so a PDF viewer can search it', /Hello world/.test(said) && !said.includes('?'), said);
-    check('PDF', 'the text is invisible (an opacity of zero is set), so the page still looks like the photo', body.includes('/ca 0') && /GS-?[0-9]+ gs/.test(body), body.slice(0, 300));
+    check('PDF', 'the text is invisible (an opacity of zero is set), so the page still looks like the photo', body.includes('/ca 0') && /GS-?[0-9]+ gs/.test(body), [body.includes('/ca 0'), (body.match(/.{0,20} gs/g) || []).slice(0, 3), (body.match(/\/ca [^ ]+/g) || []).slice(0, 3)]);
   }
 
   /* ---------- a real server ---------- */

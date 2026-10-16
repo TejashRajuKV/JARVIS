@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseJsonLoose } = require('./skills');
 
-const CHUNK = 3500, MAX_CHUNKS = 24, MAX_TRANSCRIPT = 120000, MAX_SOURCE = 60000;
+const CHUNK = 3500, MAX_CHUNKS = 36, MAX_TRANSCRIPT = 120000, MAX_SOURCE = 60000;
 const slug = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'lecture';
 const dayStamp = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
@@ -53,7 +53,7 @@ module.exports = function setupStudyServer(app, { llm, DEFAULT_MODEL, SANDBOX, f
   const fromLaptopPage = req => req.headers['sec-fetch-site'] === 'same-origin' && /^(localhost|127\.0\.0\.1):/.test(String(req.headers.host || ''));
   const model = req => String((req.body && req.body.model) || DEFAULT_MODEL);
   const fail = (res, e, code) => res.status(code || 502).json({ error: String((e && e.message) || e).slice(0, 200) });
-  const ask = (system, user, o = {}) => llm.complete({ model: o.model, system, messages: [{ role: 'user', content: user }], temperature: o.temperature ?? 0.2, maxTokens: o.maxTokens || 450, json: !!o.json, timeoutMs: 240000 });
+  const ask = (system, user, o = {}) => llm.complete({ priority: o.priority ?? 2, model: o.model, system, messages: [{ role: 'user', content: user }], temperature: o.temperature ?? 0.2, maxTokens: o.maxTokens || 450, json: !!o.json, timeoutMs: 240000 });
   const uniqueFile = (dir, base) => { let p = path.join(dir, base + '.md'), n = 1; while (fs.existsSync(p)) p = path.join(dir, base + '-' + (++n) + '.md'); return p; };
 
   app.post('/api/lecture/notes', async (req, res) => {
@@ -71,13 +71,15 @@ module.exports = function setupStudyServer(app, { llm, DEFAULT_MODEL, SANDBOX, f
       let notes = partial.filter(p => p && !/^\(nothing to note\)$/i.test(p));
       let guard = 0;
       while (notes.join('\n\n').length > CHUNK && guard++ < 4) notes = (await Promise.all(mergeGroups(notes).map(g => g.length < CHUNK * 0.5 ? g : ask(NOTES_SYSTEM.replace('Write concise study notes', 'These are partial notes: combine them into one list of concise study notes'), g, { model: m, maxTokens: 420 })))).map(x => String(x).trim()).filter(Boolean);
-      const body = notes.length ? await ask(FINAL_SYSTEM, 'Subject: ' + subject + '\n\nRough notes:\n' + notes.join('\n\n').slice(0, CHUNK), { model: m, maxTokens: 800 }) : '(the lecture had nothing to note)';
+      // If the merged notes still do not fit one request after the merge rounds, the tail of them cannot be arranged: say so instead of dropping it silently.
+      const joined = notes.join('\n\n'), cut = joined.length > CHUNK;
+      const body = notes.length ? await ask(FINAL_SYSTEM, 'Subject: ' + subject + '\n\nRough notes:\n' + joined.slice(0, CHUNK), { model: m, maxTokens: 800 }) : '(the lecture had nothing to note)';
       const now = new Date(), dir = path.join(SANDBOX, 'Notes'); fs.mkdirSync(dir, { recursive: true });
       const file = uniqueFile(dir, 'lecture-' + slug(subject) + '-' + dayStamp(now) + '-notes');
       const head = '# ' + subject + ' — lecture notes (' + dayStamp(now) + ')\n\n*Written by the AI from an automatic transcript, so it can contain mistakes. The raw transcript is in `lecture-' + slug(subject) + '-' + dayStamp(now) + '.md`.*\n\n';
-      const text = head + String(body).trim() + (truncated ? '\n\n*The lecture was very long: the last ' + truncated + ' piece' + (truncated === 1 ? '' : 's') + ' of the transcript were not included.*' : '') + '\n';
+      const text = head + String(body).trim() + (truncated ? '\n\n*The lecture was very long: the last ' + truncated + ' piece' + (truncated === 1 ? '' : 's') + ' of the transcript were not included.*' : '') + (cut ? '\n\n*The notes were too long to arrange in one go, so the last part of them is left out here. The raw transcript has everything.*' : '') + '\n';
       fs.writeFileSync(file, text);
-      res.json({ success: true, file: rel(file), name: path.basename(file), preview: text.slice(0, 3000), chunks: chunks.length, truncated, seconds: Math.round((Date.now() - t0) / 1000), cloud: !!(llm.isCloud && llm.isCloud(m)) });
+      res.json({ success: true, file: rel(file), name: path.basename(file), preview: text.slice(0, 3000), chunks: chunks.length, truncated, condensed: cut, seconds: Math.round((Date.now() - t0) / 1000), cloud: !!(llm.isCloud && llm.isCloud(m)) });
     } catch (e) { fail(res, e); }
   });
 
@@ -97,11 +99,12 @@ module.exports = function setupStudyServer(app, { llm, DEFAULT_MODEL, SANDBOX, f
       const fromNotes = text.trim().length >= 200;
       const windows = fromNotes ? chunkText(text, CHUNK) : [];
       // spread the questions over the whole note: up to 4 evenly spaced pieces
-      const pick = windows.length <= 4 ? windows : [0, 1, 2, 3].map(i => windows[Math.floor(i * (windows.length - 1) / 3)]);
+      const cap = n >= 12 ? 6 : 4;                       // more questions → look at more places in the note
+      const pick = windows.length <= cap ? windows : Array.from({ length: cap }, (_, i) => windows[Math.floor(i * (windows.length - 1) / (cap - 1))]);
       const per = fromNotes ? Math.ceil(n / pick.length) : n;
       const qs = [];
       for (const w of fromNotes ? pick : [null]) {
-        const out = await ask(EXAM_SYSTEM(per, fromNotes), fromNotes ? 'Study notes' + (topic ? ' on ' + topic : '') + ':\n' + w : 'Topic: ' + topic, { model: m, json: true, temperature: 0.5, maxTokens: 900 });
+        const out = await ask(EXAM_SYSTEM(per, fromNotes), fromNotes ? 'Study notes' + (topic ? ' on ' + topic : '') + ':\n' + w : 'Topic: ' + topic, { priority: 1, model: m, json: true, temperature: 0.5, maxTokens: 900 });
         const j = parseJsonLoose(out);
         for (const x of (Array.isArray(j) ? j : j && j.questions || [])) {
           const q = String((x && (x.q || x.question)) || '').trim(), a = String((x && (x.a || x.answer)) || '').trim();

@@ -82,6 +82,18 @@ function adaptFor(errText, adapt, hadImages) {
   return null;
 }
 
+// A local model's memory ("context") costs time and graphics memory in proportion to its size, and a small laptop GPU spills over into slow system memory when
+// it is set higher than the work needs. Callers say the MOST they may need (numCtx); this sizes it to what THIS request needs: the prompt (about 1 token per 3
+// characters, a cautious guess that also fits code), the reply it may write, 1,500 for each picture, and a little spare — rounded up to a multiple of 2,048, never
+// below 4,096 and never above what the caller asked for. A request that needs more than the caller allowed keeps the caller's number (as before).
+function fitNumCtx(requested, o, msgs) {
+  if (!(requested > 0)) return requested;
+  // English / code: about 3 characters a token. Telugu, Kannada, emoji and other non-ASCII text can take a token or more PER character, so those count in full.
+  let plain = 0, wide = 0;
+  for (const str of [o.system ? String(o.system) : '', ...msgs.map(m => String(m.content))]) for (let i = 0; i < str.length; i++) (str.charCodeAt(i) > 127 ? wide++ : plain++);
+  const need = Math.ceil(plain / 3) + Math.ceil(wide * 1.3) + (o.maxTokens || 700) + 256 + 1500 * ((o.images || []).length);
+  return Math.max(4096, Math.min(requested, Math.ceil(need / 2048) * 2048));
+}
 // o: { model, system, messages:[{role,content}], json, temperature, maxTokens, images:[base64], stream, numCtx }
 function buildRequest(kind, prov, o, adapt = {}) {
   const msgs = (o.messages || []).filter(m => m && (m.role === 'user' || m.role === 'assistant')).map(m => ({ role: m.role, content: String(m.content) }));
@@ -92,7 +104,7 @@ function buildRequest(kind, prov, o, adapt = {}) {
   if (kind === 'ollama') {
     const m2 = msgs.map((m, i) => (lastUser(i) ? { ...m, images: imgs } : m));
     const body = { model: o.model, stream: !!o.stream, think: false, keep_alive: '30m',
-      options: { temperature: o.temperature == null ? 0.5 : o.temperature, num_predict: maxTokens, ...(o.numCtx ? { num_ctx: o.numCtx } : {}) },
+      options: { temperature: o.temperature == null ? 0.5 : o.temperature, num_predict: maxTokens, ...(o.numCtx ? { num_ctx: fitNumCtx(o.numCtx, o, msgs) } : {}) },
       messages: [...(o.system ? [{ role: 'system', content: o.system }] : []), ...m2] };
     if (o.json) body.format = 'json';
     return { url: base + '/api/chat', headers: { 'Content-Type': 'application/json' }, body };
@@ -249,23 +261,77 @@ function createLLM({ getConfig, saveConfig, OLLAMA, DEFAULT_MODEL, onCall }) {
     try { const out = await sendRaw(o, stream); out.t0 = t0; return out; }
     catch (e) { if (!(o && o.signal && o.signal.aborted)) note(o, false, t0, e, stream); throw e; }
   }
+  // A provider that is busy or hiccups (HTTP 429/500/502/503/504, or the connection drops) is asked again, up to twice, after a short pause with a little
+  // randomness; "Retry-After" is respected up to 5 seconds. A refusal that will not change (bad key, bad request, model not found) and a call the person or
+  // the timeout cancelled are never retried. Tests shorten the pause with o.retryMs.
+  const TRANSIENT = new Set([429, 500, 502, 503, 504]);
+  const pause = (ms, signal) => new Promise(res => { const t = setTimeout(res, ms); if (signal) signal.addEventListener('abort', () => { clearTimeout(t); res(); }, { once: true }); });
+  const backoff = (n, o, res) => {
+    const ra = res && Number(res.headers && res.headers.get && res.headers.get('retry-after'));
+    if (Number.isFinite(ra) && ra > 0) return Math.min(5000, ra * 1000);
+    const base = o.retryMs !== undefined ? o.retryMs : 700;
+    return Math.round(base * Math.pow(2, n) * (0.75 + Math.random() * 0.5));
+  };
+  // ---- one job at a time on the local model, chat first ----
+  // The laptop has one GPU. A long job (JARVIS Code build, lecture notes, a project wiki) and a chat message sent at the same time used to fight for it and both got slow.
+  // Calls to the LOCAL model now take turns (online providers run in parallel, they have their own hardware): one at a time, and while others wait the most urgent goes next —
+  // priority 0 = chat, 1 = ordinary tools (the default), 2 = background work (builds, notes, wikis, digests); the same priority goes in the order asked.
+  // A job that is already running is never cut off. The slot is released when the reply is fully read (or the stream ends or is cancelled), and always after a safety limit.
+  const lane = { running: 0, waiting: [], seq: 0, max: 1, down: null };
+  // When Ollama is not running at all, every call would fail one after the other, each after its own pause. So the FIRST refused connection fails everything that is waiting at
+  // once, and for the next 3 seconds new calls fail straight away with the same message instead of queueing up behind a server that is not there.
+  const DOWN_MS = 3000;
+  const refused = e => /ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|bad port/i.test(String((e && e.cause && (e.cause.code || e.cause.message)) || (e && e.message) || ''));
+  const laneMax = () => { const n = Number(getConfig && getConfig().llmParallel); return Number.isFinite(n) && n >= 1 ? Math.min(4, Math.floor(n)) : 1; };
+  function acquire(o) {
+    lane.max = laneMax();
+    if (lane.down && Date.now() < lane.down.until) return Promise.reject(lane.down.err);
+    return new Promise((resolveSlot, rejectSlot) => {
+      let given = false;
+      const release = () => { if (given && !release.done) { release.done = true; lane.running--; next(); } };
+      const grant = () => { given = true; lane.running++; const safety = setTimeout(release, (o.timeoutMs || 300000) + 60000); if (safety.unref) safety.unref(); resolveSlot(release); };
+      const entry = { pri: Number.isFinite(o.priority) ? o.priority : 1, seq: lane.seq++, grant, o, reject: rejectSlot };
+      if (lane.running < lane.max && !lane.waiting.length) return grant();
+      lane.waiting.push(entry); lane.waiting.sort((a, b) => a.pri - b.pri || a.seq - b.seq);
+      if (typeof o.onWait === 'function') { try { o.onWait({ ahead: lane.running + lane.waiting.indexOf(entry) }); } catch (e) { /* a listener must not break the call */ } }
+      if (o.signal) o.signal.addEventListener('abort', () => { const i = lane.waiting.indexOf(entry); if (i >= 0) { lane.waiting.splice(i, 1); const err = new Error('Cancelled while waiting for the AI'); err.name = 'AbortError'; rejectSlot(err); } }, { once: true });
+    });
+  }
+  function next() { while (lane.running < lane.max && lane.waiting.length) lane.waiting.shift().grant(); }
+  const queueStatus = () => ({ running: lane.running, waiting: lane.waiting.length, max: lane.max });
+
   async function sendRaw(o, stream) {
     const r = resolve(o.model);
+    const release = r.kind === 'ollama' && !o.noQueue ? await acquire(o) : () => {};
+    try { const out = await sendRaw2(o, stream, r); out.release = release; return out; }
+    catch (e) {
+      release();
+      if (e && e.localDown) { lane.down = { until: Date.now() + DOWN_MS, err: e }; const w = lane.waiting.splice(0); for (const x of w) x.reject(e); }
+      throw e;
+    }
+  }
+  async function sendRaw2(o, stream, r) {
     const hadImages = !!(o.images && o.images.length);
     let adapt = initialAdapt(r.prov.preset, r.model);
     const ms = o.timeoutMs || (stream ? 300000 : 120000);
     const signal = o.signal ? AbortSignal.any([o.signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms);
-    for (let attempt = 0; attempt < 5; attempt++) {
+    let transient = 0;
+    for (let attempt = 0; attempt < 5 + 2; attempt++) {
       const req = buildRequest(r.kind, r.prov, { ...o, model: r.model, stream }, adapt);
       let res;
       try {
         res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), signal });
       } catch (e) {
         if (o.signal && o.signal.aborted) throw e;
-        throw new Error((r.kind === 'ollama' ? 'Local LLM unavailable — is Ollama running?' : r.prov.label + ' is unreachable') + ' (' + scrub(e.message, r.prov.apiKey) + ')');
+        const down = r.kind === 'ollama' && refused(e);                                                   // nothing is listening: that is not a hiccup, do not retry
+        if (!signal.aborted && transient < 1 && !down) { await pause(backoff(transient++, o), signal); continue; }       // the connection dropped: one more try
+        const err = new Error((r.kind === 'ollama' ? 'Local LLM unavailable — is Ollama running?' : r.prov.label + ' is unreachable') + ' (' + scrub(e.message, r.prov.apiKey) + ')');
+        if (down) err.localDown = true;
+        throw err;
       }
       if (res.ok) return { res, kind: r.kind, prov: r.prov, droppedImages: hadImages && !!adapt.noImages };
       const text = await res.text().catch(() => '');
+      if (TRANSIENT.has(res.status) && transient < 2 && !signal.aborted) { await pause(backoff(transient++, o, res), signal); continue; }
       if (res.status === 400 || res.status === 422) {
         const next = adaptFor(text, adapt, hadImages);
         if (next) { adapt = next; continue; }
@@ -277,29 +343,32 @@ function createLLM({ getConfig, saveConfig, OLLAMA, DEFAULT_MODEL, onCall }) {
 
   // → the full reply text
   async function complete(o) {
-    const { res, kind, t0 } = await send(o, false);
+    const { res, kind, t0, release } = await send(o, false);
     let text;
     try {
       const j = await res.json();
       text = replyText(kind, j).replace(/<think>[\s\S]*?<\/think>/g, '').trim();
       if (!text && kind !== 'ollama') throw new Error(EMPTY_REPLY);
     } catch (e) { if (!(o && o.signal && o.signal.aborted)) note(o, false, t0, e); throw e; }
+    finally { release(); }
     note(o, true, t0);
     return text;
   }
   // → { droppedImages, deltas: async iterable of text pieces }
   async function openStream(o) {
-    const { res, kind, droppedImages, t0 } = await send(o, true);
+    const { res, kind, droppedImages, t0, release } = await send(o, true);
     note(o, true, t0, null, true);   // streaming: the call is "ok" once the model starts answering (time to first byte)
     async function* deltas() {
       let any = false;
-      for await (const line of lines(res.body)) {
-        const p = parseStreamLine(kind, line);
-        if (!p) continue;
-        if (p.delta) { any = true; yield p.delta; }
-        if (p.done) break;
-      }
-      if (!any && kind !== 'ollama') yield '_(' + EMPTY_REPLY + ')_';
+      try {
+        for await (const line of lines(res.body)) {
+          const p = parseStreamLine(kind, line);
+          if (!p) continue;
+          if (p.delta) { any = true; yield p.delta; }
+          if (p.done) break;
+        }
+        if (!any && kind !== 'ollama') yield '_(' + EMPTY_REPLY + ')_';
+      } finally { release(); }      // the slot goes back when the answer ends, fails, or the reader stops reading
     }
     return { droppedImages, deltas: deltas() };
   }
@@ -455,8 +524,8 @@ function createLLM({ getConfig, saveConfig, OLLAMA, DEFAULT_MODEL, onCall }) {
     });
   }
 
-  return { complete, openStream, embed, hasVision, listModels, isCloud, resolve, routes, providerLabel: m => (isCloud(m) ? resolve(m).prov.label : 'Ollama') };
+  return { complete, openStream, queueStatus, embed, hasVision, listModels, isCloud, resolve, routes, providerLabel: m => (isCloud(m) ? resolve(m).prov.label : 'Ollama') };
 }
 
 module.exports = createLLM;
-Object.assign(module.exports, { detectPreset, pickDefaultModel, PRESETS, SEP, parseModelId, maskKey, extractJSON, filterModels, buildRequest, parseStreamLine, replyText, friendlyError, adaptFor, initialAdapt, buildEmbedRequest, parseEmbedReply });
+Object.assign(module.exports, { fitNumCtx, detectPreset, pickDefaultModel, PRESETS, SEP, parseModelId, maskKey, extractJSON, filterModels, buildRequest, parseStreamLine, replyText, friendlyError, adaptFor, initialAdapt, buildEmbedRequest, parseEmbedReply });

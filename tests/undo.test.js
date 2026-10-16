@@ -69,6 +69,19 @@ const check = (n, ok, x) => { total++; if (!ok) { fail++; console.log('FAIL  ' +
     check('an action made outside any run never joins one', R.lastRun() === null && R.size() === 1);
   }
 
+  {   // actions from before a page reload are put back with their ORIGINAL times
+    let tn = 1e6; const Q = createUndo({ now: () => tn, ttl: 30 * 60e3, max: 5 }); const ran = [];
+    const mk = (label, age, extra) => ({ label, t: tn - age, fn: async () => { ran.push(label); return 'ok ' + label; }, ...(extra || {}) });
+    const n = Q.restore([mk('older', 20 * 60e3), mk('newer', 5 * 60e3), mk('too old', 31 * 60e3), { label: 'no fn', t: tn }, { label: 'bad time', fn: () => 1, t: 'x' }, mk('future', -10 * 60e3), null]);
+    check('restore: takes only usable, in-window entries (not too old, not missing a function or a time, not from the future)', n === 2 && Q.size() === 2, [n, Q.size()]);
+    check('restore: the newest of them is undone first (order by original time)', Q.peek() === 'newer');
+    const u1 = await Q.undo(); const u2 = await Q.undo();
+    check('restore: each one runs its own function and reports its message', u1.label === 'newer' && u1.msg === 'ok newer' && u2.label === 'older' && ran.join() === 'newer,older', [u1, u2]);
+    Q.restore([mk('a', 29 * 60e3)]); tn += 2 * 60e3; check('restore: the 30 minutes still count from when the action HAPPENED — 2 minutes later it has expired', Q.size() === 0);
+    let changes = 0; Q.onChange(() => { changes++; }); Q.restore([mk('quiet', 1000)]); check('restore: quiet — no "Undo" chip is triggered', changes === 0 && Q.size() === 1);
+    Q.push('live', () => 1); Q.restore([mk('mixed', 500)]); check('restore: mixes in order with entries made in this session, and the stack keeps its size limit', Q.size() === 3 && (() => { for (let i = 0; i < 9; i++) Q.restore([mk('x' + i, i)]); return Q.size() <= 5; })());
+    check('restore: junk input is harmless', Q.restore() === 0 && Q.restore(null) === 0 && Q.restore('x') === 0);
+  }
   console.log(`undo: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;
 })();

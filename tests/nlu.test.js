@@ -125,16 +125,20 @@ const ROMAN = [
 ];
 
 // ---- Strengthening: negation rewriting ----
-// "don't open chrome" → CLOSE_APPLICATION (rewritten to "close chrome")
+// "don't open chrome" does nothing at all (NEGATED) — it used to become "close chrome", and "don't lock the screen" locked it
 // Each entry: [input, expectedIntent, optionalNegatedFlag]
 const NEGATION_CASES = [
-  ["don't open chrome", 'CLOSE_APPLICATION', true],
-  ['do not open chrome', 'CLOSE_APPLICATION', true],
-  ['never open spotify', 'CLOSE_APPLICATION', true],
-  ['stop opening discord', 'CLOSE_APPLICATION', true],   // -ing form
-  ["don't launch firefox", 'CLOSE_APPLICATION', true],
-  ['never start zoom', 'CLOSE_APPLICATION', true],
-  ["don't run vs code", 'CLOSE_APPLICATION', true],
+  ["don't open chrome", 'NEGATED', true],
+  ['do not open chrome', 'NEGATED', true],
+  ['never open spotify', 'NEGATED', true],
+  ['stop opening discord', 'NEGATED', true],   // -ing form
+  ["don't launch firefox", 'NEGATED', true],
+  ['never start zoom', 'NEGATED', true],
+  ["don't run vs code", 'NEGATED', true],
+  ["don't lock the screen", 'NEGATED', true], ["don't set a timer for 5 minutes", 'NEGATED', true], ['dont mute', 'NEGATED', true], ["no, don't close it", 'NEGATED', true],
+  ["don't turn off the laptop", 'NEGATED', true], ["i don't want to open chrome", 'NEGATED', true], ["don't take a screenshot", 'NEGATED', true],
+  // Negations that keep their own meaning
+  ["please don't shut down", 'SYS_CANCEL_SHUTDOWN', false], ["don't forget to call mom", 'CONVERSATION', false], ['stop the music', 'MEDIA_STOP', false], ['stop the timer', 'CANCEL_TIMERS', false], ['quit chrome', 'CLOSE_APPLICATION', false],
   // Without negation — control cases that should NOT be rewritten
   ['open chrome', 'OPEN_APPLICATION', false],
   ['close chrome', 'CLOSE_APPLICATION', false],

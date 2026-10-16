@@ -56,5 +56,25 @@ check('weekSummary text mentions top subject and best day', w.lines.some(l => /T
 check('weekSummary of nothing is not "any"', S.weekSummary({}, [], '2026-10-09', now).any === false);
 check('weekId differs across weeks, same within', S.weekId(D(2026, 10, 5)) === S.weekId(D(2026, 10, 11)) && S.weekId(D(2026, 10, 11)) !== S.weekId(D(2026, 10, 12)));
 
+// one subject, many spellings
+for (const [x, y] of [['DBMS', 'Database Management Systems'], ['dbms', 'database management system'], ['OS', 'Operating Systems'], ['DSA', 'Data Structures & Algorithms'], ['ML', 'Machine Learning'], ['COA', 'Computer Organisation and Architecture']])
+  check('subjectKey: "' + x + '" and "' + y + '" are one subject', S.subjectKey(x) === S.subjectKey(y), [S.subjectKey(x), S.subjectKey(y)]);
+check('subjectKey: different subjects stay different (DBMS vs DBMS lab, OS vs Physics, Data Science vs Data Structures)', S.subjectKey('DBMS') !== S.subjectKey('DBMS lab') && S.subjectKey('OS') !== S.subjectKey('Physics') && S.subjectKey('Data Science') !== S.subjectKey('Data Structures'));
+check('subjectKey: an unknown name is just itself, tidied (case, spaces, punctuation)', S.subjectKey('  Engineering   Physics-II ') === 'engineering physics ii' && S.subjectKey('') === '' && S.subjectKey(null) === '');
+{   // the "did you attend?" prompt finds the existing subject under its other spelling
+  const now = new Date(2026, 9, 9, 15, 0).getTime();
+  const due = S.attendanceDue({ classes: [{ id: 'k1', name: 'Database Management Systems', day: 5, h: 13, m: 30 }], attendance: { DBMS: { held: 1, attended: 1, log: [{ d: '2026-10-09', s: 'p' }] } }, now, asked: [] });
+  check('attendanceDue: a class already marked today under its short name (DBMS) is not asked about under its full name', due.length === 0, due);
+}
+
+// the college's own grade scale
+{ const G = S.parseGradeCuts;
+  check('gradecuts: a full scale is read', JSON.stringify(G('my grade cutoffs are O 85, A+ 75, A 65, B+ 55, B 50, C 45, P 40')) === JSON.stringify({ O: 85, 'A+': 75, A: 65, 'B+': 55, B: 50, C: 45, P: 40 }), G('my grade cutoffs are O 85, A+ 75, A 65, B+ 55, B 50, C 45, P 40'));
+  check('gradecuts: "=" and a partial scale work', JSON.stringify(G('grade scale: O=90 A+=80 A=70 B=60')) === JSON.stringify({ O: 90, 'A+': 80, A: 70, B: 60 }));
+  check('gradecuts: the order of the words does not matter, only the values', JSON.stringify(G('grade cutoffs A 60 O 80')) === JSON.stringify({ A: 60, O: 80 }));
+  for (const x of ['cutoffs: O 70, A 80', 'what grade cutoffs', 'I got A 80 in dbms', 'grade cutoffs O 85', 'grade cutoffs O 60 A 80', 'grade cutoffs O 150 A 80', 'grade cutoffs O 80 A 80']) check('gradecuts: not taken / refused: "' + x + '"', G(x) === null, G(x));
+  check('gradeCuts: your numbers replace the usual ones; the grades you left out keep the usual cut-off', S.gradeCuts({ A: 65 }).A === 65 && S.gradeCuts({ A: 65 }).O === 90 && S.gradeCuts(null).A === 70 && S.GRADE_CUTS.A === 70);
+  check('parseEndSem: a grade target uses the cuts you pass in', S.parseEndSem('i got 32/40 in internals what do i need in the end sem to get an A', S.gradeCuts({ A: 65 })).targetPct === 65 && S.parseEndSem('i got 32/40 in internals what do i need in the end sem to get an A').targetPct === 70);
+}
 console.log(`study: ${total - fail}/${total}`);
 process.exitCode = fail ? 1 : 0;

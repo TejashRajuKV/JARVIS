@@ -1,5 +1,5 @@
 'use strict';
-/* "Keep JARVIS running" (opt-in, Settings). When on, Windows Task Scheduler runs keepalive.ps1 every 5 minutes (through keepalive.vbs, so no window flashes);
+/* "Keep JARVIS running" (opt-in, Settings). When on, Windows Task Scheduler runs keepalive.ps1 every 2 minutes (through keepalive.vbs, so no window flashes);
    if JARVIS is not answering it is started again, without opening the browser, and a note is left for the page ("JARVIS was restarted at 14:32").
    It never restarts a JARVIS that you stopped on purpose: "Stop JARVIS" and Settings → Stop leave ~/jarvis/.stopped-by-user until you start it yourself.
    This file only switches the task on and off and reports; the decision logic is keepalive.ps1 (tested with its -DryRun mode).
@@ -21,7 +21,7 @@ function makeKeepalive({ isWin, home, cwd, run, now = Date.now }) {
     if (!isWin) return { supported: false, on: false };
     const flag = readJson(flagFile), exists = await taskExists();
     const note = readJson(noteFile);
-    const out = { supported: true, on: !!(flag && exists), minutes: 5, restarted: note && !note.acked && note.at ? { at: Date.parse(note.at) || null } : null };
+    const out = { supported: true, on: !!(flag && exists), minutes: 2, restarted: note && !note.acked && note.at ? { at: Date.parse(note.at) || null } : null };
     if (flag && !exists) out.note = 'The scheduled task is missing (removed outside JARVIS). Turn it on again to recreate it.';
     if (!flag && exists) out.note = 'A task named “' + TASK + '” exists but JARVIS did not make it switch on. Turn it on again to adopt it.';
     return out;
@@ -31,7 +31,7 @@ function makeKeepalive({ isWin, home, cwd, run, now = Date.now }) {
     if (on) {
       const vbs = path.join(cwd, 'keepalive.vbs');
       if (!fs.existsSync(vbs)) return { ok: false, error: 'keepalive.vbs is missing from the JARVIS folder' };
-      const r = await run('schtasks', ['/create', '/tn', TASK, '/tr', 'wscript.exe //B "' + vbs + '"', '/sc', 'minute', '/mo', '5', '/f']);
+      const r = await run('schtasks', ['/create', '/tn', TASK, '/tr', 'wscript.exe //B "' + vbs + '"', '/sc', 'minute', '/mo', '2', '/f']);
       if (r.code !== 0) return { ok: false, error: 'Windows would not create the task (' + String(r.err || r.out || 'error').split('\n')[0].slice(0, 100) + ')' };
       try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(flagFile, JSON.stringify({ on: true, at: now() })); } catch (e) { return { ok: false, error: e.message }; }
       return { ok: true, on: true };

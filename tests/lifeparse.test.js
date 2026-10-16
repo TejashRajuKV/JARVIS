@@ -78,5 +78,36 @@ for (const [t, d] of [['show my inbox', 0], ['inbox', 0], ['my inbox', 0], ['sho
 check('capture show: not taken', L.parseCaptureShow('inbox zero tips') === null && L.parseCaptureShow('check my email inbox') === null);
 check('capture: long text is cut to 1000 characters', L.parseCapture('jot down ' + 'x'.repeat(5000)).text.length === 1000);
 
+// recurring expenses
+{ const now = new Date(2026, 9, 14, 10).getTime(), P = x => L.parseRecurring(x, now);
+  const eq = (x, want) => JSON.stringify(P(x)) === JSON.stringify(want);
+  check('recurring: "I pay 199 for netflix every month" → monthly from today\'s date', eq('I pay 199 for netflix every month', { op: 'add', amount: 199, note: 'netflix', cat: 'Fun', day: 14 }), P('I pay 199 for netflix every month'));
+  check('recurring: a day of the month is read ("on the 1st")', eq('pay 5000 for rent every month on the 1st', { op: 'add', amount: 5000, note: 'rent', cat: 'Rent & bills', day: 1 }));
+  check('recurring: "add a monthly expense 299 spotify on the 12th"', eq('add a monthly expense 299 spotify on the 12th', { op: 'add', amount: 299, note: 'spotify', cat: 'Fun', day: 12 }));
+  check('recurring: list and remove', eq('show my recurring expenses', { op: 'list' }) && eq('stop recurring netflix', { op: 'remove', name: 'netflix' }) && eq('cancel monthly payment for gym', { op: 'remove', name: 'gym' }));
+  for (const x of ['spent 120 on lunch', 'I pay 50 for tea every day', 'stop recurring', 'pay 0 for rent every month', 'pay 5000 for rent every month on the 40th', 'I pay for netflix every month']) check('recurring: not taken: "' + x + '"', P(x) === null, P(x));
+  check('recurring: an ordinary expense sentence is still an ordinary expense', L.parseExpense('spent 120 on lunch') && L.parseExpense('spent 120 on lunch').amount === 120);
+  const rec = (day, last) => ({ id: 'r' + day, amount: 100, note: 'x' + day, cat: 'Other', day, last: last || '' });
+  const d = (m, day) => new Date(2026, m, day, 9).getTime();
+  let due = L.dueRecurring([rec(5), rec(14), rec(20)], d(9, 14));
+  check('dueRecurring: items whose day has come (5th, 14th) are due on the 14th; the 20th is not', due.map(x => x.rec.day).join() === '5,14', due);
+  check('dueRecurring: the entry is dated that day at noon, with the month key', new Date(due[0].t).getDate() === 5 && new Date(due[0].t).getHours() === 12 && due[0].key === '2026-10');
+  check('dueRecurring: already logged this month → not due again', L.dueRecurring([rec(5, '2026-10')], d(9, 14)).length === 0);
+  check('dueRecurring: next month it is due again', L.dueRecurring([rec(5, '2026-10')], d(10, 6)).length === 1);
+  check('dueRecurring: the 31st falls on the last day of a shorter month (30 Nov)', L.dueRecurring([rec(31)], d(10, 29)).length === 0 && L.dueRecurring([rec(31)], d(10, 30)).length === 1);
+  check('dueRecurring: junk entries are ignored', L.dueRecurring([null, { amount: 0 }, { amount: 'x' }], d(9, 14)).length === 0);
+}
+
+// monthly budget
+for (const [x, want] of [['set my budget to 5000', { op: 'set', amount: 5000 }], ['set my monthly budget to 12k', { op: 'set', amount: 12000 }], ['my budget is ₹8,000 a month', { op: 'set', amount: 8000 }], ['set budget to 1.5 lakh', { op: 'set', amount: 150000 }],
+  ['i want to spend at most 3000 a month', { op: 'set', amount: 3000 }], ['remove my budget', { op: 'clear' }], ['what is my budget', { op: 'show' }], ['how much budget left', { op: 'show' }]])
+  check('budget: "' + x + '"', JSON.stringify(L.parseBudget(x)) === JSON.stringify(want), L.parseBudget(x));
+for (const x of ['set a budget', 'spent 120 on lunch', 'budget', 'set my budget to 0', 'my budget is lunch', 'what is the budget of the film', 'set budget to 999999999999']) check('budget: not taken: "' + x + '"', L.parseBudget(x) === null, L.parseBudget(x));
+{ const now = new Date(2026, 9, 14, 12, 0).getTime(), t = d => new Date(2026, 9, d, 10, 0).getTime();
+  const ex = (...amts) => amts.map((a, i) => ({ id: 'e' + i, t: t(2 + i), amount: a, cat: 'Food', note: '' }));
+  let s = L.budgetStatus(ex(500, 500), 5000, now); check('budgetStatus: 20% used is fine', s.level === 'ok' && s.pct === 20 && s.left === 4000, s);
+  s = L.budgetStatus(ex(2000, 2000), 5000, now); check('budgetStatus: 80% is a warning, with the days left (18 incl. today) and the per-day figure', s.level === 'warn' && s.pct === 80 && s.left === 1000 && s.daysLeft === 18 && s.perDayLeft === 56, s);
+  s = L.budgetStatus(ex(3000, 2500), 5000, now); check('budgetStatus: past the budget is "over", by how much', s.level === 'over' && s.over === 500 && s.left === -500, s);
+  s = L.budgetStatus([{ id: 'o', t: new Date(2026, 8, 20).getTime(), amount: 9999, cat: 'Food', note: '' }], 5000, now); check('budgetStatus: last month does not count', s.spent === 0 && s.level === 'ok', s); }
 console.log(`lifeparse: ${total - fail}/${total}`);
 process.exitCode = fail ? 1 : 0;

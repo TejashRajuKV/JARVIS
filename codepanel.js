@@ -171,7 +171,7 @@
       let a = await callToolRaw('/code/apply', body);
       if (a && a.needsApproval) {
         if (!(await askHere(a.paths || [], g.files.length))) return say('jarvis', 'Cancelled — nothing was written.', { meta: 'BUILD' });
-        a = await callToolRaw('/code/apply', Object.assign({}, body, { approved: true }));
+        a = await callToolRaw('/code/apply', Object.assign({}, body, { approved: true, approvalToken: a.approvalToken }));
       }
       if (a.error) return say('jarvis', 'I wrote the code but couldn’t save it: ' + a.error, { meta: 'BUILD' });
       useFolder(a.folder);

@@ -40,6 +40,8 @@ const Camera = (() => {
       const s = document.createElement('script');
       const timer = setTimeout(() => { s.remove(); reject(new Error('timed out')); }, ms);
       s.src = url; s.async = true;
+      const pin = typeof CdnPins !== 'undefined' && CdnPins[url];            // the exact file we tested (cdnpins.js): the browser refuses any other
+      if (pin) { s.integrity = pin; s.crossOrigin = 'anonymous'; }
       s.onload = () => { clearTimeout(timer); resolve(); };
       s.onerror = () => { clearTimeout(timer); s.remove(); reject(new Error('could not be downloaded')); };
       document.head.appendChild(s);
@@ -85,7 +87,15 @@ const Camera = (() => {
   async function getStream(opts) {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error('no camera API'), { name: 'NotFoundError' });
     const o = Object.assign({ facing: 'environment', width: 1920, height: 1080 }, opts || {});
-    return navigator.mediaDevices.getUserMedia({ video: { facingMode: o.facing, width: { ideal: o.width }, height: { ideal: o.height } }, audio: false });
+    const ask = c => navigator.mediaDevices.getUserMedia({ video: c, audio: false });
+    try { return await ask({ facingMode: o.facing, width: { ideal: o.width }, height: { ideal: o.height } }); }
+    catch (e) {
+      // "no camera" or "constraints not met" can be a camera that is still waking up (or the browser's video service restarting): wait a moment and ask for
+      // whatever camera there is, with no preferences, once. A real permission refusal (NotAllowedError) is passed on at once.
+      if (!e || !/^(NotFoundError|OverconstrainedError|NotReadableError|AbortError)$/.test(e.name)) throw e;
+      await new Promise(r => setTimeout(r, o.retryMs === undefined ? 700 : o.retryMs));
+      return ask(true);
+    }
   }
   const stopStream = s => { try { s && s.getTracks().forEach(t => t.stop()); } catch {} };
 

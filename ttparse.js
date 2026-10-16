@@ -236,6 +236,20 @@ const TtParse = (() => {
     for (const e of entries) { if (!by.has(e.day)) by.set(e.day, []); by.get(e.day).push(e); }
     return [...by.entries()].sort((a, b) => ((a[0] + 6) % 7) - ((b[0] + 6) % 7)).map(([d, list]) => '- **' + DAY_LABEL[d] + '** — ' + list.map(e => hhmm(e.h, e.m) + ' ' + e.name + (e.room ? ' (' + e.room + ')' : '')).join(' · '));
   }
-  return { parseText, parseIcs, parseGrid, cleanName, normaliseName, describe, hhmm, dayOf, DAY_LABEL, toMinutes };
+  // Two classes at overlapping times on the same day (a class with no end time counts as `defaultDur` minutes). `pairs` = classes to check against each other:
+  // → [{ a, b, day }] for each overlapping pair of DIFFERENT classes (the same subject at the same time is a duplicate, not a clash). Back-to-back (one ends as the next starts) is fine.
+  function clashes(list, defaultDur = 60) {
+    const iv = c => { const s = c.h * 60 + (c.m || 0); return [s, s + (c.dur || defaultDur)]; }, out = [];
+    const key = c => String(c.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = list[i], b = list[j];
+      if (a.day !== b.day || key(a) === key(b)) continue;
+      const [as, ae] = iv(a), [bs, be] = iv(b);
+      if (as < be && bs < ae) out.push({ a, b, day: a.day });
+    }
+    return out;
+  }
+  const clashText = c => '**' + DAY_LABEL[c.day] + '** ' + hhmm(c.a.h, c.a.m) + ' ' + c.a.name + ' overlaps ' + hhmm(c.b.h, c.b.m) + ' ' + c.b.name;
+  return { parseText, parseIcs, parseGrid, cleanName, normaliseName, describe, clashes, clashText, hhmm, dayOf, DAY_LABEL, toMinutes };
 })();
 if (typeof module !== 'undefined') module.exports = TtParse;

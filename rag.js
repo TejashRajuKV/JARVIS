@@ -15,11 +15,12 @@ const STOP = new Set(('a an and are as at be but by can could did do does for fr
 
 /* ---------- pure helpers ---------- */
 // Lowercase words, common words dropped, plurals and simple endings folded so "deadlocks" finds "deadlock".
+// Words in ANY script (Telugu, Kannada, Hindi… as well as English): letters, the marks that belong inside a word (vowel signs), digits and _. Only English words are stemmed.
 function tokenize(text) {
   const out = [];
-  for (const w of String(text || '').toLowerCase().match(/[a-z0-9_]{2,}/g) || []) {
+  for (const w of String(text || '').toLowerCase().normalize('NFC').match(/[\p{L}\p{M}\p{N}_]{2,}/gu) || []) {
     if (STOP.has(w)) continue;
-    out.push(stem(w));
+    out.push(/^[a-z0-9_]+$/.test(w) ? stem(w) : w);
   }
   return out;
 }
@@ -82,13 +83,40 @@ function rrfFuse(a, b, k = 60) {
 }
 
 /* ---------- the index ---------- */
-module.exports = function setupRag(app, { allRoots, SKIP_DIRS, rel, isInternal, pdfPages, docText, semantic }) {
+module.exports = function setupRag(app, { allRoots, SKIP_DIRS, rel, isInternal, pdfPages, docText, semantic, cacheFile, cacheDelayMs = 5000, maxFiles = MAX_FILES }) {
   const MAX_PDF = 40 * 1024 * 1024;
   const pdfText = new Map(); // path → { key, pages } (filled asynchronously, then used by the next scan)
   let pendingPdf = [];
   const docTextMap = new Map(); // path → { key, pages } for .docx/.pptx/.xlsx (same pattern as PDFs)
   let pendingDoc = [];
   const files = new Map(); // full path → { mtime, size, name, chunks:[{start,end,text,tf,len}] }
+  // The index is kept on disk (cacheFile) so a restart does not read and tokenize every note again — above all the PDFs and Office files, whose text is slow to extract.
+  // Each file is reused only while its size and modified time are unchanged, so a stale entry can never be served. Not saved above ~40 MB (it is a convenience, not data).
+  const CACHE_MAX = 40 * 1024 * 1024; let saveTimer = null;
+  function loadCache() {
+    if (!cacheFile) return;
+    try {
+      const j = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+      if (!j || j.v !== 1 || !Array.isArray(j.files)) return;
+      for (const [f, e] of j.files) {
+        if (!f || !e || !Array.isArray(e.chunks)) continue;
+        files.set(f, { mtime: e.mtime, size: e.size, name: e.name, full: f, chunks: e.chunks.map(c => ({ start: c.start, end: c.end, text: c.text, page: c.page, len: c.len, tf: new Map(c.tf) })) });
+      }
+    } catch { /* no cache, or a damaged one: build from scratch */ }
+  }
+  function saveCacheSoon() {
+    if (!cacheFile || saveTimer) return;
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      try {
+        const out = { v: 1, files: [...files].map(([f, e]) => [f, { mtime: e.mtime, size: e.size, name: e.name, chunks: e.chunks.map(c => ({ start: c.start, end: c.end, text: c.text, page: c.page, len: c.len, tf: [...c.tf] })) }]) };
+        const s = JSON.stringify(out); if (s.length > CACHE_MAX) { try { fs.unlinkSync(cacheFile); } catch (e) { /* nothing to remove */ } return; }
+        const tmp = cacheFile + '.tmp'; fs.writeFileSync(tmp, s); fs.renameSync(tmp, cacheFile);
+      } catch { /* the cache is optional */ }
+    }, cacheDelayMs);
+    if (saveTimer.unref) saveTimer.unref();
+  }
+  loadCache();
   let docs = [], owners = [], df = new Map(), avgLen = 1;
   let lastScan = 0, scanning = null, lastStats = { files: 0, chunks: 0, at: 0, vecChunks: 0 };
   // Chunk vectors, keyed file+start-line so they survive index rebuilds. RAM only: a few MB at the cap,
@@ -110,9 +138,11 @@ module.exports = function setupRag(app, { allRoots, SKIP_DIRS, rel, isInternal, 
   }
   function scan() {
     const seen = new Set(); pendingPdf = []; pendingDoc = [];
-    let n = 0, changed = false;
-    for (const root of allRoots()) for (const f of walk(root, 0)) {
-      if (++n > MAX_FILES) break;
+    let changed = false;
+    // Every folder you share gets its own share of the file limit, so a big project folder cannot use it all up and leave your notes un-indexed.
+    const roots = allRoots(), quota = Math.max(50, Math.floor(maxFiles / Math.max(1, roots.length)));
+    for (const root of roots) { let n = 0; for (const f of walk(root, 0)) {
+      if (++n > quota) break;
       seen.add(f);
       let st; try { st = fs.statSync(f); } catch { continue; }
       const isPdf = /\.pdf$/i.test(f);
@@ -142,7 +172,7 @@ module.exports = function setupRag(app, { allRoots, SKIP_DIRS, rel, isInternal, 
       });
       files.set(f, { mtime: st.mtimeMs, size: st.size, name: rel(f), full: f, chunks });
       changed = true;
-    }
+    } }
     for (const f of [...files.keys()]) if (!seen.has(f)) { files.delete(f); changed = true; }
     if (changed || !docs.length) {
       docs = []; owners = []; df = new Map();
@@ -153,6 +183,7 @@ module.exports = function setupRag(app, { allRoots, SKIP_DIRS, rel, isInternal, 
       avgLen = docs.reduce((s, d) => s + d.len, 0) / (docs.length || 1);
     }
     lastScan = Date.now();
+    if (changed) saveCacheSoon();
     lastStats = { files: files.size, chunks: docs.length, at: lastScan, vecChunks: vecs.size };
     // drop vectors for files that vanished
     if (vecs.size) { const live = new Set(); for (const [f, e] of files) for (const c of e.chunks) live.add(vecKey(f, c)); for (const key of [...vecs.keys()]) if (!live.has(key)) vecs.delete(key); }

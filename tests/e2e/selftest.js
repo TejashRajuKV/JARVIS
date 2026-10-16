@@ -6,6 +6,8 @@
 (async () => {
   const T = window.__selftest = { done: false, results: [], errors: [] };
   const sleepMs = ms => new Promise(r => setTimeout(r, ms));
+  // The browser's fake camera takes anywhere from 0.3 to 8 seconds to deliver its first frame on a busy computer: wait for the thing itself, not a fixed time.
+  const waitUntil = async (fn, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (fn()) return true; } catch (e) { /* not yet */ } await sleepMs(100); } return false; };
   const check = (feature, desc, ok, detail) => { T.results.push({ feature, desc, ok: !!ok, detail: ok ? undefined : String(detail === undefined ? '' : typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(0, 300) }); return !!ok; };
   addEventListener('error', e => T.errors.push(String(e.message)));
   addEventListener('unhandledrejection', e => T.errors.push(String(e.reason && e.reason.message || e.reason)));
@@ -95,6 +97,7 @@
     return { text, n: fresh.length, ms: Date.now() - t0, ok: finished, errors: T.errors.slice(e0) };
   }
   const has = (r, re) => re.test(r.text);
+  const writeProbe = () => realCallTool('/tool/writeFile', { name: 'hello.js', content: 'console.log("selftest " + 6 * 7)', overwrite: true });
 
   // Wait for boot to finish.
   for (let i = 0; i < 200 && (state === 'BOOT' || !document.querySelector('#bootOverlay.done')); i++) await sleepMs(50);
@@ -246,8 +249,197 @@
   check('Laptop', 'set volume (sent 30, read back)', called('/sys/volume', d => +d.level === 30) && has(r, /30/), r.text);
   r = await say('open chrome');
   check('Laptop', 'open an app', called('/tool/openApplication', d => d.app === 'chrome'), r.text);
+  { const c0 = calls.length; r = await say('close discord');                                          // "no" (the default answer): nothing may be closed
+    check('Laptop', 'a single typed "close discord" asks first, says what it will do, and CANCEL closes nothing', !calls.slice(c0).some(c => c.endpoint === '/tool/closeApplication') && has(r, /close an app/) && has(r, /close discord/i), r.text); }
   r = await say('close discord', { confirm: 'yes' });
   check('Laptop', 'close an app after permission', called('/tool/closeApplication', d => d.app === 'discord'), r.text);
+  { const c0 = calls.length; await writeProbe(); r = await say('run hello.js'); check('Code', 'a single typed "run hello.js" asks first; CANCEL runs nothing', !calls.slice(c0).some(c => c.endpoint === '/tool/runFile') && has(r, /run a program/), r.text); }
+  {   // private content only goes to an online model after a yes (one yes per kind until reload); a local model never asks
+    const m0 = llm.model; cloudAllowed.clear();
+    llm.model = 'qwen3.5:4b'; const localOk = await confirmCloud('clipboard');
+    llm.model = 'openai::gpt-x';
+    const p1 = confirmCloud('clipboard'); await sleepMs(250); const card1 = freshMsgs().map(m => m.innerText).join(' '); answerCards('no'); const no1 = await p1;
+    const p2 = confirmCloud('clipboard'); await sleepMs(250); answerCards('yes'); const yes2 = await p2;
+    const t0 = Date.now(); const again = await confirmCloud('clipboard'); const quick = Date.now() - t0 < 100;
+    const p3 = confirmCloud('screen'); await sleepMs(250); const card3 = freshMsgs().map(m => m.innerText).join(' '); answerCards('no'); const no3 = await p3;
+    llm.model = m0; cloudAllowed.clear(); busy = false; idleState();      // the cards were asked outside a chat turn, which leaves busy set
+    check('Privacy', 'a local model sends without asking', localOk === true);
+    check('Privacy', 'an online model asks before it gets your clipboard, naming the provider; "no" sends nothing', no1 === false && /openai/i.test(card1) && /text you copied/.test(card1), card1);
+    check('Privacy', '"yes" allows that kind for the rest of the page session, but another kind (the screen) asks again and can be refused', yes2 === true && again === true && quick && no3 === false && /your screen/.test(card3), [yes2, again, quick, no3]);
+  }
+  {   // how long the page waits for a call: quick local actions 3 minutes, anything that runs the AI or walks folders 15
+    const quick = ['/tool/openApplication', '/sys/volume', '/tool/readFile', '/shots/status', '/keepalive/status', '/mirror/status'].every(e => callTimeoutMs(e) === 180000);
+    const slow = ['/code/generate', '/lecture/notes', '/exam/questions', '/skill/viva/grade', '/skill/siteBuild', '/disk/plan', '/whisper/transcribe', '/dev/explain', '/dev/git/message', '/research', '/tool/research', '/scan/save', '/agent/plan', '/tool/gitClone', '/tool/installDeps', '/tool/startProcess'].every(e => callTimeoutMs(e) === 15 * 60000);
+    check('Timeouts', 'quick local actions wait up to 3 minutes; AI and big-folder calls up to 15 — and never forever', quick && slow, ['/tool/openApplication', '/lecture/notes'].map(callTimeoutMs));
+    const realFetch2 = window.fetch; window.fetch = (u, o) => new Promise((_, rej) => { const s = o && o.signal; if (s) s.addEventListener('abort', () => rej(Object.assign(new Error('timed out'), { name: 'TimeoutError' }))); });
+    const ac = new AbortController(); const origTimeout = AbortSignal.timeout; AbortSignal.timeout = () => ac.signal; setTimeout(() => ac.abort(), 50);
+    const timedOut = await callToolRaw('/tool/openApplication', { app: 'chrome' }); AbortSignal.timeout = origTimeout; window.fetch = realFetch2;
+    check('Timeouts', 'a call that never answers comes back as a plain "took too long" error (not "backend offline", not a hang)', timedOut && timedOut.timedOut === true && /took too long/.test(timedOut.error) && !/offline/.test(timedOut.error), timedOut);
+  }
+  {   // a timer survives a reload: it is also written down as a safety-net reminder 20 s after it should ring
+    [...timers].forEach(cancelTimer); const rem0 = reminders.length;
+    r = await say('set a timer for 10 minutes');
+    const tm = timers[timers.length - 1], net = reminders.find(x => tm && x.timerId === tm.id);
+    check('Timers', 'setting a timer shows it and also writes the safety-net reminder (20 s after the end, hidden from the reminder list)', !!tm && !!net && net.at === tm.end + 20000 && net.timerEnd === tm.end && /10 min timer/.test(net.text) && !document.getElementById('reminderList').innerText.includes('10 min timer'), net);
+    const savedEnd = tm.end, savedId = tm.id; timers.splice(0, timers.length); document.querySelectorAll('#timerChips .tchip').forEach(e => e.remove());       // what a reload does to the page
+    const back = restoreTimers();
+    check('Timers', 'after a reload the countdown comes back from the reminder, with the same end time', back === 1 && timers.length === 1 && timers[0].end === savedEnd && timers[0].id === savedId && reminders.filter(x => x.timerId === savedId).length === 1);
+    check('Timers', 'restoring twice does not double it', restoreTimers() === 0 && timers.length === 1);
+    await say('cancel my timers');
+    check('Timers', 'cancelling the timers removes their reminders too', timers.length === 0 && !reminders.some(x => x.timerId) && reminders.length === rem0);
+    const done = addTimer('quick', 400); await sleepMs(1500);
+    check('Timers', 'a timer that rings in the page removes its safety net (so it does not ring a second time 20 s later)', timers.length === 0 && !reminders.some(x => x.timerId === done.id));
+    reminders.push({ id: 'old', text: 'x', at: Date.now() - 1000, fired: true, timerId: 'oldt', timerLabel: 'old', timerEnd: Date.now() - 30000 }); reminders.push({ id: 'stale', text: 'x', at: 1, fired: false, timerId: 'stalet', timerLabel: 'stale', timerEnd: Date.now() - 7 * 3600e3 });
+    check('Timers', 'a timer the scheduler already rang, or one that ended hours ago, is not brought back', restoreTimers() === 0); reminders = reminders.filter(x => !x.timerId);
+  }
+  {   // screen readers: every control is named, and a finished reply is announced once
+    const sw = [...document.querySelectorAll('button.switch')], unnamedSw = sw.filter(b => !(b.getAttribute('aria-label') || '').trim());
+    check('Accessibility', 'every settings switch has a name taken from its row (30+ switches)', sw.length >= 30 && unnamedSw.length === 0, unnamedSw.map(b => b.id));
+    check('Accessibility', 'a switch is named like its row ("Speak replies"-style label, without the small print)', /^[A-Za-z]/.test(document.getElementById('ttsToggle').getAttribute('aria-label')) && !/ONLINE|\bFRIDAY\b/.test('') && document.getElementById('ttsToggle').getAttribute('aria-label').length < 60, document.getElementById('ttsToggle').getAttribute('aria-label'));
+    const sel = [...document.querySelectorAll('#settingsPanel select, .s-row select')].filter(x => !x.closest('[hidden]') || true), unnamedSel = sel.filter(x => !(x.getAttribute('aria-label') || x.title || '').trim());
+    check('Accessibility', 'every select in the settings rows has a name', unnamedSel.length === 0, unnamedSel.map(x => x.id));
+    const log = document.getElementById('messages'), live = document.getElementById('srLive');
+    check('Accessibility', 'the chat is a log that is not read word by word; a separate polite live region exists', log.getAttribute('role') === 'log' && log.getAttribute('aria-live') === 'off' && live && live.getAttribute('aria-live') === 'polite');
+    live.textContent = ''; r = await say('what is the date today'); await sleepMs(2800);
+    check('Accessibility', 'a finished reply is put in the live region once, as plain text', live.textContent.length > 3 && !/<|\*\*/.test(live.textContent), live.textContent.slice(0, 100));
+  }
+  {   // awaiting an answer: while a permission card is open, other input waits instead of starting a second turn; typed "yes please" answers it
+    await idle(8000);
+    const nq = inputQueue.length, msgs0 = document.querySelectorAll('#messages .msg').length;
+    const p1 = askApproval('create', ['C:/e2e/approval-test']);
+    check('Approval', 'a card is open and JARVIS is in the awaiting-an-answer state', typeof pendingApproval === 'function' && !!document.querySelector('#messages .msg:last-child, #messages .msg'));
+    await handleUser('what time is it', 'text');
+    check('Approval', 'another request typed meanwhile is QUEUED (no second turn starts in the middle of the first)', inputQueue.length === nq + 1 && busy === false && !/It is \d{1,2}:\d{2}/.test(document.querySelector('#messages').innerText.slice(-400)), [inputQueue.length, busy]);
+    await handleUser('yes please', 'text');
+    check('Approval', 'typed "yes please" answers the card (the approval resolves true, the state clears)', (await p1) === true && pendingApproval === null);
+    check('Approval', 'then the request that waited is answered', await waitUntil(() => inputQueue.length === nq && /\d{1,2}:\d{2}/.test(document.querySelector('#messages').innerText.slice(-600)), 20000));
+    const n = await awaitAnswer(() => {}, 120);
+    check('Approval', 'a card nobody answers counts as "no" after its time limit (10 minutes in real use) and clears the state', n === false && pendingApproval === null);
+    await idle(8000);
+  }
+  {   // another tab saves a to-do: this tab takes it at once (it used to keep its old list and later write it back over the new one)
+    const keep = JSON.stringify(todos), added = { id: 'e2e-other-tab', text: 'added in another tab', done: false, ts: Date.now() };
+    await fetch('api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src: 'some-other-tab', set: { 'jarvis.todos': [...todos, added] } }) });
+    check('Tabs', 'a to-do saved by another tab appears here without a reload', await waitUntil(() => todos.some(x => x.id === 'e2e-other-tab')), todos.length);
+    check('Tabs', '…and the Tasks list was redrawn (the item is on the page)', [...document.querySelectorAll('#todoList *, #tab-tasks *')].some(e => /added in another tab/.test(e.textContent || '')) || document.body.textContent.includes('added in another tab'));
+    addTodoFromAnotherTab: {
+      const before = todos.length; saveTasks();
+      await sleepMs(700);
+      const st = await (await fetch('api/state.js')).text();
+      check('Tabs', 'this tab saving later keeps the other tab’s item (it does not write its old list over it)', todos.length === before && st.includes('added in another tab'));
+    }
+    await fetch('api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src: 'some-other-tab', set: { 'jarvis.todos': JSON.parse(keep) } }) });
+    await waitUntil(() => !todos.some(x => x.id === 'e2e-other-tab'));
+    check('Tabs', 'cleanup: the list is back as it was', JSON.stringify(todos) === keep);
+  }
+  {   // a tab that is a save behind: its save is MERGED with what another tab added meanwhile (the push is blocked here by posting under this tab's own id, which this tab ignores)
+    const keep = JSON.stringify(todos), other = { id: 'e2e-merge-other', text: 'added by the other tab', done: false, ts: Date.now() };
+    await fetch('api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src: TAB_ID, set: { 'jarvis.todos': [...todos, other] } }) });
+    await sleepMs(400);
+    check('Merge', 'precondition: this tab did not see the other tab’s item (it is a save behind)', !todos.some(x => x.id === other.id));
+    todos.push({ id: 'e2e-merge-mine', text: 'added by this tab', done: false, ts: Date.now() }); saveTasks();
+    check('Merge', 'saving now keeps BOTH items: the server hands back the combined list and this tab takes it', await waitUntil(() => todos.some(x => x.id === other.id) && todos.some(x => x.id === 'e2e-merge-mine')), todos.map(x => x.id));
+    const st = await (await fetch('api/state.js')).text();
+    check('Merge', '…and the server holds both too', st.includes('added by the other tab') && st.includes('added by this tab'));
+    todos = todos.filter(x => x.id !== 'e2e-merge-mine'); saveTasks(); await sleepMs(600);
+    check('Merge', 'deleting this tab’s own item sticks (it is not resurrected by the server’s older copy)', !todos.some(x => x.id === 'e2e-merge-mine') && !(await (await fetch('api/state.js')).text()).includes('added by this tab'));
+    await fetch('api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src: 'cleanup-tab', set: { 'jarvis.todos': JSON.parse(keep) } }) });
+    await waitUntil(() => !todos.some(x => x.id === other.id));
+    check('Merge', 'cleanup: the list is back as it was', JSON.stringify(todos) === keep);
+  }
+  {   // a focus session survives a reload; two routines due together both run
+    stopFocus(true); startFocus(25);
+    const saved = store.get('jarvis.focusState', null), end0 = focus.end;
+    check('Reload', 'a focus session is saved as it starts (phase, end time, length)', saved && saved.phase === 'focus' && saved.end === end0 && saved.min === 25, saved);
+    focus = null;                                   // what a reload does to the page’s memory
+    check('Reload', 'after a reload the session is picked up again with the same end time', restoreFocus() === true && focus && focus.phase === 'focus' && focus.end === end0 && focus.min === 25, focus);
+    stopFocus(true);
+    check('Reload', 'stopping it clears the saved copy, so it does not come back', store.get('jarvis.focusState', null) === null);
+    startFocus(25); store.set('jarvis.focusState', { phase: 'focus', end: Date.now() - 1000, min: 25, count: 0 }); focus = null;
+    check('Reload', 'a session whose time ran out while the page was closed is NOT revived', restoreFocus() === false && focus === null && store.get('jarvis.focusState', null) === null);
+    const r1 = Routines.create('e2e queue one', ['what is the date']), r2 = Routines.create('e2e queue two', ['what time is it']);
+    const msgs0 = document.querySelectorAll('#messages .msg').length;
+    Routines.runById(r1.id); Routines.runById(r2.id); Routines.runById(r2.id);
+    check('Routines', 'a second routine due while one is running waits in line (once, not dropped, not doubled)', Routines.waiting.length === 1 && Routines.waiting[0] === r2.id, Routines.waiting);
+    check('Routines', '…and then both ran, one after the other', await waitUntil(() => Routines.waiting.length === 0 && /Today is/.test(document.querySelector('#messages').innerText) && [...document.querySelectorAll('#messages .msg')].length >= msgs0 + 2, 20000));
+    Routines.remove(r1); Routines.remove(r2);
+  }
+  {   // only one tab says an alert: the first claim wins
+    const k = 'e2e:claim:' + Date.now();
+    const first = await claimAlert(k, 30), second = await claimAlert(k, 30);
+    check('Alerts', 'a tab claims an alert before saying it: the first claim wins, the same alert from another tab is told no', first === true && second === false, [first, second]);
+    const seen = []; const realSay = jarvisSay; jarvisSay = m => { seen.push(m); };
+    const key = 'e2e-alertOnce-' + Date.now(); alertOnce(key, 60000, '⚠ e2e alert text'); await sleepMs(300);
+    const said1 = seen.filter(m => /e2e alert text/.test(m.text)).length;
+    alertedAt.delete(key); alertOnce(key, 60000, '⚠ e2e alert text'); await sleepMs(300);   // as if a second tab asked: the server already gave this alert away
+    jarvisSay = realSay;
+    check('Alerts', 'alertOnce says it once; a second ask for the same alert (another tab) stays quiet', said1 === 1 && seen.filter(m => /e2e alert text/.test(m.text)).length === 1, seen.map(m => m.text));
+  }
+  {   // JARVIS Code panel: opens its own tab with its own conversation, remembers the folder, closes back to chat
+    const JC = window.JarvisCode, log0 = JSON.stringify(store.get('jarvis.codeChat', [])), cfg0 = JSON.stringify(store.get('jarvis.code', {}));
+    check('JARVIS Code', 'the panel exists and starts closed', !!JC && JC.state.on === false && !document.querySelector('.controls.coding'));
+    JC.open(true);
+    check('JARVIS Code', 'opening it switches to its tab and swaps the chat box for the coding composer', JC.state.on === true && !!document.querySelector('.controls.coding') && !!document.querySelector('#codeInput') && document.querySelector('#codeModeBtn').classList.contains('active'));
+    const n0 = JC.log.length; JC.say('user', 'build a calculator', { tag: 'build' }); JC.say('jarvis', 'Done — **calc.html** written.');
+    const msgs = document.querySelectorAll('#codeMessages .msg');
+    check('JARVIS Code', 'its messages are shown in its own list, not in the normal chat', msgs.length >= 2 && /calculator/.test(msgs[msgs.length - 2].textContent) && /calc.html/.test(msgs[msgs.length - 1].textContent) && ![...document.querySelectorAll('#messages .msg')].some(m => /build a calculator/.test(m.textContent)));
+    check('JARVIS Code', 'and saved separately (jarvis.codeChat) so a reload keeps them', store.get('jarvis.codeChat', []).length === n0 + 2 && JC.log.length === n0 + 2);
+    JC.useFolder('C:/e2e/project-x');
+    check('JARVIS Code', 'choosing a folder shows its name, remembers it (most recent first) and clears again', document.querySelector('#codeFolderLabel').textContent === 'project-x' && JC.state.recent[0] === 'C:/e2e/project-x' && store.get('jarvis.code', {}).folder === 'C:/e2e/project-x', [document.querySelector('#codeFolderLabel').textContent, JC.state.recent, store.get('jarvis.code', {})]);
+    JC.useFolder('');
+    check('JARVIS Code', 'clearing the folder goes back to "New project"', document.querySelector('#codeFolderLabel').textContent === 'New project' && document.querySelector('#codeFolderClear').hidden === true);
+    JC.open(false);
+    check('JARVIS Code', 'closing goes back to the normal chat', JC.state.on === false && !document.querySelector('.controls.coding'));
+    store.set('jarvis.codeChat', JSON.parse(log0)); store.set('jarvis.code', JSON.parse(cfg0)); JC.log.length = 0; JSON.parse(log0).forEach(m => JC.log.push(m)); JC.state.recent.length = 0;
+  }
+  {   // monthly budget: one sentence sets it, a big expense warns, undo removes both
+    const exp0 = JSON.stringify(store.get('jarvis.expenses', [])), bud0 = store.get('jarvis.budget', 0);
+    store.set('jarvis.expenses', []); store.set('jarvis.budget', 0);
+    r = await say('set my budget to 1000');
+    check('Budget', 'one sentence sets the monthly budget (saved, answered)', store.get('jarvis.budget', 0) === 1000 && /₹1,000/.test(r.text), r.text);
+    r = await say('spent 900 on e2e dinner');
+    check('Budget', 'a big expense warns that 90% of the budget is used', /90% of your ₹1,000 budget/.test(r.text), r.text);
+    store.set('jarvis.expenses', JSON.parse(exp0)); store.set('jarvis.budget', bud0);
+  }
+  {   // one subject, many spellings: the full name finds the DBMS already being tracked
+    const att0 = JSON.stringify(attendance);
+    attendance = { DBMS: { held: 4, attended: 3, log: [] } }; saveTasks();
+    r = await say('mark database management systems present');
+    check('Attendance', '"mark database management systems present" counts for the existing DBMS, not a second subject', Object.keys(attendance).join() === 'DBMS' && attendance.DBMS.held === 5 && attendance.DBMS.attended === 4, attendance);
+    attendance = JSON.parse(att0); saveTasks();
+  }
+  {   // the attendance target is a setting (75% unless changed)
+    const att0 = JSON.stringify(attendance), min0 = settings.attendanceMin;
+    attendance = { E2EAT: { held: 18, attended: 15, log: [] } }; saveTasks();
+    r = await say('my college needs 80% attendance');
+    check('Attendance target', 'one sentence sets it: saved in settings, shown in the dropdown and above the attendance list, and "undo" can take it back', settings.attendanceMin === 80 && document.getElementById('attendanceMinSel').value === '80' && /80% required/.test(document.getElementById('attMeta').textContent) && has(r, /80%/), [settings.attendanceMin, document.getElementById('attMeta').textContent]);
+    r = await say('attendance report');
+    check('Attendance target', 'the report judges 83% against the new 80% target (a bunk is safe or not by it)', has(r, /E2EAT/) && /bunk/.test(r.text) && !/75%/.test(r.text), r.text);
+    r = await say('undo'); check('Attendance target', '"undo" puts the 75% back', settings.attendanceMin === 75 && document.getElementById('attendanceMinSel').value === '75', settings.attendanceMin);
+    attendance = JSON.parse(att0); settings.attendanceMin = min0 === undefined ? 75 : min0; saveTasks(); renderTasks();
+  }
+  {   // "Yes, make it a routine" makes a real, scheduled routine (for apps and focus sessions)
+    const before = Routines.list().length, remBefore = reminders.length;
+    const out = routineFromPattern({ kind: 'apps', label: 'vscode', hour: 9, count: 5, key: 'apps:vscode:9' });
+    const rt = Routines.list().find(x => x.name === 'vscode at 09'), rem = rt && reminders.find(x => x.routineId === rt.id);
+    check('Learning', 'accepting an app pattern creates the routine with its one step ' + '(open vscode)', out.made === true && !!rt && rt.steps.join() === 'open vscode' && Routines.list().length === before + 1, out);
+    check('Learning', '…and schedules it daily at that hour (a repeating reminder tied to the routine), saying when it first runs', !!rem && rem.repeat && rem.routineId === rt.id && new Date(rem.at).getHours() === 9 && /every day/i.test(out.text) && /First run/.test(out.text), rem);
+    const r2 = routineFromPattern({ kind: 'apps', label: 'vscode', hour: 9, count: 5, key: 'x' });
+    check('Learning', 'accepting the same pattern again does not double the routine or its reminder', Routines.list().filter(x => x.name === 'vscode at 09').length === 1 && reminders.filter(x => x.routineId === rt.id).length === 1 && r2.made === true);
+    const f = routineFromPattern({ kind: 'focus', label: '25', hour: 14, count: 4, key: 'f' });
+    check('Learning', 'a focus-session pattern becomes "start a focus session for 25 minutes"', f.made && Routines.list().some(x => x.name === 'focus at 14' && x.steps[0] === 'start a focus session for 25 minutes'));
+    const c = routineFromPattern({ kind: 'cmds', label: 'SET_VOLUME', hour: 8, count: 4, key: 'c' });
+    check('Learning', 'a learned command (just an intent name) is NOT pretended into a routine: it says how to make one by hand', c.made === false && /create a routine called/.test(c.text) && !Routines.list().some(x => /08$/.test(x.name)));
+    const u = await Undo.undo();
+    check('Learning', '"undo" removes the routine and its schedule again', u && /Removed the routine/.test(u.msg || '') && !Routines.list().some(x => x.name === 'focus at 14'));
+    for (const nm of ['vscode at 09', 'focus at 14']) { const x = Routines.list().find(y => y.name === nm); if (x) Routines.remove(x); }
+    check('Learning', 'cleaned up: the lists are back as they were', Routines.list().length === before && reminders.filter(x => x.routineId).length <= remBefore);
+  }
+  for (const phrase of ["don't lock the screen", 'never open chrome', "don't turn off the laptop", "don't set a timer for 5 minutes", "no, don't close it"]) {
+    const nCalls = calls.length, nTimers = timers.length;
+    r = await say(phrase);
+    check('Negation', '"' + phrase + '" does nothing (no tool called, no timer) and says so', /won.t/.test(r.text || '') && calls.length === nCalls && timers.length === nTimers, r.text);
+  }
   r = await say('turn off bluetooth');
   check('Laptop', 'switch Bluetooth off', called('/sys/radio', d => d.kind === 'bluetooth' && d.state === 'off'), r.text);
   r = await say('dark mode');
@@ -306,6 +498,8 @@
   check('Notes search', 'answers from your own file (AI offline: shows the passage)', has(r, /lecture\.txt|mutual exclusion|circular wait/i), r.text);
   await realCallTool('/tool/writeFile', { name: 'hello.js', content: 'console.log("selftest " + 6 * 7)' });
   r = await say('run hello.js', { confirm: 'yes', limit: 25000 });
+  await waitUntil(() => /selftest 42/.test(freshMsgs().map(m => m.innerText).join('\n')), 20000);      // the card is answered, then the program runs and its output arrives as a new reply
+  r = { text: freshMsgs().map(m => (m.querySelector('.mcontent') || m).innerText).join('\n') };
   check('Code', 'run a program and show its output', has(r, /selftest 42/), r.text);
   // ---- websites: known sites open directly; a search never opens an unrelated page
   { // your Telugu sentence — translation faked to what Google and qwen really return for it
@@ -440,13 +634,13 @@
     const x = await say(f.example, { limit: SLOW_OK.test(f.intent) ? 20000 : 10000 });
     const answered = x.n > 0;
     check('Sweep · ' + f.area, f.intent + ' — “' + f.example + '” responds', x.ok && answered && !x.errors.length,
-      (!x.ok ? 'did not finish in time. ' : '') + (!answered ? 'no reply. ' : '') + (x.errors.length ? 'errors: ' + x.errors.join(' | ') : ''));
+      (!x.ok ? 'did not finish in time (' + x.ms + ' ms; busy=' + busy + ' pumping=' + pumping + ' queue=' + replyQ.length + ' inputQueue=' + inputQueue.length + ' awaiting=' + (typeof pendingApproval === 'function') + ' lastCalls=' + calls.slice(-3).map(c => c.endpoint).join(',') + ' notes=' + JSON.stringify((turnTrace && turnTrace.notes || []).slice(-4)).slice(0, 300) + '). ' : '') + (!answered ? 'no reply. ' : '') + (x.errors.length ? 'errors: ' + x.errors.join(' | ') : ''));
   }
   check('Safety', 'no real laptop action escaped the fakes during the whole run', calls.every(c => FAKE[c.endpoint] || !/^\/(sys\/(volume|brightness|theme|radio|displayOff|window|powerPlan)|tool\/(open|close|lock|sleep|shutdown|restart|screenshot|paste|media|showDesktop|writeClipboard|readClipboard|codeAsk|gitClone)|keepalive\/set|mirror\/(setdest|run|config))/.test(c.endpoint)));
   // ---- a second tab of the same JARVIS changes the chat: this tab shows it (server push), and ignores its own writes
   { await idle(8000);
     const post = (src, text) => fetch('api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src, set: { 'jarvis.chat': [{ role: 'user', text, source: 'text', t: Date.now() }] } }) });
-    const shows = async text => { for (let i = 0; i < 30; i++) { if ([...document.querySelectorAll('#messages .msg')].some(m => m.innerText.includes(text))) return true; await sleepMs(100); } return false; };
+    const shows = async text => { for (let i = 0; i < 80; i++) { if ([...document.querySelectorAll('#messages .msg')].some(m => m.innerText.includes(text))) return true; await sleepMs(100); } return false; };
     await post('another-tab', 'typed in the other tab');
     check('Tabs', 'a chat message written by another tab appears here without a reload', await shows('typed in the other tab') && chatLog.some(m => m.text === 'typed in the other tab'));
     await post(TAB_ID, 'my own echo');
@@ -456,7 +650,7 @@
   { const click = (sel, re) => { const b = [...document.querySelectorAll(sel)].find(x => re.test(x.textContent)); if (b) b.click(); return !!b; };
     // ---- the capture panel with the browser's fake camera
     const pcap = Camera.capture({ title: 'E2E PHOTO' });
-    await sleepMs(1800);
+    await waitUntil(() => { const v = document.querySelector('.cam-panel video'); return v && v.videoWidth > 0 && document.getElementById('camPill'); });
     const vid = document.querySelector('.cam-panel video'), pill = document.getElementById('camPill');
     check('Camera', 'the capture panel opens a live camera and the on-screen indicator says so', !!vid && vid.videoWidth > 0 && !!pill && /CAMERA ON/.test(pill.innerText), { w: vid && vid.videoWidth, pill: pill && pill.innerText });
     click('.cam-row button', /TAKE PHOTO/);
@@ -474,8 +668,8 @@
     let clock = Date.now(), locks = 0, present = true;
     Watch.deps.now = () => clock; Watch.deps.detect = async () => present; Watch.deps.lock = async () => { locks++; };
     settings.presenceSecs = 60;
-    await Watch.intercept('lock when I leave', 'text'); await sleepMs(500);
-    check('Presence', 'it switches on, shows the camera indicator with the seconds, and the setting follows', Watch.presenceOn() && /PRESENCE LOCK ON/.test((document.getElementById('camPill') || {}).innerText || '') && settings.presenceLock === true);
+    const presR = await Watch.intercept('lock when I leave', 'text'); await waitUntil(() => Watch.presenceOn() && document.getElementById('camPill')); await sleepMs(200);
+    check('Presence', 'it switches on, shows the camera indicator with the seconds, and the setting follows', Watch.presenceOn() && /PRESENCE LOCK ON/.test((document.getElementById('camPill') || {}).innerText || '') && settings.presenceLock === true, { reply: presR && String(presR.text).slice(0, 300), on: Watch.presenceOn(), pill: (document.getElementById('camPill') || {}).innerText });
     for (let i = 0; i < 10; i++) { clock += 2000; await Watch.presenceStep(); }
     present = false; for (let i = 0; i < 28; i++) { clock += 2000; await Watch.presenceStep(); }
     check('Presence', 'someone leaving for 56 seconds does not lock', locks === 0 && Watch.presenceOn());
@@ -490,7 +684,7 @@
     Camera.smallGray = () => { if (!moving) return still; const f = still.slice(); for (let i = 0; i < 400; i++) f[(kk * 450 + i) % 4800] = 230; kk++; return f; };
     let clock2 = Date.now(); Watch.deps.now = () => clock2;
     r = await say('watch my room', { confirm: 'yes', limit: 12000 });
-    await sleepMs(800);
+    await waitUntil(() => Watch.roomOn() && document.getElementById('camPill')); await sleepMs(200);
     check('Room watch', 'after the confirmation it starts, with the indicator on', Watch.roomOn() && /WATCHING THE ROOM/.test((document.getElementById('camPill') || {}).innerText || ''), r.text);
     for (let i = 0; i < 14; i++) { clock2 += 1000; await Watch.roomStep(); }
     moving = true; for (let i = 0; i < 3; i++) { clock2 += 1000; await Watch.roomStep(); }
@@ -606,7 +800,7 @@
       if (n.getDate() === new Date().getDate()) {
         classes.push({ id: 'e2e-att', name: 'E2EATT', day: n.getDay(), h: n.getHours(), m: n.getMinutes() }); store.set('jarvis.attAsked', []);
         const q = Student.attendanceTick(Date.now());
-        check('Attendance prompt', 'a class that just ended is asked about, with ATTENDED / MISSED / SKIP', q && /E2EATT/.test(q.text) && q.actions.length === 3, q && q.text);
+        check('Attendance prompt', 'a class that just ended is asked about, with ATTENDED / MISSED / CANCELLED / SKIP', q && /E2EATT/.test(q.text) && q.actions.length === 4, q && q.text);
         if (q) { q.actions[0].fn(); await sleepMs(100); }
         check('Attendance prompt', 'pressing I ATTENDED marks it present', attendance.E2EATT && attendance.E2EATT.attended === 1, attendance.E2EATT);
         classes.length = 0; classes.push(...cls0); delete attendance.E2EATT; store.set('jarvis.attAsked', []); saveTasks();

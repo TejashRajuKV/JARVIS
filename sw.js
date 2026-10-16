@@ -2,10 +2,11 @@
    Rules: same-origin GET files only â†’ network-first, cache as offline fallback; /api/* is NEVER cached; everything else
    (chat with the AI, laptop control) still needs the backend running on this machine. */
 'use strict';
-const VERSION = 'jarvis-v36';   // bump when the app shell changes (new fonts/styles), so old caches are dropped
+const VERSION = 'jarvis-v37';   // bump when the app shell changes (new fonts/styles), so old caches are dropped
 const SHELL = ['index.html', 'style.css', 'themes.css', 'ui.css', 'manifest.webmanifest',
-  'api/state.js', 'lock-client.js', 'vendor/qrcode.js',
-  'speechfix.js', 'places.js', 'decider.js', 'nlu.js', 'persona.js', 'lang.js', 'study.js', 'voice.js', 'triggers.js', 'undo.js', 'speech-stream.js', 'skillrouter.js', 'skills-page.js', 'scanmath.js', 'wavutil.js', 'stt-page.js', 'camera-page.js', 'watch-page.js', 'ttparse.js', 'assignparse.js', 'student-page.js', 'lifeparse.js', 'life-page.js', 'traceparse.js', 'dev-page.js', 'extras-page.js',
+  // NOT api/state.js: that is a full copy of your chats, memory and tasks, and the worker never answers /api/ from a cache anyway
+  'lock-client.js', 'vendor/qrcode.js',
+  'speechfix.js', 'places.js', 'decider.js', 'nlu.js', 'persona.js', 'lang.js', 'study.js', 'voice.js', 'triggers.js', 'undo.js', 'speech-stream.js', 'skillrouter.js', 'skills-page.js', 'cdnpins.js', 'scanmath.js', 'wavutil.js', 'stt-page.js', 'camera-page.js', 'watch-page.js', 'ttparse.js', 'assignparse.js', 'student-page.js', 'lifeparse.js', 'life-page.js', 'traceparse.js', 'dev-page.js', 'extras-page.js',
   'palette.js', 'codepanel.js', 'script.js', 'wizard.js', 'routines.js', 'agent.js',
   // added by the later commits (boot cinema, HUD, dashboard, transitions, face greeting, gestures, Qwen assist, thresholds)
   'thresholds.js', 'nlu-qwen.js', 'boot-cinema.js', 'hud-overlay.js', 'dashboard.js', 'learn.js', 'transitions.js', 'face-greet.js', 'gesture.js',
@@ -18,6 +19,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys()
     .then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k))))
+    .then(() => caches.open(VERSION)).then(c => c.keys().then(rs => Promise.all(rs.filter(r => new URL(r.url).pathname.startsWith('/api/')).map(r => c.delete(r)))))
     .then(() => self.clients.claim()));
 });
 
@@ -30,7 +32,7 @@ self.addEventListener('fetch', e => {
   // Network-first: edits to the app show up on the next load; the cache only answers when the backend is unreachable.
   e.respondWith(
     fetch(req).then(res => {
-      if (res && res.ok && res.type === 'basic') { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
+      if (res && res.ok && res.type === 'basic' && !url.pathname.startsWith('/api/')) { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true }).then(hit => hit || caches.match('index.html')))
   );

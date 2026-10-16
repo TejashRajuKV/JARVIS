@@ -113,6 +113,8 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
   // repeated within 30 s is sent once; and after a "429 too many requests" nothing is sent for a while (Retry-After,
   // at least 60 s) instead of hammering the service, which is what leaves the phone app unresponsive.
   const NTFY = (process.env.NTFY_URL || 'https://ntfy.sh').replace(/\/+$/, '');
+  // A self-hosted or protected ntfy topic: NTFY_TOKEN is sent as a Bearer token on every request (never logged, never shown). The public ntfy.sh needs none.
+  const ntfyHeaders = (h = {}) => (process.env.NTFY_TOKEN ? { ...h, Authorization: 'Bearer ' + process.env.NTFY_TOKEN } : h);
   let ntfyPausedUntil = 0, lastSend = 0, sendChain = Promise.resolve();
   const recentReplies = new Map();
   function ntfyPause(r) {
@@ -133,7 +135,7 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
       const gap = 1000 - (Date.now() - lastSend); if (gap > 0) await wait(gap);
       lastSend = Date.now();
       try {
-        const r = await fetch(NTFY + '/', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        const r = await fetch(NTFY + '/', { method: 'POST', headers: ntfyHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ topic, title, message, tags: ['jarvis', ...tags], priority }) });
         if (r.status === 429) ntfyPause(r);
         else if (!r.ok) log('phone push failed: HTTP', r.status);
@@ -157,7 +159,8 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
   const recentPhone = [];
   const unlockFails = [];
   const usedSteps = new Set(); // authenticator time-steps already used, so a code seen on the topic can't be replayed
-  const UNLOCK_MS = 15 * 6e4;
+  const UNLOCK_MS = 10 * 6e4;                       // how long one code keeps the phone unlocked (anyone watching the topic could send commands meanwhile)
+  const UNLOCK_MIN = Math.round(UNLOCK_MS / 6e4);
   let unlockedUntil = 0;
   let stream = null;
   const lastIds = {};
@@ -165,7 +168,7 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
     try {
       // The model picked in Settings (local or cloud), else the default local one.
       const model = (getState()['jarvis.settings'] || {}).model || DEFAULT_MODEL;
-      const out = await llm.complete({ model, temperature: 0.5, maxTokens: 300, timeoutMs: 90000,
+      const out = await llm.complete({ priority: 2, model, temperature: 0.5, maxTokens: 300, timeoutMs: 90000,
         system: 'You are J.A.R.V.I.S., replying to a message from your user\'s phone. Answer in at most 4 short sentences. You cannot perform actions on the laptop right now.',
         messages: [{ role: 'user', content: text }] });
       return out || null;
@@ -179,24 +182,35 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
     if (recentPhone.length >= limit) { if (recentPhone.length === limit) { recentPhone.push(now); await publish(topic, 'JARVIS', 'Too many messages — I’m ignoring new ones for a few minutes.'); } return; }
     recentPhone.push(now);
     // Security before execution: the topic is public, so commands only run after "unlock <6-digit code>" from
-    // the user's authenticator app, for 15 minutes (or until "lock"). The code itself never reaches the page.
+    // the user's authenticator app, for 10 minutes (or until "lock"). The code itself never reaches the page.
+    // STRICT MODE (Settings → Phone alerts): no unlock window at all — every command starts with its own fresh code ("482913 open chrome"), and a code works once.
     const auth = getConfig().phoneAuth;
     const say = msg => publish(topic, 'JARVIS', msg);
     // Accepts "unlock 482913", just "482913", or the code as Google Authenticator shows it ("482 913"), also "code: 482-913".
+    let strictOk = false;
+    if ((getState()['jarvis.settings'] || {}).phoneStrict === true) {
+      if (!auth || !auth.secret) return say('Set up the authenticator first: JARVIS Settings → Phone alerts → SET UP PHONE COMMANDS.');
+      const sm = /^(?:(?:unlock|code|otp|pin)\s*[:\-]?\s*)?(\d{3})[\s-]?(\d{3})(?:\s*[:,\-]\s*|\s+)(\S[\s\S]*)$/i.exec(text.replace(/\s+/g, ' ').trim());
+      if (!sm) return say('🔒 Strict mode is on: start EVERY command with a fresh 6-digit code from your authenticator, like “482913 open chrome”. (A code works once.)');
+      while (unlockFails.length && unlockFails[0] < now - 10 * 6e4) unlockFails.shift();
+      if (unlockFails.length >= 5) return say('Too many wrong codes — try again in 10 minutes.');
+      if (!phoneauth.verifyCode(auth.secret, sm[1] + sm[2], now, usedSteps)) { unlockFails.push(now); log('phone strict: wrong or used code'); return say('❌ That code didn’t work (each code is good once, and only for about 30 seconds). Send the NEWEST 6 digits with your command.'); }
+      unlockFails.length = 0; strictOk = true; text = sm[3].trim().slice(0, 500);
+    }
     const m6 = /^(?:(?:unlock|code|otp|pin)\s*[:\-]?\s*)?(\d{3})[\s-]?(\d{3})[.!]?$/i.exec(text.replace(/\s+/g, ' ').trim());
     const unlock = m6 ? [m6[0], m6[1] + m6[2]] : null;
-    if (unlock) {
+    if (unlock && !strictOk) {
       if (!auth || !auth.secret) return say('Set up the authenticator first: JARVIS Settings → Phone alerts → SET UP PHONE COMMANDS.');
       while (unlockFails.length && unlockFails[0] < now - 10 * 6e4) unlockFails.shift();
       if (unlockFails.length >= 5) return say('Too many wrong codes — try again in 10 minutes.');
       if (!phoneauth.verifyCode(auth.secret, unlock[1], now, usedSteps)) { unlockFails.push(now); log('phone unlock: wrong code'); return say('❌ That code didn’t match. Use the NEWEST 6 digits under "JARVIS" in Google Authenticator (they change every 30 seconds). If JARVIS isn’t in the app, add it first: laptop → JARVIS → Settings → Guided setup → PHONE → step 3.'); }
       unlockedUntil = now + UNLOCK_MS; unlockFails.length = 0;
-      log('phone unlocked for 15 min');
-      return say('🔓 Unlocked for 15 minutes. Send your commands — "lock" to lock again.');
+      log('phone unlocked for ' + UNLOCK_MIN + ' min');
+      return say('🔓 Unlocked for ' + UNLOCK_MIN + ' minutes. Send your commands — "lock" to lock again.');
     }
     if (/^lock$/i.test(text.trim())) { unlockedUntil = 0; log('phone locked'); return say('🔒 Locked.'); }
     if (!auth || !auth.secret) return say('Phone commands aren’t set up yet: JARVIS Settings → Phone alerts → SET UP PHONE COMMANDS.');
-    if (now > unlockedUntil) return say('🔒 Locked, so nobody else can control your laptop. Open Google Authenticator on this phone, find "JARVIS", and send the 6 digits it shows (e.g. 482913). Not added JARVIS to Google Authenticator yet? On the laptop: JARVIS → Settings → Guided setup → PHONE → step 3.');
+    if (!strictOk && now > unlockedUntil) return say('🔒 Locked, so nobody else can control your laptop. Open Google Authenticator on this phone, find "JARVIS", and send the 6 digits it shows (e.g. 482913). Not added JARVIS to Google Authenticator yet? On the laptop: JARVIS → Settings → Guided setup → PHONE → step 3.');
     log('phone message:', text.slice(0, 80), clients.size ? '→ tab' : '→ answered by the server (no tab open)');
     if (clients.size) return broadcast({ type: 'phone', id, text });
     // No JARVIS tab open: actions live in the page, so only questions can be answered from here.
@@ -212,7 +226,7 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
       if (!topic) { await wait(10000); continue; }
       const ctrl = new AbortController(); stream = { topic, ctrl };
       try {
-        const r = await fetch(`${NTFY}/${topic}/json` + (lastIds[topic] ? `?since=${lastIds[topic]}` : ''), { signal: ctrl.signal });
+        const r = await fetch(`${NTFY}/${topic}/json` + (lastIds[topic] ? `?since=${lastIds[topic]}` : ''), { signal: ctrl.signal, headers: ntfyHeaders() });
         if (r.status === 429) ntfyPause(r);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         log('listening for phone messages'); delay = 2000;
@@ -242,7 +256,7 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
   const fromLaptopPage = req => req.headers['sec-fetch-site'] === 'same-origin' && /^(localhost|127\.0\.0\.1):/.test(String(req.headers.host || ''));
   app.get('/api/phone/auth', (req, res) => {
     const a = getConfig().phoneAuth;
-    res.json({ configured: !!(a && a.secret), unlockedUntil: unlockedUntil > Date.now() ? unlockedUntil : 0 });
+    res.json({ configured: !!(a && a.secret), unlockedUntil: unlockedUntil > Date.now() ? unlockedUntil : 0, strict: (getState()['jarvis.settings'] || {}).phoneStrict === true, unlockMin: UNLOCK_MIN, token: !!process.env.NTFY_TOKEN });
   });
   app.post('/api/phone/auth/setup', (req, res) => {
     if (!fromLaptopPage(req)) return res.status(403).json({ error: 'Set this up from JARVIS on the laptop.' });

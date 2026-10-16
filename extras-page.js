@@ -277,7 +277,9 @@ const Extras = (() => {
   // A yes/no card that waits for the answer (the turn is released while it waits, as the planner does).
   async function confirmCard(text, yes) {
     if (typeof busy !== 'undefined') { busy = false; if (typeof idleState === 'function') idleState(); }
-    const ok = await new Promise(resolve => jarvisSay({ text, intent: 'IMAGE', noPersona: true, confirm: { yes, no: 'NO', onConfirm: () => resolve(true), onCancel: () => resolve(false) } }));
+    const show = answer => jarvisSay({ text, intent: 'IMAGE', noPersona: true, confirm: { yes, no: 'NO', onConfirm: () => answer(true), onCancel: () => answer(false) } });
+    // the page's "awaiting an answer" state (script.js): typed yes/no answers it, other input waits, no answer for 10 minutes is "no"; tests without the page fall back to a plain promise
+    const ok = typeof awaitAnswer === 'function' ? await awaitAnswer(show) : await new Promise(show);
     if (typeof busy !== 'undefined') { if (busy) await new Promise(r => { const iv = setInterval(() => { if (!busy) { clearInterval(iv); r(); } }, 50); }); busy = true; }
     return ok;
   }
@@ -762,7 +764,9 @@ const Extras = (() => {
     // camera, watchers and student tools live in their own files (camera-page.js, watch-page.js, student-page.js); each answers only explicit wording
     for (const mod of [typeof Student !== 'undefined' && Student, typeof Life !== 'undefined' && Life, typeof Dev !== 'undefined' && Dev, typeof Camera !== 'undefined' && Camera, typeof Watch !== 'undefined' && Watch]) {      // Student first: during an exam every message is an answer
       if (!mod) continue;
-      const r = await mod.intercept(t, source);
+      // One module that throws (a bug, a missing page element) must not take the whole turn down: log it and let the next module and the normal handling answer.
+      let r = null;
+      try { r = await mod.intercept(t, source); } catch (e) { try { if (typeof log === 'function') log('warn', 'a tool module failed on "' + t.slice(0, 40) + '": ' + (e && e.message || e)); } catch (e2) { /* logging is optional */ } continue; }
       if (r) return r;
     }
     const ar = matchArchive(t);

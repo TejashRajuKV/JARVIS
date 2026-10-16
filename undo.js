@@ -16,6 +16,18 @@ function createUndo({ now = () => Date.now(), ttl = 30 * 60e3, max = 40 } = {}) 
     while (stack.length > max) stack.shift();
     if (listener) listener('push', label);
   }
+  // Puts back actions from an earlier page session (the server keeps how to reverse file actions, undolog.js), keeping their ORIGINAL times so the 30
+  // minutes still count from when they happened. Quiet: no "Undo" chip pops up. → how many were taken.
+  function restore(items) {
+    const t = now(); let n = 0;
+    for (const it of items || []) {
+      if (!it || typeof it.fn !== 'function' || !Number.isFinite(it.t) || t - it.t > ttl || it.t > t + 60e3) continue;
+      stack.push({ label: String(it.label || 'that'), fn: it.fn, t: it.t, run: null }); n++;
+    }
+    stack.sort((a, b) => a.t - b.t);
+    while (stack.length > max) stack.shift();
+    return n;
+  }
   // Runs the newest entry → null when there is nothing, else { label, msg } or { label, error }.
   async function undo() {
     fresh();
@@ -49,7 +61,7 @@ function createUndo({ now = () => Date.now(), ttl = 30 * 60e3, max = 40 } = {}) 
   const size = () => { fresh(); return stack.length; };
   const peek = () => { fresh(); return stack.length ? stack[stack.length - 1].label : null; };
   const clear = () => { stack.length = 0; };
-  return { push, undo, undoRun, setRun, countRun, lastRun, size, peek, clear, onChange: fn => { listener = fn; } };
+  return { push, restore, undo, undoRun, setRun, countRun, lastRun, size, peek, clear, onChange: fn => { listener = fn; } };
 }
 
 const Undo = createUndo();

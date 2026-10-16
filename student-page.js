@@ -2,7 +2,7 @@
 /* Student tools, chat side: timetable import, "can I bunk tomorrow?", lecture mode and exam mode. Explicit wording only (see match()); the page's own
    data (classes, attendance, flashcards, exam history) is changed here, and every change shows first and has one Undo.
      Timetable   "import my timetable": from a photo (OCR word boxes → ttparse.js), a calendar file (.ics) or pasted lines. Always shown for a yes/no first.
-     Bunk        "can I bunk tomorrow?": tomorrow's classes from the timetable, the 75% maths per subject from your attendance.
+     Bunk        "can I bunk tomorrow?": tomorrow's classes from the timetable, the attendance-target maths (75% unless you change it) per subject from your attendance.
      Lecture     "start lecture mode for DBMS": the browser's speech recogniser listens until you stop it; the transcript is appended to
                  ~/jarvis/Notes every 3 minutes; at the end the server turns it into notes (studyserver.js). Needs the tab visible and the internet.
      Exam        "start an exam on dbms_notes.md": questions from a note, a countdown, answers typed or spoken, grading at the end by the viva grader
@@ -13,6 +13,7 @@ const Student = (() => {
   const plain = s => String(s || '').replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
   const pl = (n, one, many) => n + ' ' + (n === 1 ? one : many || one + 's');
   const PHONE_NO = 'I only use the microphone for requests made at the laptop, so I won’t do that from a phone message. Ask me again from JARVIS on the laptop.';
+  const attTarget = () => (typeof attMin === 'function' ? attMin() : 75);      // the attendance percentage your college asks for (script.js: attMin)
   const ask = (text, yes) => (typeof Extras !== 'undefined' && Extras.confirmCard ? Extras.confirmCard(text, yes) : Promise.resolve(false));
   const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -26,15 +27,21 @@ const Student = (() => {
   const EXAM_STOP = /^(?:please\s+)?(?:stop|end|finish|quit|exit|cancel)\s+(?:the\s+|my\s+)?(?:mock\s+|practice\s+)?(?:exam|test)(?:\s+mode)?\s*[.!]*$/i;
   const EXAM_HISTORY = /^(?:how\s+did\s+(?:my|the)\s+(?:mock\s+|practice\s+)?exams?\s+go|(?:show|list|what\s+(?:are|is))\s+(?:me\s+)?(?:my\s+)?(?:past\s+|previous\s+|recent\s+)?exam\s+(?:history|results|scores?)|exam\s+history|my\s+exam\s+(?:results|scores|history))\s*[?.!]*$/i;
   const FIT = /^(?:please\s+)?(?:fit|schedule|arrange|slot|put|plan|place)\s+(?:my\s+|the\s+)?(?:(.+?)\s+)?(?:study\s+(?:plan|sessions?)|revision(?:\s+plan)?)\s+(?:into|around|in|to|with|on|onto)\s+(?:my\s+)?(?:time\s*table|classes|class\s+schedule|free\s+(?:time|slots|periods|gaps?)|gaps?)(?:\s+(?:with|using|in)\s+(\d{2,3})[\s-]*(?:min(?:ute)?s?)\s+(?:sessions?|blocks?|slots?))?\s*[.!]*$|^(?:please\s+)?when\s+(?:can|should)\s+i\s+study\s*(?:this\s+week)?\s*[?.!]*$|^(?:please\s+)?(?:show|find|list|what\s+are)\s+(?:me\s+)?(?:my\s+)?free\s+(?:slots|periods|gaps)(?:\s+(?:this\s+week|this\s+week'?s|for\s+studying))?\s*[?.!]*$/i;
+  const ATT_TARGET = /^(?:please\s+)?(?:(?:set|change|make)\s+(?:my\s+)?(?:attendance|attendance\s+(?:target|requirement|limit|minimum))\s+(?:target\s+|requirement\s+|limit\s+|minimum\s+)?(?:(?:to|at|as)\s+)?(\d{2})\s*(?:%|percent)?|my\s+(?:college|university|school|department)\s+(?:needs|requires|wants|asks\s+for)\s+(\d{2})\s*(?:%|percent)\s*attendance|(?:attendance|minimum\s+attendance)\s+(?:target\s+)?(?:is|should\s+be)\s+(\d{2})\s*(?:%|percent))\s*[.!]*$/i;
   const ATT_SW = /^(?:please\s+)?(?:(stop|don'?t|do\s+not)\s+(?:asking|ask)\s+(?:me\s+)?(?:about\s+)?attendance|(?:ask|prompt)\s+me\s+(?:about\s+)?attendance\s+after\s+(?:each\s+|every\s+)?class|(turn\s+off|disable)\s+attendance\s+(?:prompts?|questions?)|(?:turn\s+on|enable)\s+attendance\s+(prompts?|questions?))\s*[.!]*$/i;
   const ASSIGN = /^(?:please\s+)?(?:add|read|import|log|capture|take|get)\s+(?:my\s+|an?\s+|the\s+|this\s+|new\s+)?(?:assignment|homework|home\s+work|tutorial\s+sheet|worksheet|lab\s+record)(?:\s+(?:sheet|details|question\s+paper))?\s+(?:from|using|via|off)\s+(?:a\s+|an\s+|the\s+|my\s+)?(photo|picture|image|pic|camera|(?:pdf|file|document)\s+.+|.+\.(?:pdf|txt|md|docx?))\s*[.!]*$/i;
+  // "my college writes dates month first" / "read dates day first": how 10/11/2026 in an assignment sheet is read. Day first unless you say otherwise.
+  const DATE_ORDER = /^(?:please\s+)?(?:(?:my\s+(?:college|university|school|teacher)\s+)?(?:writes|uses)\s+dates\s+(?:as\s+|in\s+)?|(?:read|use|treat|set)\s+(?:the\s+)?dates?\s+(?:as\s+|in\s+)?|dates\s+(?:are\s+|in\s+))(month[\s-]first|day[\s-]first|mm\/dd(?:\/yy(?:yy)?)?|dd\/mm(?:\/yy(?:yy)?)?)\s*(?:format|order)?\s*[.!]*$/i;
   const OFFSTT = /^(?:please\s+)?(?:(turn\s+on|enable|switch\s+on|use)|(turn\s+off|disable|switch\s+off|stop\s+using))\s+(?:the\s+)?offline\s+(?:speech|transcription|whisper|speech[\s-]to[\s-]text)(?:\s+for\s+(?:my\s+)?lectures?)?\s*[.!]*$|^(?:is\s+)?(?:offline\s+(?:speech|whisper|transcription)|whisper)\s+(?:installed|ready|working|available|set\s*up)\s*\??$|^offline\s+(?:speech|whisper)\s+status\s*$/i;
   function match(t) {
     t = String(t || '').trim();
     let m;
+    if ((m = t.match(DATE_ORDER))) return { kind: 'dateorder', order: /^(?:month|mm)/i.test(m[1]) ? 'mdy' : 'dmy' };
     if ((m = t.match(OFFSTT))) return { kind: 'offstt', on: m[1] ? true : m[2] ? false : undefined };
     if ((m = t.match(ASSIGN))) { const s = m[1].trim(); return /^(?:photo|picture|image|pic|camera)$/i.test(s) ? { kind: 'assign', how: 'photo' } : { kind: 'assign', how: 'file', file: s.replace(/^(?:pdf|file|document)\s+/i, '').replace(/^["']|["']$/g, '') }; }
-    if (typeof Study !== 'undefined' && Study.parseEndSem) { const es = Study.parseEndSem(t); if (es) return { kind: 'endsem', ...es }; }
+    if (typeof Study !== 'undefined' && Study.parseGradeCuts) { const gc = Study.parseGradeCuts(t); if (gc) return { kind: 'gradecuts', cuts: gc }; }
+    if (typeof Study !== 'undefined' && Study.parseEndSem) { const es = Study.parseEndSem(t, myCuts()); if (es) return { kind: 'endsem', ...es }; }
+    if ((m = t.match(ATT_TARGET))) return { kind: 'atttarget', pct: +(m[1] || m[2] || m[3]) };
     if ((m = t.match(ATT_SW))) return { kind: 'attsw', on: !(m[1] || m[2]) };
     if ((m = t.match(FIT))) return { kind: 'fit', name: (m[1] || '').replace(/^(?:my|the)\s+/i, '').trim(), min: m[2] ? +m[2] : 0 };
     if ((m = t.match(BUNK))) return { kind: 'bunk', day: (m[1] || m[2] || '').toLowerCase().replace(/^the\s+/, '') };
@@ -55,7 +62,7 @@ const Student = (() => {
   const looksLikeFile = s => /\.(?:md|markdown|txt|pdf|docx?|pptx?)$/i.test(s) || /^[\w()-]+[_-][\w()_-]+$/.test(s);
 
   /* ================= timetable import ================= */
-  const subjectKey = n => String(n || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const subjectKey = n => Study.subjectKey(n);      // study.js: "DBMS" = "Database Management Systems"
   // the same name rule the attendance tracker uses, so "dbms" and "DBMS" become one subject
   function subjectName(raw) {
     const said = subjectKey(raw);
@@ -68,7 +75,10 @@ const Student = (() => {
     const existing = new Set(classes.map(c => c.day + '|' + c.h + ':' + c.m + '|' + subjectKey(c.name)));
     const fresh = entries.filter(e => !existing.has(e.day + '|' + e.h + ':' + e.m + '|' + subjectKey(e.name)));
     const dupes = entries.length - fresh.length;
-    const go = await ask('I read **' + pl(entries.length, 'class', 'classes') + '** from ' + label + ':\n' + lines.join('\n') + '\n\n' + (dupes ? pl(dupes, 'of these is', 'of these are') + ' already in your timetable and will be skipped. ' : '') + (skippedInfo || '') + 'Add **' + pl(fresh.length, 'class', 'classes') + '** to your timetable? Nothing you already have is changed, and **“undo”** takes the new ones out again.', 'YES, IMPORT');
+    // clashes: among the new classes themselves, and between a new class and one you already have (the same subject at the same time is a duplicate, handled above)
+    const clash = TtParse.clashes([...classes, ...fresh]).filter(c => fresh.includes(c.a) || fresh.includes(c.b));
+    const clashNote = clash.length ? '⚠ **' + pl(clash.length, 'clash') + ':** ' + clash.slice(0, 4).map(TtParse.clashText).join('; ') + (clash.length > 4 ? '…' : '') + '. They are added anyway — fix the times later if one is wrong.\n\n' : '';
+    const go = await ask('I read **' + pl(entries.length, 'class', 'classes') + '** from ' + label + ':\n' + lines.join('\n') + '\n\n' + clashNote + (dupes ? pl(dupes, 'of these is', 'of these are') + ' already in your timetable and will be skipped. ' : '') + (skippedInfo || '') + 'Add **' + pl(fresh.length, 'class', 'classes') + '** to your timetable? Nothing you already have is changed, and **“undo”** takes the new ones out again.', 'YES, IMPORT');
     if (!go) return say('Okay, I did not change your timetable.');
     if (!fresh.length) return say('Everything in there is already in your timetable, so nothing was added.');
     const batch = rid(), added = [];
@@ -165,15 +175,15 @@ const Student = (() => {
     const rows = [...bySubject.values()].map(s => {
       const key = Object.keys(att).find(k => subjectKey(k) === subjectKey(s.name));
       if (!key || !att[key].held) return { s, none: true };
-      const e = att[key], afterHeld = e.held + s.n, ok = e.attended * 100 >= 75 * afterHeld;
+      const e = att[key], afterHeld = e.held + s.n, ok = e.attended * 100 >= attTarget() * afterHeld;
       return { s, e, afterHeld, ok, now: Study.attendancePct(e.held, e.attended), after: Math.round(1000 * e.attended / afterHeld) / 10 };
     });
     const lines = rows.map(r => r.none ? '- **' + r.s.name + '** (' + pl(r.s.n, 'class', 'classes') + ') — no attendance recorded yet, so I can’t tell.'
-      : '- **' + r.s.name + '** (' + pl(r.s.n, 'class', 'classes') + ') — now **' + r.now + '%** (' + r.e.attended + '/' + r.e.held + '). Missing ' + (r.s.n === 1 ? 'it' : 'them') + ' → **' + r.after + '%** (' + r.e.attended + '/' + r.afterHeld + ') ' + (r.ok ? '✓ still 75% or more' : '⚠ below 75%'));
+      : '- **' + r.s.name + '** (' + pl(r.s.n, 'class', 'classes') + ') — now **' + r.now + '%** (' + r.e.attended + '/' + r.e.held + '). Missing ' + (r.s.n === 1 ? 'it' : 'them') + ' → **' + r.after + '%** (' + r.e.attended + '/' + r.afterHeld + ') ' + (r.ok ? '✓ still ' + attTarget() + '% or more' : '⚠ below ' + attTarget() + '%'));
     const risky = rows.filter(r => !r.none && !r.ok), unknown = rows.filter(r => r.none);
-    const verdict = risky.length ? '**Not all of them.** ' + risky.map(r => r.s.name).join(', ') + ' would fall under 75%, so go to ' + (risky.length === 1 ? 'that class' : 'those') + (rows.length > risky.length ? ' and skip the rest.' : '.')
-      : unknown.length ? '**I can’t be sure:** ' + unknown.map(r => r.s.name).join(', ') + ' ' + (unknown.length === 1 ? 'has' : 'have') + ' no attendance recorded. The others stay at 75% or more.'
-        : '**Yes, you can skip ' + label + ':** every subject stays at 75% or more.';
+    const verdict = risky.length ? '**Not all of them.** ' + risky.map(r => r.s.name).join(', ') + ' would fall under ' + attTarget() + '%, so go to ' + (risky.length === 1 ? 'that class' : 'those') + (rows.length > risky.length ? ' and skip the rest.' : '.')
+      : unknown.length ? '**I can’t be sure:** ' + unknown.map(r => r.s.name).join(', ') + ' ' + (unknown.length === 1 ? 'has' : 'have') + ' no attendance recorded. The others stay at ' + attTarget() + '% or more.'
+        : '**Yes, you can skip ' + label + ':** every subject stays at ' + attTarget() + '% or more.';
     return say('**' + (label === 'today' || label === 'tomorrow' ? label.charAt(0).toUpperCase() + label.slice(1) : label) + ' (' + DAYS[day].slice(0, 3) + ')** you have ' + pl(todays.length, 'class', 'classes') + ':\n' + lines.join('\n') + '\n\n' + verdict + '\n\n*Attendance also depends on your college’s own count, so treat this as a guide.*',
       { speak: plain(verdict) });
   }
@@ -195,7 +205,22 @@ const Student = (() => {
       return 'Un-marked ' + subject + ' for today.';
     });
     const pct = Study.attendancePct(e.held, e.attended);
-    return say('✓ **' + subject + '** marked **' + (present ? 'present' : 'absent') + '** — now **' + pct + '%** (' + e.attended + '/' + e.held + ')' + (pct < 75 ? ' ⚠ below 75%. Attend ' + pl(Study.neededToReach(e.held, e.attended, 75), 'class', 'classes') + ' in a row to get back.' : ', ' + pl(Study.bunkable(e.held, e.attended, 75), 'bunk') + ' still safe.') + ' Say **“undo”** to take it back.', { speak: subject + (present ? ' present.' : ' absent.'), intent: 'ATTENDANCE_MARK' });
+    return say('✓ **' + subject + '** marked **' + (present ? 'present' : 'absent') + '** — now **' + pct + '%** (' + e.attended + '/' + e.held + ')' + (pct < attTarget() ? ' ⚠ below ' + attTarget() + '%. Attend ' + pl(Study.neededToReach(e.held, e.attended, attTarget()), 'class', 'classes') + ' in a row to get back.' : ', ' + pl(Study.bunkable(e.held, e.attended, attTarget()), 'bunk') + ' still safe.') + ' Say **“undo”** to take it back.', { speak: subject + (present ? ' present.' : ' absent.'), intent: 'ATTENDANCE_MARK' });
+  }
+  // "The class was cancelled": it is neither attended nor missed, so the counts stay as they are; a 'c' entry in the log only says "this slot is dealt with today", so it is not asked about again.
+  function cancelAttendance(c, when) {
+    const subject = subjectName(c.name);
+    const e = attendance[subject] || (attendance[subject] = { held: 0, attended: 0, log: [] });
+    const d = Study.ymd(when || new Date());
+    e.log.push({ d, s: 'c' }); if (e.log.length > 400) e.log.shift();
+    saveTasks();
+    if (typeof Undo !== 'undefined') Undo.push('marked ' + subject + ' cancelled', () => {
+      const cur = attendance[subject]; const i = cur ? cur.log.map(x => x.d + x.s).lastIndexOf(d + 'c') : -1;
+      if (i < 0) return 'That entry is already gone.';
+      cur.log.splice(i, 1); saveTasks(); return 'Okay — ' + subject + ' is no longer marked cancelled.';
+    });
+    const pct = Study.attendancePct(e.held, e.attended);
+    return say('✓ **' + subject + '** marked **cancelled** — it does not count for or against you' + (e.held ? ' (still **' + pct + '%**, ' + e.attended + '/' + e.held + ')' : '') + '. Say **“undo”** to take it back.');
   }
   function attendanceTick(now) {
     now = now || Date.now();
@@ -212,11 +237,20 @@ const Student = (() => {
       const reply = say('📚 **' + c.name + '** (' + t + ') is over. Did you attend?', { noTTS: true, actions: [
         { label: 'I ATTENDED', fn: () => jarvisSay(markAttendance(c, true, new Date(now))) },
         { label: 'I MISSED IT', fn: () => jarvisSay(markAttendance(c, false, new Date(now))) },
+        { label: 'CLASS CANCELLED', fn: () => jarvisSay(cancelAttendance(c, new Date(now))) },
         { label: 'SKIP', fn: () => jarvisSay(say('Okay, I did not mark ' + c.name + '. Say **“mark ' + c.name + ' present”** later if you want.')) }] });
       if (typeof notify === 'function') notify('Class over', 'Did you attend ' + c.name + '?');
       jarvisSay(reply);
       return reply;
     } catch (e) { return null; }
+  }
+  function attendanceTarget(pct) {
+    if (!(pct >= 40 && pct <= 95)) return say('An attendance target has to be between 40% and 95%. Say it like **“my college needs 80% attendance”**.');
+    if (typeof settings === 'undefined') return say('I could not change that setting here.');
+    const before = attTarget(); settings.attendanceMin = pct; if (typeof saveSettings === 'function') saveSettings();
+    try { const sel = document.getElementById('attendanceMinSel'); if (sel) sel.value = String(pct); if (typeof renderTasks === 'function') renderTasks(); } catch (e) {}
+    if (typeof Undo !== 'undefined') Undo.push('changed the attendance target', () => { settings.attendanceMin = before; if (typeof saveSettings === 'function') saveSettings(); try { const sel = document.getElementById('attendanceMinSel'); if (sel) sel.value = String(before); if (typeof renderTasks === 'function') renderTasks(); } catch (e) {} return 'The attendance target is back to ' + before + '%.'; });
+    return say('✓ Attendance target set to **' + pct + '%**. Bunks, warnings and “can I bunk tomorrow?” now use ' + pct + '%. Say **“undo”** to go back to ' + before + '%.', { speak: 'Attendance target ' + pct + ' percent.' });
   }
   function attendanceSwitch(on) {
     if (typeof settings === 'undefined') return say('I could not change that setting here.');
@@ -281,7 +315,7 @@ const Student = (() => {
     }
     if (text.trim().length < 15) return say('I could not read enough text from ' + from + ' to find an assignment.');
     const subjects = [...new Set([...Object.keys(typeof attendance !== 'undefined' ? attendance : {}), ...(typeof classes !== 'undefined' ? classes.map(c => c.name) : [])])];
-    const a = AssignParse.parseAssignment(text, { now: Date.now(), subjects });
+    const a = AssignParse.parseAssignment(text, { now: Date.now(), subjects, monthFirst: typeof settings !== 'undefined' && settings.dateOrder === 'mdy' });
     const title = a.title || 'Assignment';
     const dueTxt = a.due ? new Date(a.due).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '';
     const tasks = a.questions.map((q, i) => (a.subject || title).slice(0, 30) + ' — Q' + (i + 1) + ': ' + q.slice(0, 80));
@@ -297,14 +331,24 @@ const Student = (() => {
   }
 
   /* ================= what do I need in the end-sem? ================= */
+  // The college's grade scale (Settings value gradeCuts, set by "my grade cutoffs are O 85, A+ 75 …"); anything not set keeps the usual cut-offs.
+  const myCuts = () => (typeof Study !== 'undefined' && Study.gradeCuts ? Study.gradeCuts(typeof settings !== 'undefined' ? settings.gradeCuts : null) : null);
+  function gradeCutsSet(cuts) {
+    if (typeof settings === 'undefined') return say('I could not save that here.');
+    const before = settings.gradeCuts || null;
+    settings.gradeCuts = Object.assign({}, before || {}, cuts); if (typeof saveSettings === 'function') saveSettings();
+    if (typeof Undo !== 'undefined') Undo.push('changed the grade cut-offs', () => { settings.gradeCuts = before; if (typeof saveSettings === 'function') saveSettings(); return before ? 'Your grade cut-offs are back to what they were.' : 'Back to the usual grade cut-offs.'; });
+    const all = Study.gradeCuts(settings.gradeCuts);
+    return say('✓ Saved your grade scale: ' + Object.entries(all).map(([g, p]) => '**' + g + '** ' + p + '%').join(' · ') + '. “What do I need in the end-sem for an A?” now uses it. Say **“undo”** to go back.');
+  }
   function endSem(m) {
     const r = Study.endSemNeeded(m);
     if (r.error) return say(r.error);
     const head = 'With **' + m.internal + '/' + m.internalMax + '** in internals (' + r.internalPct + '%) and an end-sem out of **' + r.endMax + '**, to reach **' + m.target + '** overall (' + r.targetPct + '% of ' + r.total + ' = ' + Math.ceil(r.targetPct * r.total / 100) + ' marks)';
     if (r.already) return say(head + ': **you already have it** from the internals alone. Even 0 in the end-sem is enough on the total. *(Many colleges also need a minimum in the end-sem paper itself, so check yours.)*', { speak: 'You already have enough from internals.' });
     if (!r.possible) return say(head + ': you would need **' + r.needed + '/' + r.endMax + '**, which is more than the paper is worth, so **it is out of reach**. The best you can get is ' + Math.round(1000 * (m.internal + r.endMax) / r.total) / 10 + '%.', { speak: 'That target is out of reach.' });
-    const lower = Object.entries(Study.GRADE_CUTS).filter(([, p]) => p < r.targetPct).slice(0, 2).map(([g, p]) => { const q = Study.endSemNeeded({ internal: m.internal, internalMax: m.internalMax, endMax: r.endMax, targetPct: p }); return g + ' (' + p + '%) needs ' + q.needed; });
-    return say(head + ', you need **' + r.needed + ' out of ' + r.endMax + '** in the end-sem (' + Math.round(1000 * r.needed / r.endMax) / 10 + '%).' + (lower.length ? '\n\nFor comparison: ' + lower.join(', ') + '.' : '') + '\n\n*Grade cut-offs differ between colleges; I used 90/80/70/60/55/50/40. Check your own rules.*', { speak: 'You need ' + r.needed + ' out of ' + r.endMax + ' in the end sem.' });
+    const lower = Object.entries(myCuts() || Study.GRADE_CUTS).filter(([, p]) => p < r.targetPct).slice(0, 2).map(([g, p]) => { const q = Study.endSemNeeded({ internal: m.internal, internalMax: m.internalMax, endMax: r.endMax, targetPct: p }); return g + ' (' + p + '%) needs ' + q.needed; });
+    return say(head + ', you need **' + r.needed + ' out of ' + r.endMax + '** in the end-sem (' + Math.round(1000 * r.needed / r.endMax) / 10 + '%).' + (lower.length ? '\n\nFor comparison: ' + lower.join(', ') + '.' : '') + '\n\n' + (typeof settings !== 'undefined' && settings.gradeCuts ? '*I used your grade scale (' + Object.entries(Study.gradeCuts(settings.gradeCuts)).map(e => e[0] + ' ' + e[1]).join(', ') + '). Say “my grade cutoffs are …” to change it.*' : '*Grade cut-offs differ between colleges; I used 90/80/70/60/55/50/40. Tell me yours once — “my grade cutoffs are O 85, A+ 75, A 65, B+ 55, B 50, C 45, P 40” — and I will use them.*'), { speak: 'You need ' + r.needed + ' out of ' + r.endMax + ' in the end sem.' });
   }
 
   /* ================= offline speech (Whisper) switch / status ================= */
@@ -537,7 +581,15 @@ const Student = (() => {
       case 'offstt': return offlineSpeech(m);
       case 'assign': return assignment(m, source);
       case 'endsem': return endSem(m);
+      case 'gradecuts': return gradeCutsSet(m.cuts);
+      case 'dateorder': {
+        if (typeof settings === 'undefined') return say('I could not save that here.');
+        const before = settings.dateOrder || 'dmy'; settings.dateOrder = m.order; if (typeof saveSettings === 'function') saveSettings();
+        if (typeof Undo !== 'undefined') Undo.push('changed the date order', () => { settings.dateOrder = before; if (typeof saveSettings === 'function') saveSettings(); return 'Dates are read ' + (before === 'mdy' ? 'month first' : 'day first') + ' again.'; });
+        return say(m.order === 'mdy' ? '✓ Dates like **10/11/2026** in an assignment sheet will be read as **11 October** (month first). “Undo” goes back.' : '✓ Dates like **10/11/2026** in an assignment sheet will be read as **10 November** (day first, the usual). “Undo” goes back.');
+      }
       case 'attsw': return attendanceSwitch(m.on);
+      case 'atttarget': return attendanceTarget(m.pct);
       case 'fit': return fitStudy({ ...m, raw: t });
       case 'bunk': return bunk(m.day);
       case 'tt': return timetable(m, source);
@@ -549,6 +601,6 @@ const Student = (() => {
     }
     return null;
   }
-  return { intercept, match, attendanceTick, markAttendance, fitStudy, endSem, assignment, active: () => !!E, lectureActive: () => !!L, get _E() { return E; }, get _L() { return L; }, importEntries, bunk, examHistory, lectureStatus, subjectName };
+  return { intercept, match, attendanceTick, markAttendance, cancelAttendance, fitStudy, endSem, assignment, active: () => !!E, lectureActive: () => !!L, get _E() { return E; }, get _L() { return L; }, importEntries, bunk, examHistory, lectureStatus, subjectName };
 })();
 if (typeof module !== 'undefined') module.exports = Student;

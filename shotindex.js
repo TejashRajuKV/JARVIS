@@ -67,6 +67,8 @@ function createShotIndex({ SANDBOX, ocr, folders = () => [], now = Date.now, sta
     return running;
   }
   // query words → [{ path, name, mtime, snippet, score }], best first (more of the words, then newer). `from`/`to` limit by file date.
+  // "invoices" should find a picture that says "invoice", "errors" → "error", "deploying" → "deploy": a word also matches its plain form (plural / -ing / -ed).
+  const variants = w => { const v = [w]; if (w.length > 4 && /ies$/.test(w)) v.push(w.slice(0, -3) + 'y'); const b = w.replace(/(ing|ed|es|s)$/, ''); if (b !== w && b.length >= 3) v.push(b); if (/(ing|ed)$/.test(w) && b.length >= 3) v.push(b + 'e'); return v; };
   function search(q, { limit = 8, from = 0, to = Infinity } = {}) {
     const squash = x => String(x).toLowerCase().replace(/[-’']/g, ''), words = [...new Set(tokens(q).map(squash))].filter(Boolean); if (!words.length) return { error: 'Tell me a word or two that is in the picture.' };
     const phraseQ = squash(q).replace(/[^a-z0-9@._+# ]+/g, ' ').split(/\s+/).filter(Boolean); while (phraseQ.length && STOP.has(phraseQ[0])) phraseQ.shift(); while (phraseQ.length && STOP.has(phraseQ[phraseQ.length - 1])) phraseQ.pop();
@@ -75,10 +77,11 @@ function createShotIndex({ SANDBOX, ocr, folders = () => [], now = Date.now, sta
     for (const [p, r] of Object.entries(load().files)) {
       if (!r.t || r.m < from || r.m > to) continue;
       const low = squash(r.t + ' ' + path.basename(p)).replace(/[^a-z0-9@._+# ]+/g, ' ').replace(/\s+/g, ' ');
-      let hit = 0; for (const w of words) if (low.includes(w)) hit++;
+      let hit = 0; for (const w of words) if (variants(w).some(x => low.includes(x))) hit++;
       if (!hit) continue;
       const phrase = phraseStr && low.includes(phraseStr) ? 1 : 0;
-      const at = Math.max(0, low.indexOf(words.find(w => low.includes(w))) - 50);
+      const firstWord = words.find(w => variants(w).some(x => low.includes(x))), firstVar = variants(firstWord).find(x => low.includes(x));
+      const at = Math.max(0, low.indexOf(firstVar) - 50);
       out.push({ path: p, name: path.basename(p), mtime: r.m, score: hit / words.length + phrase * 0.5, hits: hit, snippet: (at ? '…' : '') + r.t.slice(at, at + 160) + (at + 160 < r.t.length ? '…' : '') });
     }
     out.sort((a, b) => b.score - a.score || b.mtime - a.mtime);

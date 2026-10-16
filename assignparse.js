@@ -15,15 +15,17 @@ const AssignParse = (() => {
   const mkDate = (y, m, d) => { const t = new Date(y, m, d); return t.getFullYear() === y && t.getMonth() === m && t.getDate() === d ? t.getTime() : null; };
 
   // One date inside a piece of text → { at (start of that day), text, assumed? } or null
-  function findDate(text, now) {
-    const t = String(text);
+  // Numeric dates are day first (15/10/2026) unless the college writes them month first (10/15/2026): then pass { monthFirst: true } or say it once in chat.
+  let MONTH_FIRST = false;
+  function findDate(text, now, opts) {
+    const t = String(text), monthFirst = opts && opts.monthFirst !== undefined ? !!opts.monthFirst : MONTH_FIRST;
     let m;
-    // 15/10/2026 · 15-10-26 · 15.10.2026   (day first)
+    // 15/10/2026 · 15-10-26 · 15.10.2026   (day first)  ·  10/15/2026 (month first)
     if ((m = t.match(/(?<![\d/.-])(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4}|\d{2})(?![\d])/))) {
-      let d = +m[1], mo = +m[2], y = fullYear(m[3]), swapped = false;
+      let d = monthFirst ? +m[2] : +m[1], mo = monthFirst ? +m[1] : +m[2], y = fullYear(m[3]), swapped = false;
       if (mo > 12 && d <= 12) { [d, mo] = [mo, d]; swapped = true; }
       const at = mkDate(y, mo - 1, d);
-      if (at !== null) return { at, text: m[0], assumed: !swapped && d <= 12 && mo <= 12 && d !== mo ? 'read as ' + d + ' ' + MONTHS[mo - 1].replace(/^./, c => c.toUpperCase()) + ' (day first)' : '' };
+      if (at !== null) return { at, text: m[0], assumed: !swapped && d <= 12 && mo <= 12 && d !== mo ? 'read as ' + d + ' ' + MONTHS[mo - 1].replace(/^./, c => c.toUpperCase()) + (monthFirst ? ' (month first)' : ' (day first)') : '' };
     }
     // 15 Oct 2026 · 15th October · 15 Oct
     if ((m = t.match(new RegExp('(?<!\\d)(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:of\\s+)?(' + MONTH_RE + ')(?:[,\\s]+(\\d{4}|\\d{2}))?(?![a-z])', 'i')))) {
@@ -63,7 +65,8 @@ const AssignParse = (() => {
   const DUE_WORDS = /\b(due(?:\s+(?:date|on|by))?|submi(?:t|ssion)(?:\s+(?:on|by|before|date))?|deadline|last\s+date(?:\s+(?:of|for)\s+submission)?|hand(?:ed)?\s+in|to\s+be\s+submitted|before|by)\b/i;
   const TITLE_RE = /\b((?:assignment|tutorial\s+sheet|tutorial|lab(?:\s+record|\s+manual)?|practical|mini[- ]project|project|problem\s+set|worksheet|homework|home\s+assignment|case\s+study|seminar|record)\s*(?:no\.?|number|#|-)?\s*\d{0,2})\b/i;
 
-  function parseAssignment(text, { now = Date.now(), subjects = [] } = {}) {
+  function parseAssignment(text, o = {}) { MONTH_FIRST = !!(o && o.monthFirst); try { return parseAssignmentInner(text, o); } finally { MONTH_FIRST = false; } }
+  function parseAssignmentInner(text, { now = Date.now(), subjects = [] } = {}) {
     const raw = String(text || '').replace(/\r\n?/g, '\n').slice(0, 20000);
     const lines = raw.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
     const notes = [];

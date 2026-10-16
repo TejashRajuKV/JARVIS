@@ -19,7 +19,7 @@ const FEATURES = [
   ['Chat', 'HOME', ["i'm home", 'back again']], ['Chat', 'PRAISE', ['well done', "you're awesome"]],
   ['Chat', 'INSULT', ["you're useless", 'shut up']], ['Chat', 'HOW_ARE_YOU', ['how are you', "how's it going"]],
   ['Chat', 'IDENTITY', ['who are you', 'introduce yourself']], ['Chat', 'JOKE', ['tell me a joke', 'make me laugh']],
-  ['Chat', 'THANKS', ['thanks', 'thank you so much']], ['Chat', 'GOODBYE', ['bye', 'see you']],
+  ['Chat', 'THANKS', ['thanks', 'thank you so much']], ['Chat', 'NEGATED', ["don't lock the screen", 'never open chrome']], ['Chat', 'GOODBYE', ['bye', 'see you']],
   ['Chat', 'HELP', ['what can you do', 'help']], ['Chat', 'PERSONA_SET', ['switch to friday', 'switch back to jarvis']],
   ['Chat', 'THEME_SET', ['switch to gold theme', 'change the hud colour to violet']],
   ['Chat', 'CHAT_MEMORY', ['what were we talking about', 'where were we']],
@@ -149,7 +149,8 @@ const all = [...new Set([...fs.readFileSync(path.join(ROOT, 'nlu.js'), 'utf8').m
 const covered = new Set(FEATURES.map(f => f[1]));
 const missing = all.filter(i => !covered.has(i));
 check('Coverage', 'every intent in nlu.js has test phrases (' + missing.length + ' missing)', !missing.length, missing.join(', '));
-const unknown = [...covered].filter(i => !all.includes(i));
+const SPECIAL = ['NEGATED'];     // returned by code in classifyRules, not by a row of the table
+const unknown = [...covered].filter(i => !all.includes(i) && !SPECIAL.includes(i));
 check('Coverage', 'the table names only intents that exist', !unknown.length, unknown.join(', '));
 fs.writeFileSync(path.join(__dirname, '.features.json'), JSON.stringify(FEATURES.map(([area, intent, phrases]) => ({ area, intent, example: phrases[0] }))));
 process.exit(done(all.length + ' intents') ? 1 : 0);

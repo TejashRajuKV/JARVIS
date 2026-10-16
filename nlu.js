@@ -882,20 +882,20 @@ const NLU = (() => {
       return { intent: 'LOCK_JARVIS', confidence: .97, tool: 'lockJarvis', args: {}, text: 'lock jarvis' };
     let s = norm.text;
     ctx = ctx || {};
-    // ---- Negation rewriting (Strengthening) ----
-    // "don't open chrome" / "do not open chrome" / "never open chrome" → strip the negation,
-    // remember the polarity, and rewrite the verb so the CLOSE rule picks it up. We only
-    // rewrite OPEN→CLOSE here (the common case); other intents (volume/brightness/timer)
-    // typically have "cancel" or "stop" as a separate command already, so this is a surgical
-    // fix for the most common "I said open but meant don't open" confusion.
-    // We attach a `_negated: true` flag so the inspector and downstream tools can see it.
-    // The verb alternation handles -ing forms too: "stop opening discord" → "close discord".
-    let negated = false;
-    const negMatch = s.match(/^(?:please\s+)?(?:don['']?t|do\s+not|never|stop|quit)\s+(open|launch|start|run|fire\s+up|boot\s+up|boot|pull\s+up|bring\s+up|load)(?:ing)?\s+(.*)/i);
+    // ---- Negation ----
+    // "don't lock the screen" / "never open chrome" / "no, don't set a timer" must NOT do the thing (and not the opposite either: this used to turn
+    // "don't open chrome" into "close chrome"). Only an action verb right after the negation counts, so "don't forget to…", "never mind" and
+    // "don't shut down" (cancel the shutdown) keep their own rules. "stop opening X" means the same; "stop the music" is still a command.
+    const NEG_VERB = 'open|launch|start|run|fire up|boot up|boot|pull up|bring up|load|close|quit|exit|kill|lock|mute|unmute|set|play|pause|take|delete|remove|turn|send|call|search|write|create|save|clear|change|increase|decrease|raise|lower|install|uninstall|download|upload|copy|move|rename|empty|format|wipe|reset|post|text|email|message|buy|order|book|pay|transfer|log out|sign out|switch|enable|disable|toggle';
+    const negLead = "(?:(?:no|nope|hey|oh|wait|please|i)[ ,]+)*";
+    const negMatch = s.match(new RegExp('^' + negLead + "(?:don['’]?t|do not|never)\\s+(?:please\\s+)?(?:(?:want to|wanna|need to|have to|like to)\\s+)?(" + NEG_VERB + ')\\b\\s*(.*)$', 'i'))
+      || s.match(new RegExp('^' + negLead + '(?:stop|quit)\\s+(' + NEG_VERB.split('|').map(v => v.replace(/e$/, '') ).join('|') + ')ing\\b\\s*(.*)$', 'i'));
     if (negMatch) {
-      s = 'close ' + negMatch[2].trim();
-      negated = true;
+      const verb = negMatch[1].toLowerCase(), rest = negMatch[2].trim();
+      if (!/^(shut ?down|restart|reboot|power off)\b/.test(verb + ' ' + rest))
+        return { intent: 'NEGATED', confidence: .96, tool: null, args: { verb, rest }, text: s, _negated: true };
     }
+    let negated = false;
     // Run the original classifier on the (possibly rewritten) text.
     const result = classifyRulesInner(Object.assign({}, norm, { text: s }), ctx);
     if (negated) result._negated = true;

@@ -136,5 +136,16 @@ function gridRows(opts = {}) {
   check('describe: noon and midnight read right', T.hhmm(12, 0) === '12:00 pm' && T.hhmm(0, 5) === '12:05 am' && T.hhmm(13, 30) === '1:30 pm');
 }
 
+// clashes
+{ const C = (name, day, h, m, dur) => ({ name, day, h, m, dur });
+  let c = T.clashes([C('DBMS', 1, 9, 0, 60), C('OS', 1, 9, 30, 60)]); check('clashes: 9:00-10:00 and 9:30-10:30 on the same day overlap', c.length === 1 && c[0].a.name === 'DBMS' && c[0].b.name === 'OS', c);
+  check('clashes: back-to-back (10:00 ends, 10:00 starts) is fine', T.clashes([C('DBMS', 1, 9, 0, 60), C('OS', 1, 10, 0, 60)]).length === 0);
+  check('clashes: the same time on different days is fine', T.clashes([C('DBMS', 1, 9, 0, 60), C('OS', 2, 9, 0, 60)]).length === 0);
+  check('clashes: the same subject twice at one time is a duplicate, not a clash (any case or spacing)', T.clashes([C('DBMS', 1, 9, 0), C('dbms ', 1, 9, 0)]).length === 0);
+  check('clashes: no end time counts as 60 minutes by default (9:00 vs 9:59 clash, vs 10:00 not)', T.clashes([C('A', 1, 9, 0), C('B', 1, 9, 59)]).length === 1 && T.clashes([C('A', 1, 9, 0), C('B', 1, 10, 0)]).length === 0);
+  check('clashes: a long class (2 hours) clashes with one inside it', T.clashes([C('Lab', 3, 14, 0, 120), C('CN', 3, 15, 0, 50)]).length === 1);
+  check('clashes: three at once give three pairs', T.clashes([C('A', 1, 9, 0), C('B', 1, 9, 10), C('C', 1, 9, 20)]).length === 3);
+  check('clashes: the wording names the day, both times and both subjects', /Mon.*9:00 am DBMS overlaps 9:30 am OS/.test(T.clashText(T.clashes([C('DBMS', 1, 9, 0, 60), C('OS', 1, 9, 30, 60)])[0])), T.clashText(T.clashes([C('DBMS', 1, 9, 0, 60), C('OS', 1, 9, 30, 60)])[0]));
+}
 console.log(`ttparse: ${total - fail}/${total}`);
 process.exitCode = fail ? 1 : 0;

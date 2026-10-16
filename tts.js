@@ -24,6 +24,7 @@ const xmlEscape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').re
 
 function synthesize(text, voice, rate) {
   return new Promise((resolve, reject) => {
+    if (typeof WebSocket === 'undefined') return reject(new Error('the online voices need Node.js 22 or newer'));
     const url = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TOKEN}&Sec-MS-GEC=${gec()}&Sec-MS-GEC-Version=1-${EDGE_VER}&ConnectionId=${crypto.randomUUID().replace(/-/g, '')}`;
     const ws = new WebSocket(url, { headers: {
       Pragma: 'no-cache', 'Cache-Control': 'no-cache', Origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',

@@ -47,16 +47,38 @@ const store = (() => {
   const cache = {}, pending = {};
   for (const [k, v] of Object.entries(window.JARVIS_STATE)) cache[k] = JSON.stringify(v);
   let timer = null;
+  // What this tab last knew to be on the server for the lists that several tabs edit (their ids), so the server can tell "I deleted it" from "another tab added it"
+  // when this tab saves a whole list (statemerge.js). Updated when the page loads, when another tab's change is taken, and when a save is acknowledged.
+  const MERGE_KEYS = /^jarvis\.(todos|deadlines|classes|studyPlans|expenses|habits|memory|marks|attendance)$/;
+  const idsOf = s => { try { const v = JSON.parse(s); if (Array.isArray(v)) return v.every(x => x && typeof x === 'object' && x.id !== undefined && x.id !== null) ? v.map(x => x.id) : null; return v && typeof v === 'object' ? Object.keys(v) : null; } catch (e) { return null; } };
+  const synced = {}, sentSeq = {};
+  for (const k of Object.keys(cache)) if (MERGE_KEYS.test(k)) { const ids = idsOf(cache[k]); if (ids) synced[k] = ids; }
+  let onMerged = null;
   const flush = beacon => {
     clearTimeout(timer); timer = null;
     const keys = Object.keys(pending);
     if (!keys.length) return;
-    const body = '{"src":' + JSON.stringify(TAB_ID) + ',"set":{' + keys.map(k => JSON.stringify(k) + ':' + (pending[k] === null ? 'null' : pending[k])).join(',') + '}}';
+    const sent = {}; keys.forEach(k => { sent[k] = pending[k]; });
+    const base = {}; keys.forEach(k => { if (MERGE_KEYS.test(k) && pending[k] !== null && synced[k]) base[k] = synced[k]; });
+    // From the moment this save leaves, what it carries counts as known to the server: a later save (sent before this one is answered) must not mistake this tab's
+    // own items for another tab's additions, or treat what it deletes next as someone else's. If the save fails, the old knowledge is put back.
+    const before = {}, seq = {};
+    keys.forEach(k => { if (MERGE_KEYS.test(k) && pending[k] !== null) { const ids = idsOf(pending[k]); if (ids) { before[k] = synced[k]; synced[k] = ids; seq[k] = (sentSeq[k] = (sentSeq[k] || 0) + 1); } } });
+    const body = '{"src":' + JSON.stringify(TAB_ID) + ',"set":{' + keys.map(k => JSON.stringify(k) + ':' + (pending[k] === null ? 'null' : pending[k])).join(',') + '},"base":' + JSON.stringify(base) + '}';
     keys.forEach(k => delete pending[k]);
     if (beacon && navigator.sendBeacon && body.length < 60000) navigator.sendBeacon('api/state', new Blob([body], { type: 'application/json' }));
     else fetch('api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: body.length < 60000 })
-      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); })
-      .catch(e => { console.warn('could not save to server:', e.message); keys.forEach(k => { if (!(k in pending)) pending[k] = cache[k] === undefined ? null : cache[k]; }); timer = setTimeout(flush, 3000); });
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json().catch(() => ({})); })
+      .then(j => {
+        // acknowledged: the server now holds what was sent — or, for a list another tab changed meanwhile, that list combined with the other tab's items, which this tab now takes
+        for (const k of keys) {
+          if (!MERGE_KEYS.test(k) || sent[k] === null) continue;
+          const merged = j && j.merged && j.merged[k];
+          // take the combined list only if nothing newer for this key was saved or changed since (answers can arrive out of order)
+          if (merged !== undefined && !(k in pending) && seq[k] === sentSeq[k]) { cache[k] = JSON.stringify(merged); const ids = idsOf(cache[k]); if (ids) synced[k] = ids; if (onMerged) onMerged(k, merged); }
+        }
+      })
+      .catch(e => { console.warn('could not save to server:', e.message); keys.forEach(k => { if (k in before && seq[k] === sentSeq[k]) synced[k] = before[k]; });  keys.forEach(k => { if (!(k in pending)) pending[k] = cache[k] === undefined ? null : cache[k]; }); timer = setTimeout(flush, 3000); });
   };
   const queue = () => { clearTimeout(timer); timer = setTimeout(flush, 250); };
   addEventListener('pagehide', () => flush(true));
@@ -84,7 +106,9 @@ const store = (() => {
     get(k, f) { return cache[k] === undefined ? f : JSON.parse(cache[k]); },
     set(k, v) { const s = JSON.stringify(v); if (s === undefined) return; cache[k] = pending[k] = s; queue(); },
     // A change made in another tab (server push): take it without writing it back. Skipped while this tab has an unsent change of its own.
-    adopt(k, v) { if (k in pending) return false; cache[k] = JSON.stringify(v); return true; },
+    adopt(k, v) { if (k in pending) return false; cache[k] = JSON.stringify(v); if (MERGE_KEYS.test(k)) { const ids = idsOf(cache[k]); if (ids) synced[k] = ids; } return true; },
+    // script.js sets this: called with (key, value) when the server combined this tab's list with another tab's changes, so the in-memory list and the screen follow
+    set onMerged(fn) { onMerged = fn; },
     clear(helloToken) {
       return fetch('api/state', { method: 'DELETE', headers: helloToken ? { 'X-Hello-Token': helloToken } : {} }).then(r => {
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -96,7 +120,7 @@ const store = (() => {
 
 /* ============ data ============ */
 const settings = Object.assign(
-  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '', qwenNlu: false, hudOverlay: false, bootCinema: true, attendancePrompt: true, offlineStt: false },
+  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '', qwenNlu: false, hudOverlay: false, bootCinema: true, attendancePrompt: true, offlineStt: false, attendanceMin: 75 },
   store.get('jarvis.settings', {})
 );
 Persona.setAddressSource(() => {
@@ -104,6 +128,8 @@ Persona.setAddressSource(() => {
   return settings.persona === 'friday' && a === 'sir' ? 'boss' : a;
 });
 const saveSettings = () => store.set('jarvis.settings', settings);
+// The attendance percentage your college asks for (75 unless you changed it: "my college needs 80% attendance" or Settings).
+const attMin = () => Math.min(95, Math.max(40, Math.round(+settings.attendanceMin) || 75));
 let memory = store.get('jarvis.memory', []);        // [{id,key,value,ts}]
 let todos = store.get('jarvis.todos', []);          // [{id,text,done,ts}]
 let reminders = store.get('jarvis.reminders', []);  // [{id,text,at,fired}]
@@ -558,16 +584,30 @@ let approvalsBlocked = 0;
 // otherwise a "yes" becomes a brand-new chat turn and the approved action never runs.
 var pendingApproval = null;
 const APPROVAL_VERB = { create: 'create', 'create the folder': 'create the folder', overwrite: 'overwrite', 'add to': 'add to', delete: 'move to the trash', rename: 'rename', 'copy into': 'copy into', move: 'move', restore: 'restore', 'restore the earlier version of': 'restore the earlier version of', 'move back': 'move back', remove: 'remove' };
-const APPROVAL_YES = /^(y|yes|yeah|yep|yup|ya|sure|ok(?:ay)?|allow|approve[d]?|go ahead|do it|proceed)$/i;
-const APPROVAL_NO = /^(n|no|nope|nah|deny|denied|cancel|never ?mind|forget it|stop)$/i;
+const APPROVAL_YES = /^(y|yes|yeah|yep|yup|ya|sure|ok(?:ay)?|allow|approve[d]?|go ahead|do it|proceed)(?:\s+(?:please|jarvis|sir|boss|thanks?))?$/i;
+const APPROVAL_NO = /^(n|no|nope|nah|deny|denied|cancel|never ?mind|forget it|stop)(?:\s+(?:please|jarvis|sir|boss|thanks?))?$/i;
+// A card that a running turn is WAITING on (ALLOW/CANCEL, YES/NO). While one is open JARVIS is in an explicit "awaiting an answer" state: typed yes/no answers it, anything else
+// waits in the input queue (handleUser) instead of starting a second turn in the middle of the first, and an answer that never comes counts as "no" after 10 minutes.
+// `show(answer)` puts the card on screen; its buttons call answer(true / false). Resolves to true or false.
+function awaitAnswer(show, ms = 600000) {
+  return new Promise(resolve => {
+    let timer = null;
+    const fin = ok => {
+      clearTimeout(timer); if (pendingApproval === fin) pendingApproval = null; resolve(!!ok);
+      // input that waited behind the card: the paused turn drains it when it ends; if no turn is running (the card came from a button, not a turn), start it now
+      setTimeout(() => { if (!busy && !pendingApproval && inputQueue.length) { const [t, s2] = inputQueue.shift(); handleUser(t, s2); } }, 150);
+    };
+    pendingApproval = fin;
+    timer = setTimeout(() => { if (pendingApproval === fin) { toast('No answer for ' + Math.round(ms / 60000) + ' minutes — taking that as “no”', true); fin(false); } }, ms);
+    show(fin);
+  });
+}
 function askApproval(action, paths) {
   if (approvalsBlocked > 0) return Promise.resolve(false);
   const wasBusy = typeof busy !== 'undefined' ? busy : false;
-  return new Promise(resolve => {
-    if (typeof busy !== 'undefined') { busy = false; }
-    if (typeof idleState === 'function') idleState();
-    const done = ok => { pendingApproval = null; if (typeof busy !== 'undefined') busy = wasBusy; resolve(ok); };
-    pendingApproval = done;
+  if (typeof busy !== 'undefined') { busy = false; }
+  if (typeof idleState === 'function') idleState();
+  return awaitAnswer(done => {
     const list = paths.map(p => '`' + p + '`').join(' and ');
     jarvisSay({ text: '⚠ JARVIS wants to **' + (APPROVAL_VERB[action] || action) + '** ' + list + '.\nThat is outside `~/jarvis`, so I need your permission. _(You can also just say **yes**.)_', intent: 'APPROVAL', noPersona: true, noTTS: true,
       confirm: { yes: 'ALLOW', no: 'CANCEL', onConfirm: () => done(true), onCancel: () => done(false) } });
@@ -584,20 +624,25 @@ async function callTool(endpoint, data, helloToken) {
   const j = await callToolRaw(endpoint, data, helloToken);
   if (j && j.needsApproval && !(data && data.approved)) {
     if (!(await askApproval(j.action, j.paths || []))) return { error: approvalsBlocked > 0 ? 'That changes files outside ~/jarvis — do it at the laptop, where I can ask you first' : 'Cancelled — nothing was changed', cancelled: true };
-    return callToolRaw(endpoint, Object.assign({}, data, { approved: true }), helloToken);
+    return callToolRaw(endpoint, Object.assign({}, data, { approved: true, approvalToken: j.approvalToken }), helloToken);
   }
   return j;
 }
+// How long a call may take before the page stops waiting. Without a limit, one stuck request (a hung PowerShell, a dead provider) keeps JARVIS "busy" forever.
+// Anything that runs the AI or walks a big folder is allowed minutes; everything else is a quick local action.
+const LONG_CALL = /^\/(?:code\/|lecture\/|exam\/|skill\/|wiki|projectwiki|research|summarize|agent\/plan|disk\/|scan\/|vision\/|ocr\/|whisper\/|dev\/|chatarchive\/search|mirror\/verify|tool\/(?:research|webAnswer|codeAsk|summari[sz]e|projectWiki|imageGen|csv|pdf|gitClone|installDeps|startProcess))/i;
+const callTimeoutMs = ep => (LONG_CALL.test(String(ep)) ? 15 * 60000 : 3 * 60000);
 async function callToolRaw(endpoint, data, helloToken) {
   try {
     const headers = { 'Content-Type': 'application/json' };
     if (helloToken) headers['X-Hello-Token'] = helloToken;
-    const res = await fetch(API + endpoint, { method: 'POST', headers, body: JSON.stringify(data || {}) });
+    const res = await fetch(API + endpoint, { method: 'POST', headers, body: JSON.stringify(data || {}), signal: AbortSignal.timeout(callTimeoutMs(endpoint)) });
     const j = await res.json().catch(() => ({ error: 'Bad response (' + res.status + ')' }));
     if (!res.ok && !j.error) j.error = 'HTTP ' + res.status;
     if (j.needHello) { Hello.refresh(); j.error = 'Windows Hello approval is required for that — please try again'; }
     return j;
   } catch (e) {
+    if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) { log('err', 'no answer in time — ' + endpoint); return { error: 'that took too long and I stopped waiting (' + endpoint + '). The action may still be running on the laptop; check before trying again', timedOut: true }; }
     log('err', 'backend unreachable — ' + endpoint);
     return { error: 'the backend is offline (press START JARVIS above, or the desktop icon)' };
   }
@@ -1176,13 +1221,38 @@ function bitwise(s) {
 
 /* ============ timers & focus ============ */
 const timers = [];
-function addTimer(label, ms, onDone) {
+// A timer lives in this page, so a reload used to lose it. Each one is also written down as a SAFETY-NET reminder (20 seconds after it should ring): if the page
+// is open, the page rings at the right moment and removes the reminder first; if the page was closed or reloaded, the laptop's scheduler rings it (also on the phone,
+// if phone alerts are on), and a reloaded page puts the countdown back from the same reminder.
+const TIMER_NET_MS = 20000;
+function addTimer(label, ms, onDone, restored) {
   const el = document.createElement('span'); el.className = 'tchip'; timerChips.appendChild(el);
-  const t = { id: rid(), label, end: Date.now() + ms, el, onDone };
-  timers.push(t); return t;
+  const t = restored ? { id: restored.id, label, end: restored.end, el, onDone } : { id: rid(), label, end: Date.now() + ms, el, onDone };
+  timers.push(t);
+  if (!restored) { reminders.push({ id: rid(), text: '⏱ Your ' + label + ' timer is up', at: t.end + TIMER_NET_MS, fired: false, timerId: t.id, timerLabel: label, timerEnd: t.end }); saveTasks(); }
+  return t;
 }
-function cancelTimer(t) { const i = timers.indexOf(t); if (i >= 0) { timers.splice(i, 1); t.el.remove(); } }
+const dropTimerReminder = t => { const n = reminders.length; reminders = reminders.filter(r => r.timerId !== t.id); if (reminders.length !== n) saveTasks(); };
+function cancelTimer(t) { const i = timers.indexOf(t); if (i >= 0) { timers.splice(i, 1); t.el.remove(); } dropTimerReminder(t); }
+// after a reload: the timers that were still running come back from their safety-net reminders
+function restoreTimers() {
+  const now = Date.now(); let n = 0;
+  for (const r of reminders) if (r.timerId && !r.fired && r.timerEnd && !timers.some(t => t.id === r.timerId) && now - r.timerEnd < 6 * 3600e3) { addTimer(r.timerLabel || 'timer', 0, undefined, { id: r.timerId, end: r.timerEnd }); n++; }
+  if (n) log('info', 'restored ' + n + ' running timer' + (n === 1 ? '' : 's') + ' after the reload');
+  return n;
+}
 let focus = null;
+// A focus session (and its break) survives a reload: its state is kept in the shared store and picked up again when the page opens, if its time has not run out.
+const saveFocus = () => { try { store.set('jarvis.focusState', focus ? { phase: focus.phase, end: focus.end, min: focus.min, count: focus.count, subject: focus.subject || '' } : null); } catch (e) {} };
+function restoreFocus() {
+  try {
+    const f = store.get('jarvis.focusState', null);
+    if (!f || !f.end || f.end <= Date.now() || (f.phase !== 'focus' && f.phase !== 'break') || focus) { if (f) store.set('jarvis.focusState', null); return false; }
+    focus = { phase: f.phase, end: f.end, min: f.min || 25, count: f.count || 0, subject: f.subject || undefined };
+    log('info', 'restored the ' + f.phase + ' session after the reload');
+    return true;
+  } catch (e) { return false; }
+}
 const fmtLeft = ms => { const s = Math.ceil(ms / 1000); return (s >= 3600 ? Math.floor(s / 3600) + ':' + pad(Math.floor(s % 3600 / 60)) : Math.floor(s / 60)) + ':' + pad(s % 60); };
 function startFocus(min) {
   stopFocus(true);
@@ -1190,11 +1260,12 @@ function startFocus(min) {
   const saved = store.get('jarvis.focusToday', { d: '', n: 0 });
   const count = saved.d === new Date().toDateString() ? saved.n : 0;
   focus = { phase: 'focus', end: Date.now() + min * 6e4, min, count };
+  saveFocus();
   return min;
 }
 function stopFocus(silent) {
   if (!focus) return false;
-  focus = null; $('#focusStat').hidden = true;
+  focus = null; $('#focusStat').hidden = true; saveFocus();
   if (!silent) log('info', 'focus session stopped');
   return true;
 }
@@ -1212,7 +1283,7 @@ function focusTick(now) {
     bumpStat('focusMin', focus.min); bumpStat('focusSessions');
     store.set('jarvis.focusToday', { d: new Date().toDateString(), n: focus.count });
     const b = clamp(+settings.breakMin || 5, 1, 60);
-    focus.phase = 'break'; focus.end = now + b * 6e4;
+    focus.phase = 'break'; focus.end = now + b * 6e4; saveFocus();
     notify('Focus session complete', 'Take a ' + b + '-minute break.');
     jarvisSay({ text: 'Focus session ' + focus.count + ' complete, ' + Persona.sir() + '. Well done. I would recommend a ' + b + '-minute break — stretch, and perhaps some water.', intent: 'FOCUS', tool: 'focus' });
   } else {
@@ -1242,6 +1313,15 @@ function upcomingClasses(now) {
   return classes.map(c => ({ c, at: nextClassTime(c, now) })).sort((a, b) => a.at - b.at);
 }
 const announced = new Set();
+// With two tabs open both run the same checks and would both say the same thing. An alert is CLAIMED first: the server gives it to the first tab that asks (for ttlSec
+// seconds) and the other tabs stay quiet. If the server cannot be reached the tab just says it (better twice than never).
+async function claimAlert(key, ttlSec) {
+  try {
+    const r = await fetch('api/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, ttlSec: Math.round(ttlSec) || 3600 }) });
+    if (!r.ok) return true;
+    const j = await r.json(); return j.won !== false;
+  } catch (e) { return true; }
+}
 /* ---- phone commands (ntfy), only after the server checked an authenticator unlock (scheduler.js) ---- */
 // Everyday commands work as on the laptop. Replies travel through ntfy's public server, so nothing that would send
 // your screen, clipboard, files or saved memory; shutdown/restart/sleep/delete stay at the laptop (explicit tier);
@@ -1318,11 +1398,15 @@ function tasksTick(now) {
     const mins = (at - now) / 6e4, key = c.id + at.toDateString();
     if (mins <= 10 && mins > 9 && !announced.has(key)) {
       announced.add(key);
-      toast('📚 ' + c.name + ' starts in 10 minutes', true); notify('Class soon', c.name + ' at ' + fmtTime(at));
-      jarvisSay({ text: Persona.Sir() + ', **' + c.name + '** begins in ten minutes, at ' + fmtTime(at) + '.', intent: 'TIMETABLE' });
+      claimAlert('class:' + key, 1800).then(won => {
+        if (!won) return;
+        toast('📚 ' + c.name + ' starts in 10 minutes', true); notify('Class soon', c.name + ' at ' + fmtTime(at));
+        jarvisSay({ text: Persona.Sir() + ', **' + c.name + '** begins in ten minutes, at ' + fmtTime(at) + '.', intent: 'TIMETABLE' });
+      });
     }
   }
   try { if (typeof Student !== 'undefined' && Student.attendanceTick) Student.attendanceTick(now); } catch (e) {}
+  try { if (typeof Life !== 'undefined' && Life.recurTick) Life.recurTick(now); } catch (e) {}
   if (changed) saveTasks();
 }
 setInterval(() => {
@@ -1330,7 +1414,7 @@ setInterval(() => {
   for (let i = timers.length - 1; i >= 0; i--) {
     const tm = timers[i], left = tm.end - now;
     if (left <= 0) {
-      timers.splice(i, 1); tm.el.remove(); sfx.alarm(); log('ok', 'timer complete: ' + tm.label);
+      timers.splice(i, 1); tm.el.remove(); dropTimerReminder(tm); sfx.alarm(); log('ok', 'timer complete: ' + tm.label);
       notify('Timer', tm.label + ' timer finished');
       jarvisSay({ text: Persona.Sir() + ', your **' + tm.label + '** timer is up.', speak: Persona.Sir() + ', your ' + tm.label + ' timer is up.', intent: 'TIMER_DONE' });
     } else tm.el.textContent = '⏱ ' + tm.label + ' ' + fmtLeft(left);
@@ -1338,6 +1422,7 @@ setInterval(() => {
   focusTick(now);
   tasksTick(now);
 }, 500);
+restoreTimers(); restoreFocus();
 if (serverScheduler && 'EventSource' in window) {
   const events = new EventSource('api/events');
   events.addEventListener('reminder', e => {
@@ -1352,6 +1437,25 @@ if (serverScheduler && 'EventSource' in window) {
   });
   // The chat was changed in another tab of this same JARVIS: show it here too (never written back, so tabs can't ping-pong).
   // Waits for a reply in progress to finish, so a half-typed answer isn't wiped.
+  // The same goes for the lists (todos, deadlines, classes, attendance, marks, study plans, memory, reminders, expenses, habits, budget): another tab or the phone page saved a
+  // change, so this tab takes the new copy instead of later writing its old one back over it. Never written back, and skipped if this tab has a save of its own in flight.
+  const SYNCED = {
+    'jarvis.todos': v => { todos = v; }, 'jarvis.reminders': v => { reminders = v; }, 'jarvis.deadlines': v => { deadlines = v; }, 'jarvis.classes': v => { classes = v; },
+    'jarvis.attendance': v => { attendance = v || {}; }, 'jarvis.marks': v => { marks = v || []; }, 'jarvis.studyPlans': v => { studyPlans = v; }, 'jarvis.memory': v => { memory = v; },
+    'jarvis.expenses': () => {}, 'jarvis.habits': () => {}, 'jarvis.budget': () => {},       // read from the store each time they are used
+  };
+  // A backup was restored or imported (from this tab or another one): everything on screen is out of date, so reload rather than risk writing the old copy back.
+  events.addEventListener('statereset', () => { toast('Your data was replaced by a restore or import — reloading…', true); setTimeout(() => location.reload(), 1500); });
+  store.onMerged = (key, value) => { const take = SYNCED[key]; if (!take) return; take(value); try { renderTasks(); if (key === 'jarvis.memory' && typeof renderMemory === 'function') renderMemory(); if (typeof renderDash === 'function') renderDash(); if (typeof Routines !== 'undefined') Routines.render(); } catch (err) { /* a panel that is not drawn yet */ } };
+  events.addEventListener('state', e => {
+    const ev = JSON.parse(e.data), take = SYNCED[ev.key];
+    if (!take || ev.src === TAB_ID) return;
+    if (ev.value === null && !/budget/.test(ev.key)) return;
+    if (/memory|todos|reminders|deadlines|classes|studyPlans|expenses|habits/.test(ev.key) && !Array.isArray(ev.value)) return;
+    if (!store.adopt(ev.key, ev.value)) return;
+    take(ev.value);
+    try { renderTasks(); if (ev.key === 'jarvis.memory' && typeof renderMemory === 'function') renderMemory(); if (typeof renderDash === 'function') renderDash(); if (typeof Routines !== 'undefined') Routines.render(); } catch (err) { /* a panel that is not drawn yet */ }
+  });
   events.addEventListener('state', e => {
     const ev = JSON.parse(e.data);
     if (ev.key !== 'jarvis.chat' || ev.src === TAB_ID || !Array.isArray(ev.value)) return;
@@ -1471,7 +1575,9 @@ const HotkeyBar = (() => {
   async function run(label, pre, copy, question) {
     if (!llmReady()) { toast('The AI brain is off or unreachable — check Settings', true); return; }
     if (busy) { toast('JARVIS is busy — try again in a moment'); return; }
-    hide(); busy = true;
+    hide();
+    if (!(await confirmCloud('selection'))) { busy = false; idleState(); toast('Okay — nothing was sent'); return; }      // the card leaves JARVIS "busy"; hand it back
+    busy = true;
     try {
       const shown = sel.length > 140 ? sel.slice(0, 140) + '…' : sel;
       addMsg('user', '⌨ ' + (question ? question + ' — ' : label + ': ') + shown, { source: 'hotkey' }); logChat('user', label + ' (selected text)', '', 'hotkey');
@@ -1544,7 +1650,7 @@ function renderTasks() {
     dl.appendChild(d);
   });
   const rl = $('#reminderList'); rl.innerHTML = '';
-  const rs = reminders.filter(r => !r.fired && !r.routineId).sort((a, b) => a.at - b.at);
+  const rs = reminders.filter(r => !r.fired && !r.routineId && !r.timerId).sort((a, b) => a.at - b.at);
   if (!rs.length) rl.innerHTML = '<div class="tempty">No reminders — try "remind me to drink water in 30 minutes".</div>';
   rs.forEach(r => {
     const d = document.createElement('div'); d.className = 'titem';
@@ -1565,15 +1671,15 @@ function renderTasks() {
   });
   const al = $('#attList'); al.innerHTML = '';
   const attNames = Object.keys(attendance);
-  $('#attMeta').textContent = attNames.length ? '75% required' : '';
+  $('#attMeta').textContent = attNames.length ? attMin() + '% required' : '';
   if (!attNames.length) al.innerHTML = '<div class="tempty">No attendance yet — try "mark DBMS present" after class.</div>';
   attNames.sort((a, b) => (Study.attendancePct(attendance[a].held, attendance[a].attended) || 0) - (Study.attendancePct(attendance[b].held, attendance[b].attended) || 0)).forEach(n => {
     const e = attendance[n], pct = Study.attendancePct(e.held, e.attended);
     const d = document.createElement('div'); d.className = 'titem';
     const w = Math.max(4, Math.min(100, Math.round(pct)));
-    d.innerHTML = '<span class="tx"></span><span class="due ' + (pct < 75 ? 'soon' : '') + '">' + pct + '%</span><button class="x" title="Stop tracking">✕</button><div class="att-bar"><i style="width:' + w + '%" class="' + (pct < 75 ? 'low' : '') + '"></i></div>';
+    d.innerHTML = '<span class="tx"></span><span class="due ' + (pct < attMin() ? 'soon' : '') + '">' + pct + '%</span><button class="x" title="Stop tracking">✕</button><div class="att-bar"><i style="width:' + w + '%" class="' + (pct < attMin() ? 'low' : '') + '"></i></div>';
     d.querySelector('.tx').textContent = n + ' (' + e.attended + '/' + e.held + ')';
-    d.title = Study.bunkable(e.held, e.attended, 75) + ' bunks still safe';
+    d.title = Study.bunkable(e.held, e.attended, attMin()) + ' bunks still safe';
     d.querySelector('.x').addEventListener('click', () => {
       const snap = attendance[n];
       Undo.push('stopped tracking ' + n, () => { attendance[n] = snap; saveTasks(); return 'Tracking ' + n + ' again.'; });
@@ -1655,6 +1761,8 @@ function conversationReply(p) {
     }
     case 'JOKE': return { text: pick(JOKES) + (Lang.replyLang() === 'en' && Math.random() < .5 ? ' I will be here all week, ' + Persona.sir() + '.' : '') };
     case 'THANKS': return { text: Persona.say('thanks') };
+    // "don't lock the screen", "never open chrome": nothing is done — and nothing opposite either.
+    case 'NEGATED': { const what = [p.args.verb, p.args.rest].filter(Boolean).join(' ').replace(/\bmy\b/g, 'your'); return { text: 'Okay — I won’t ' + what + '.', noTTS: false }; }
     case 'GOODBYE': return { text: Persona.say('bye') };
     case 'GOODNIGHT': return { text: Persona.say('night') + (todos.some(t => !t.done) ? ' Your to-do list will keep until morning.' : '') };
     case 'HOME': return { text: Persona.say('home'), suggestions: ['Give me my briefing', 'Plan my day'] };
@@ -1911,7 +2019,7 @@ async function doResearch(q, extraSuggestions) {
     ? 'If they do not contain the answer, say plainly that the sources didn’t have it and suggest a better search. Never answer from your own memory: this changes over time, and your memory is out of date.'
     : 'If they do not contain the answer and it is a settled fact that does not change (history, science, who invented or wrote something, definitions), answer from your own knowledge in one or two sentences and start with "The search didn’t cover this, but from general knowledge:".';
   return { askLLM: 'Question: ' + q + '\nToday is ' + new Date().toDateString() + '.\n\nAnswer using ONLY these web sources I just fetched. Cite them inline like [1] or [2]. ' + fallback + ' Be concise; use bullets for lists.' + (Lang.aiInEnglish() ? '' : { te: ' Write the answer in Telugu (keep technical terms, names and numbers in English).', kn: ' Write the answer in Kannada (keep technical terms, names and numbers in English).' }[Lang.replyLang()] || '') + '\n\n' + pages,
-    after: { sources, suggestions: extraSuggestions } };
+    after: { sources, suggestions: extraSuggestions }, noHistory: true };   // the pages hold everything needed; earlier chat would only crowd the small model's 8K and bias the answer
 }
 
 /* ============ flashcards (Leitner boxes) ============ */
@@ -2050,12 +2158,15 @@ function alertOnce(key, everyMs, msg, suggestions) {
   const last = alertedAt.get(key);
   if (last && (everyMs === Infinity || Date.now() - last < everyMs)) return;
   alertedAt.set(key, Date.now());
-  sfx.wake(); toast(msg.replace(/\*\*/g, ''), true); notify('Heads up', msg.replace(/\*\*/g, ''));
-  log('warn', 'alert: ' + msg.replace(/\*\*/g, ''));
-  const m = msg.match(/^(\p{Extended_Pictographic}\S*)\s+(.*)$/su);
-  const body = m ? m[2] : msg;
-  const text = (m ? m[1] + ' ' : '') + Persona.Sir() + ', ' + (/^[A-Z][a-z]/.test(body) ? body[0].toLowerCase() + body.slice(1) : body);
-  jarvisSay({ text, intent: 'ALERT', suggestions, alert: true });
+  claimAlert('alert:' + key, everyMs === Infinity ? 86400 : Math.max(60, everyMs / 1000)).then(won => {
+    if (!won) return;                                  // another open tab already said it
+    sfx.wake(); toast(msg.replace(/\*\*/g, ''), true); notify('Heads up', msg.replace(/\*\*/g, ''));
+    log('warn', 'alert: ' + msg.replace(/\*\*/g, ''));
+    const m = msg.match(/^(\p{Extended_Pictographic}\S*)\s+(.*)$/su);
+    const body = m ? m[2] : msg;
+    const text = (m ? m[1] + ' ' : '') + Persona.Sir() + ', ' + (/^[A-Z][a-z]/.test(body) ? body[0].toLowerCase() + body.slice(1) : body);
+    jarvisSay({ text, intent: 'ALERT', suggestions, alert: true });
+  });
 }
 let lastBatteryCheck = 0;
 // CPU sustained-load tracking: records the timestamp when CPU first crossed the
@@ -2093,6 +2204,24 @@ async function smartAlerts() {
 setInterval(() => { smartAlerts().catch(() => {}); }, 60e3);
 
 /* ============ pattern learning suggestions (Phase 2.9) ============ */
+// "Yes, make it a routine" really makes one: a routine with the one step ("open vscode", "start a focus session for 25 minutes") scheduled every day at that hour.
+// Only apps and focus sessions can be turned into a command line; for a learned command (stored as a bare intent name) it says so instead of pretending.
+function routineFromPattern(sug) {
+  const hh = String(sug.hour).padStart(2, '0'), h12 = (sug.hour % 12 || 12) + (sug.hour < 12 ? 'am' : 'pm'), at = 'every day at ' + h12;      // "9am": a bare "09:00" is read as the next 9 o'clock, which may be tonight
+  let step = '', name = '';
+  if (sug.kind === 'apps') { step = 'open ' + sug.label; name = sug.label + ' at ' + hh; }
+  else if (sug.kind === 'focus') { const mins = parseInt(sug.label, 10); step = mins ? 'start a focus session for ' + mins + ' minutes' : 'start a focus session'; name = 'focus at ' + hh; }
+  else return { made: false, text: 'I can’t turn that one into steps by myself. Tell me the steps, like **“create a routine called morning that opens vscode and starts a focus session”**, and then **“run morning every day at ' + h12 + '”**.' };
+  const rt = Routines.create(name, [step]);
+  if (!rt) return { made: false, text: 'I couldn’t make that routine.' };
+  const repeat = NLU.parseRepeat(at);
+  if (!repeat) return { made: false, text: 'I made the routine **' + rt.name + '** but couldn’t schedule it. Say **“run ' + rt.name + ' ' + at + '”**.' };
+  const first = repeatStart(repeat, at);
+  reminders = reminders.filter(x => x.routineId !== rt.id);
+  const rem = { id: rid(), text: 'routine: ' + rt.name, at: first, fired: false, repeat, routineId: rt.id }; reminders.push(rem); saveTasks();
+  Undo.push('made the routine ' + rt.name, () => { Routines.remove(rt); return 'Removed the routine **' + rt.name + '**.'; });
+  return { made: true, routine: rt, text: '✓ Made the routine **' + rt.name + '** (' + step + ') and scheduled it ' + describeRepeat(repeat, first) + '. First run ' + fmtDay(first) + ' at ' + fmtTime(first) + '. JARVIS needs to be open then. Say **“undo”** to remove it.' };
+}
 // Every 5 minutes (and only when idle), check if Learn.suggest() found a pattern
 // strong enough to surface. If yes, offer it as a non-intrusive toast + chat message.
 setInterval(() => {
@@ -2106,7 +2235,7 @@ setInterval(() => {
     const label = s.kind === 'apps' ? 'open ' + s.label : s.kind === 'cmds' ? s.label.replace(/_/g, ' ').toLowerCase() : 'start a focus session for ' + s.label;
     const msg = '📊 I noticed you have done **' + label + '** ' + s.count + ' times around this hour. Want me to make it a routine?';
     jarvisSay({ text: msg, intent: 'LEARN_SUGGEST', suggestions: ['Yes, make it a routine', 'No, not now'], noPersona: false, noTTS: true,
-      confirm: { yes: 'YES', no: 'NOT NOW', onConfirm: () => { Learn.acceptSuggestion(s); toast('Got it — I will suggest a routine next time you ask.'); }, onCancel: () => Learn.dismissSuggestion(s) } });
+      confirm: { yes: 'YES', no: 'NOT NOW', onConfirm: () => { Learn.acceptSuggestion(s); const out = routineFromPattern(s); jarvisSay({ text: out.text, intent: 'LEARN_SUGGEST', noPersona: true }); }, onCancel: () => Learn.dismissSuggestion(s) } });
   } catch (e) {}
 }, 5 * 60 * 1000); // every 5 minutes
 
@@ -2563,7 +2692,7 @@ async function executeTool(p, raw) {
       // "focus on DBMS for 25 minutes" → the session is logged under DBMS (shown per subject in Progress)
       const sm = p.original.match(/\b(?:on|for)\s+(?!\d|a\b|an\b|the\b|my\b|me\b)([A-Za-z][\w+#. -]{1,28}?)(?=\s+(?:for|session|timer|mode|\d)|[.,!?]?$)/i);
       const subject = sm ? sm[1].trim().replace(/\s+/g, ' ') : '';
-      if (subject && focus) focus.subject = subject;
+      if (subject && focus) { focus.subject = subject; saveFocus(); }
       toolStep('focus → ' + min + 'm' + (subject ? ' · ' + subject : ''));
       const top = todos.find(t => !t.done);
       return { text: 'Focus session started: **' + min + ' minutes**' + (subject ? ' on **' + subject + '**' : '') + '. I will call a break after that. Phone away, notifications off.' + (top ? ' Suggested task: "' + top.text + '".' : ''), speak: 'Focus session started for ' + min + ' minutes. Good luck.', tool: 'focus' };
@@ -2657,7 +2786,7 @@ async function executeTool(p, raw) {
       return { text: 'Okay — I will remind you to **' + text.toLowerCase() + '** ' + fmtDay(at) + ' at **' + fmtTime(at) + '**.', tool: 'remind', op };
     }
     case 'LIST_REMINDERS': {
-      const rs = reminders.filter(r => !r.fired && !r.routineId).sort((x, y) => x.at - y.at);
+      const rs = reminders.filter(r => !r.fired && !r.routineId && !r.timerId).sort((x, y) => x.at - y.at);
       switchTab('tasks');
       if (!rs.length) return { text: 'You have no pending reminders.' };
       return { text: 'Upcoming reminders:\n' + rs.map(r => '- ' + r.text + ' — ' + fmtDay(r.at) + ' ' + fmtTime(r.at)).join('\n') };
@@ -2686,7 +2815,7 @@ async function executeTool(p, raw) {
         .replace(/\b(?:today|yesterday|tonight|this morning|this afternoon|this evening)\b/g, ' ')
         .replace(/\b(?:please|mark|marked|record|log|me|as|i|was|am|were|have|had|present|absent|missed|skipped|bunked|bunk|attended|for|in|at|the|my|class|classes|lecture|period)\b/g, ' ')
         .replace(/[^\w\s+#&-]/g, ' ').replace(/\s+/g, ' ').trim();
-      const subject = Object.keys(attendance).find(k => k.toLowerCase() === said) || (said.length <= 4 ? said.toUpperCase() : cap(said)) || 'Class';
+      const subject = Object.keys(attendance).find(k => Study.subjectKey(k) === Study.subjectKey(said)) || (said.length <= 4 ? said.toUpperCase() : cap(said)) || 'Class';
       const present = a.status ? a.status === 'present' : !/\babsent|missed|skipped|bunk(ed)?\b/i.test(s);
       const e = attendance[subject] || (attendance[subject] = { held: 0, attended: 0, log: [] });
       const ymd = Study.ymd(new Date());
@@ -2695,7 +2824,7 @@ async function executeTool(p, raw) {
       saveTasks(); sfx.ok();
       const pct = Study.attendancePct(e.held, e.attended);
       toolStep('attendance → ' + subject + ' ' + pct + '%');
-      return { text: 'Marked **' + subject + '** ' + (present ? 'present' : 'absent') + ' — now at **' + pct + '%** (' + e.attended + '/' + e.held + ')' + (pct < 75 ? ', ⚠️ below the 75% line. Attend ' + plural(Study.neededToReach(e.held, e.attended, 75), 'class') + ' in a row to get back.' : ', ' + plural(Study.bunkable(e.held, e.attended, 75), 'bunk') + ' still safe.'), tool: 'attendance', op: { kind: 'attendance', subject } };
+      return { text: 'Marked **' + subject + '** ' + (present ? 'present' : 'absent') + ' — now at **' + pct + '%** (' + e.attended + '/' + e.held + ')' + (pct < attMin() ? ', ⚠️ below the ' + attMin() + '% line. Attend ' + plural(Study.neededToReach(e.held, e.attended, attMin()), 'class') + ' in a row to get back.' : ', ' + plural(Study.bunkable(e.held, e.attended, attMin()), 'bunk') + ' still safe.'), tool: 'attendance', op: { kind: 'attendance', subject } };
     }
     case 'ATTENDANCE_REPORT': {
       switchTab('tasks');
@@ -2703,28 +2832,28 @@ async function executeTool(p, raw) {
       if (!names.length) return { text: 'No attendance recorded yet — try "mark DBMS present" after a class.' };
       const rows = names.map(n => {
         const e = attendance[n], pct = Study.attendancePct(e.held, e.attended);
-        return { n, pct, bunk: Study.bunkable(e.held, e.attended, 75), need: Study.neededToReach(e.held, e.attended, 75), e };
+        return { n, pct, bunk: Study.bunkable(e.held, e.attended, attMin()), need: Study.neededToReach(e.held, e.attended, attMin()), e };
       }).sort((x, y) => x.pct - y.pct);
-      const line = r => '- **' + r.n + '**: ' + r.pct + '% (' + r.e.attended + '/' + r.e.held + ')' + (r.pct < 75 ? ' ⚠️ attend ' + plural(r.need, 'class') + ' in a row to recover' : ' · ' + plural(r.bunk, 'bunk') + ' safe');
-      const danger = rows.filter(r => r.pct < 75);
-      return { text: (danger.length ? '⚠️ **' + danger[0].n + '** is below 75% (' + danger[0].pct + '%).\n\n' : '') + 'Attendance:\n' + rows.map(line).join('\n'), tool: 'attendance' };
+      const line = r => '- **' + r.n + '**: ' + r.pct + '% (' + r.e.attended + '/' + r.e.held + ')' + (r.pct < attMin() ? ' ⚠️ attend ' + plural(r.need, 'class') + ' in a row to recover' : ' · ' + plural(r.bunk, 'bunk') + ' safe');
+      const danger = rows.filter(r => r.pct < attMin());
+      return { text: (danger.length ? '⚠️ **' + danger[0].n + '** is below ' + attMin() + '% (' + danger[0].pct + '%).\n\n' : '') + 'Attendance:\n' + rows.map(line).join('\n'), tool: 'attendance' };
     }
     case 'BUNK_CHECK': {
       // "I attended 30 of 36 classes, how many can I bunk": the numbers are given, so answer from them directly.
       const given = s.match(/(\d+)\s*(?:of|out of|\/)\s*(\d+)/);
       if (given && +given[1] <= +given[2] && +given[2] > 0) {
         const att = +given[1], held = +given[2], pct = Study.attendancePct(held, att);
-        return pct >= 75
-          ? { text: 'You’re at **' + pct + '%** (' + att + '/' + held + '). You can miss **' + plural(Study.bunkable(held, att, 75), 'class') + '** in a row and stay at 75% or above.', tool: 'attendance' }
-          : { text: 'You’re at **' + pct + '%** (' + att + '/' + held + ') — below 75%, so no bunks. Attend **' + plural(Study.neededToReach(held, att, 75), 'class') + '** in a row to get back to 75%.', tool: 'attendance' };
+        return pct >= attMin()
+          ? { text: 'You’re at **' + pct + '%** (' + att + '/' + held + '). You can miss **' + plural(Study.bunkable(held, att, attMin()), 'class') + '** in a row and stay at ' + attMin() + '% or above.', tool: 'attendance' }
+          : { text: 'You’re at **' + pct + '%** (' + att + '/' + held + ') — below ' + attMin() + '%, so no bunks. Attend **' + plural(Study.neededToReach(held, att, attMin()), 'class') + '** in a row to get back to ' + attMin() + '%.', tool: 'attendance' };
       }
       const name =String(a.subject || s.replace(/^.*?\b(can i (miss|skip|bunk)|should i (go to|attend))\b\s*(the\s+|my\s+|tomorrow'?s?\s+|next\s+)?/i, '').replace(/\s+\b(class|classes|tomorrow|today|lecture)\b.*$/i, '').trim());
-      const key = Object.keys(attendance).find(k => k.toLowerCase() === name.toLowerCase()) || (!name || name.length < 2 ? null : Object.keys(attendance).find(k => NLU.lev(k.toLowerCase(), name.toLowerCase()) <= 2));
+      const key = Object.keys(attendance).find(k => Study.subjectKey(k) === Study.subjectKey(name)) || (!name || name.length < 2 ? null : Object.keys(attendance).find(k => NLU.lev(k.toLowerCase(), name.toLowerCase()) <= 2));
       if (!key) return attendance && Object.keys(attendance).length ? { text: 'Which subject? You track: ' + Object.keys(attendance).join(', ') + '.' } : { text: 'No attendance recorded yet — try "mark DBMS present" after a class.' };
       const e = attendance[key];
-      if (Study.attendancePct(e.held, e.attended) >= 75) return { text: '**' + key + '** is at ' + Study.attendancePct(e.held, e.attended) + '% (' + e.attended + '/' + e.held + ') — you can still miss ' + plural(Study.bunkable(e.held, e.attended, 75), 'class') + ' and stay above 75%.', tool: 'attendance' };
-      const need = Study.neededToReach(e.held, e.attended, 75);
-      return { text: '**' + key + '** is at **' + Study.attendancePct(e.held, e.attended) + '%** (' + e.attended + '/' + e.held + ') — below 75%. No bunks: attend ' + plural(need, 'class') + ' in a row to get back.', tool: 'attendance' }; }    case 'ADD_MARKS': {
+      if (Study.attendancePct(e.held, e.attended) >= attMin()) return { text: '**' + key + '** is at ' + Study.attendancePct(e.held, e.attended) + '% (' + e.attended + '/' + e.held + ') — you can still miss ' + plural(Study.bunkable(e.held, e.attended, attMin()), 'class') + ' and stay above ' + attMin() + '%.', tool: 'attendance' };
+      const need = Study.neededToReach(e.held, e.attended, attMin());
+      return { text: '**' + key + '** is at **' + Study.attendancePct(e.held, e.attended) + '%** (' + e.attended + '/' + e.held + ') — below ' + attMin() + '%. No bunks: attend ' + plural(need, 'class') + ' in a row to get back.', tool: 'attendance' }; }    case 'ADD_MARKS': {
       // "add my S3 marks, 8.6 gpa, 24 credits" · "add S3: 430/500" · title can also come from the AI as a.title.
       let title = String(a.title || '').trim();
       if (!title) {
@@ -3819,11 +3948,19 @@ async function executeTool(p, raw) {
     case 'GIT_LOG': { toolStep('gitLog'); const r = await callTool('/tool/gitLog'); return r.error ? { text: 'Git: ' + r.error + '.' } : { text: 'Recent commits:\n```text\n' + r.output + '\n```', speak: 'Here are the recent commits.', tool: 'gitLog' }; }
     case 'GIT_DIFF': { toolStep('gitDiff'); const r = await callTool('/tool/gitDiff'); return r.error ? { text: 'Git: ' + r.error + '.' } : { text: '```text\n' + r.output + '\n```', speak: 'Here is what changed.', tool: 'gitDiff' }; }
     case 'GIT_COMMIT': {
-      const m = p.original.match(/(?:message|saying|with|:)\s+["']?(.+?)["']?$/i);
+      const m = p.original.match(/(?:message|saying|:)\s+["']?(.+?)["']?$/i) || p.original.match(/\bwith\s+["']?(.+?)["']?$/i);
       if (!m) { ctx.pending = { intent: 'GIT_COMMIT' }; return { text: 'What commit message should I use?' }; }
-      return { text: 'Commit **all** changes with message "' + m[1] + '"?', confirm: { yes: 'COMMIT', no: 'CANCEL', onConfirm: async () => {
-        toolStep('gitCommit'); const r = await callTool('/tool/gitCommit', { message: m[1] });
-        jarvisSay({ text: r.error ? 'Commit failed: ' + r.error : 'Committed.\n```text\n' + r.output + '\n```', intent: 'GIT_COMMIT' });
+      // Which project, and exactly which files, is decided here and shown BEFORE anything is staged; secrets stop it (gitsafe.js on the server).
+      const rm = p.original.match(/\b(?:in|for|on)\s+(?:the\s+)?([\w.-]+)\s+(?:project|repo|repository)\b|\b(?:project|repo|repository)\s+([\w.-]+)\b|\bin\s+([\w.-]+)\s+(?:with|saying|message|:)/i);
+      const repo = rm ? (rm[1] || rm[2] || rm[3]) : '';
+      const pend = await callTool('/tool/gitPending', { repo });
+      if (pend.error) return { text: cap(pend.error.replace(/\.$/, '')) + '.' + (pend.choices && pend.choices.length ? '\nYour git projects: ' + pend.choices.map(c => '**' + c + '**').join(', ') + '.' : '') };
+      if (pend.secrets && pend.secrets.length) return { text: '⚠ I won’t commit **' + pend.repo + '**: ' + pend.secrets.slice(0, 4).map(x => '`' + x.path + '` (' + x.why + ')').join('; ') + '.\nAdd ' + (pend.secrets.length > 1 ? 'them' : 'it') + ' to `.gitignore`, or commit by hand if you are sure.' };
+      if (!pend.count) return { text: 'There is nothing to commit in **' + pend.repo + '**.' };
+      const list = pend.files.slice(0, 12).map(f => '- `' + f.code + '` ' + f.path).join('\n') + (pend.count > 12 ? '\n- …and ' + (pend.count - 12) + ' more' : '');
+      return { text: 'Commit **' + plural(pend.count, 'file') + '** in **' + pend.repo + '** with message "' + m[1] + '"?\n' + list, confirm: { yes: 'COMMIT', no: 'CANCEL', onConfirm: async () => {
+        toolStep('gitCommit'); const r = await callTool('/tool/gitCommit', { message: m[1], repo: pend.repo });
+        jarvisSay({ text: r.error ? 'Commit failed: ' + r.error : 'Committed ' + plural(r.files, 'file') + ' in **' + r.repo + '**.\n```text\n' + r.output + '\n```', intent: 'GIT_COMMIT' });
       } } };
     }
     case 'CHECK_PORT': {
@@ -3846,7 +3983,7 @@ async function executeTool(p, raw) {
       if (due.length) parts.push('**Due soon** — ' + due.map(x => x.title + ' (' + dueLabel(x.due) + ')').join(', ') + '.');
       const pend = todos.filter(t => !t.done);
       parts.push(pend.length ? '**To-do** — ' + plural(pend.length, 'item') + '; first up: "' + pend[0].text + '".' : '**To-do** — list is clear.');
-      const rs = reminders.filter(r => !r.fired && r.at - Date.now() < 864e5);
+      const rs = reminders.filter(r => !r.fired && !r.timerId && r.at - Date.now() < 864e5);
       if (rs.length) parts.push('**Reminders** — ' + rs.map(r => r.text + ' at ' + fmtTime(r.at)).join(', ') + '.');
       await refreshSystem();
       parts.push('**System** — CPU ' + sys.cpu + '%, RAM ' + sys.ram + '%, ' + sys.diskFree + ' GB free.');
@@ -4403,7 +4540,7 @@ async function askLLM(userText, opts) {
   try {
     const res = await fetch(API + '/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: llmAbort.signal,
-      body: JSON.stringify({ messages: history, context: Object.assign(llmContext(), limit ? { limit } : {}, earlier ? { earlier } : {}), model: llm.model, imageToken: opts.imageToken })
+      body: JSON.stringify({ messages: history, context: Object.assign(llmContext(), limit ? { limit } : {}, earlier ? { earlier } : {}, opts.noTools ? { noTools: true } : {}), model: llm.model, imageToken: opts.imageToken })
     });
     if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || 'HTTP ' + res.status); }
     const reader = res.body.getReader(), dec = new TextDecoder();
@@ -4631,10 +4768,45 @@ const voiceVocab = { names: [], drives: [] };
 async function loadVoiceVocab() {
   try { const r = await fetch(API + '/voice/vocab').then(x => x.json()); if (r && r.success) { voiceVocab.names = r.names || []; voiceVocab.drives = r.drives || []; } } catch (e) {}
 }
+// Undo that survives a reload: the server remembers how to reverse each file action of the last 30 minutes (undolog.js); put them back on the undo stack.
+async function restoreUndoFromServer() {
+  try {
+    const r = await getJSON('/undo/pending');
+    if (!r || !Array.isArray(r.items) || !r.items.length) return;
+    const n = Undo.restore(r.items.map(i => ({ label: i.label, t: i.t, fn: async () => { const x = await callTool(i.endpoint, i.body); if (x && x.error) throw new Error(x.error); return 'Undone: ' + i.label + '.'; } })));
+    if (n) log('info', 'undo: ' + n + ' earlier action' + (n === 1 ? '' : 's') + ' from before the reload can still be undone');
+  } catch (e) { /* undo from before the reload is simply not available */ }
+}
+setTimeout(restoreUndoFromServer, 1500);
 setTimeout(loadVoiceVocab, 20000); setInterval(loadVoiceVocab, 10 * 60 * 1000);   // after the laptop list is built; then every 10 min
 // Skill packs (SKILL.md folders): load the list once the backend is up; try again if it wasn't ready.
 setTimeout(() => { if (typeof Skills !== 'undefined') Skills.loadPacks(); }, 3000);
 setTimeout(() => { if (typeof Skills !== 'undefined' && !Skills.packs.length) Skills.loadPacks(); }, 20000);
+/* A single typed or spoken command that acts on the laptop without its own confirmation (closing an app, running a program, typing into the front window,
+   starting or stopping a dev server, cloning a repo) is held to the same "confirm" tier the multi-step agent uses: a card says what is about to happen and
+   nothing runs until YES. A misheard "close chrome" no longer kills the browser. (Commands that already ask for themselves — shutdown, Wi-Fi off, display off,
+   git commit… — are not asked twice.) Returns the card, or null when the command may go ahead. */
+const CONFIRM_GATE = { CLOSE_APPLICATION: 'close an app', RUN_FILE: 'run a program', PASTE_TO_EDITOR: 'type into the window in front', START_PROCESS: 'start a dev server', STOP_PROCESS: 'stop a dev server', GIT_CLONE: 'download a repository' };
+function confirmGate(p, cmdText) {
+  if (!CONFIRM_GATE[p.intent] || p.viaAgent || p.confirmed) return null;
+  const tier = Agent.tierFor ? Agent.tierFor(p.intent, p.text || '') : ['confirm', ''];
+  if (tier[0] === 'safe') return null;
+  const heard = String(cmdText || p.original || p.text || '').trim().slice(0, 120);
+  return { text: 'You asked me to **' + CONFIRM_GATE[p.intent] + '**: “' + heard + '”.\n\n' + (tier[1] || 'This acts on your laptop.') + ' Go ahead?', intent: p.intent, noPersona: true,
+    confirm: { yes: 'YES, DO IT', no: 'CANCEL', onConfirm: async () => deliver(await executeTool({ ...p, confirmed: true }, cmdText), { intent: p.intent, confidence: 1 }) } };
+}
+/* Anything private that is about to leave the laptop for an ONLINE model asks first: the text you copied, a picture or the text of your screen, excerpts from
+   your files, text you selected in another app. A local model (Ollama) never asks. One yes covers that kind until this page is reloaded; "no" sends nothing. */
+const CLOUD_KIND = { EXPLAIN_CLIPBOARD: 'clipboard', CLIP_TOOL: 'clipboard', CLIP_TRANSFORM: 'clipboard', SCREEN_READ: 'screen', SCREEN_EXPLAIN: 'screen', CLIPBOARD_IMAGE_READ: 'screen', ASK_FILES: 'files', SUMMARISE_FILE: 'files', FLASH_MAKE: 'files', HOTKEY: 'selection' };
+const CLOUD_WHAT = { clipboard: 'the text you copied', screen: 'a picture or the text of your screen', files: 'excerpts from your own files', selection: 'the text you selected' };
+const cloudAllowed = new Set();
+async function confirmCloud(kind) {
+  if (!isCloudModel(llm.model) || cloudAllowed.has(kind)) return true;
+  const prov = modelInfo(llm.model).providerLabel;
+  const ok = typeof Extras !== 'undefined' && Extras.confirmCard ? await Extras.confirmCard('Your AI model runs online (**' + prov + '**). To answer, I would send them **' + (CLOUD_WHAT[kind] || 'this') + '**, which may be private. Send it? One yes covers this kind until you reload the page; to keep everything on this laptop, switch to a local model in Settings.', 'YES, SEND IT') : false;
+  if (ok) cloudAllowed.add(kind);
+  return ok;
+}
 async function handleUser(text, source) {
   text = (text || '').trim(); if (!text) return;
   if (typeof window.__lockPing === 'function') window.__lockPing();   // spoken commands count as "still here" for the auto-lock
@@ -4660,6 +4832,10 @@ async function handleUser(text, source) {
   if (typeof pendingApproval === 'function' && pendingApproval) {
     const t = String(text).trim().replace(/[.!?]+$/, '');
     if (typeof APPROVAL_YES !== 'undefined' && APPROVAL_YES.test(t)) { const done = pendingApproval; pendingApproval = null; addMsg('user', text, { source: source || 'text' }); logChat('user', text, '', source || 'text'); toast('Approved — carrying on…'); done(true); return; }
+    if (!(typeof APPROVAL_NO !== 'undefined' && APPROVAL_NO.test(t))) {
+      // not an answer: it waits its turn (the running turn is paused on the card)
+      inputQueue.push([text, source]); toast('Waiting for your answer on the card above — say yes or no. Queued: "' + text.slice(0, 40) + '"', true); return;
+    }
     if (typeof APPROVAL_NO !== 'undefined' && APPROVAL_NO.test(t)) { const done = pendingApproval; pendingApproval = null; addMsg('user', text, { source: source || 'text' }); logChat('user', text, '', source || 'text'); done(false); return; }
   }
   busy = true; const t0 = performance.now();
@@ -4922,7 +5098,7 @@ async function handleUser(text, source) {
     if (!wantsLLM) {
       if (p.tool) { setState('EXECUTING', 'Running ' + p.tool + '…'); engine('core', true); }
       const pre = Agent.preSingle(p);          // before-state for the open/close check, requested in parallel
-      result = await executeTool(p, cmdText);
+      result = confirmGate(p, cmdText) || await executeTool(p, cmdText);
       engine('core', false);
       if (result && !result.askLLM) {
         ctx.lastIntent = p.intent; ctx.lastCmd = result.confirm || ctx.pending || /\?\s*$/.test(String(result.text || '')) ? null : { text: cmdText, t: Date.now() }; Agent.watchSingle(p, pre);
@@ -4998,6 +5174,8 @@ async function handleUser(text, source) {
     } else if (wantsLLM || (result && result.askLLM)) {
       traceRoute(result && result.askLLM ? 'rules → ' + (p.tool || p.intent) + ' → AI writes the answer (' + llm.model + ')' : 'AI chat (' + llm.model + ') — no command matched');
       const toolPrompt = result && typeof result.askLLM === 'string';
+      const cloudKind = toolPrompt && CLOUD_KIND[p.intent] && (p.intent !== 'FLASH_MAKE' || /material below/.test(result.askLLM)) ? CLOUD_KIND[p.intent] : '';
+      if (cloudKind && llmReady() && !(await confirmCloud(cloudKind))) { await deliver({ text: 'Okay — nothing was sent to ' + modelInfo(llm.model).providerLabel + '.', noPersona: true }, { intent: p.intent, confidence: 1 }); return; }
       // Is there a skill pack for this? Plain chat only (never a tool prompt or an "answer from memory"). A button after the answer, or the skill runs straight away if its header says auto: true.
       let skillHint = null;
       if (!result && !toolPrompt && !answerOnly && srcLang === 'en' && typeof SkillRouter !== 'undefined' && typeof Skills !== 'undefined' && settings.skillSuggest !== false && llmReady()) {
@@ -5700,9 +5878,26 @@ function bindSwitch(id, key, after) {
     if (after) after(settings[key]);
   });
 }
+/* ---- screen readers ---- */
+// Every settings switch is named after the label in its row (a bare button says only "switch" to a screen reader).
+document.querySelectorAll('.s-row').forEach(row => { const lab = row.querySelector('label'); if (!lab) return; const l = lab.cloneNode(true); l.querySelectorAll('small').forEach(x => x.remove()); const name = l.textContent.trim(); row.querySelectorAll('button.switch, select, input:not([type=hidden]):not([type=checkbox])').forEach(c => { if (!c.getAttribute('aria-label') && !c.getAttribute('aria-labelledby') && !c.placeholder && !c.title) c.setAttribute('aria-label', name); }); });
+// A quiet live region reads each FINISHED reply once (not every streamed word): a new JARVIS message is watched until its text stops changing.
+const srLive = document.getElementById('srLive'); let srReady = false; setTimeout(() => { srReady = true; }, 4000);
+function srAnnounce(text) { if (!srLive || !text) return; srLive.textContent = ''; setTimeout(() => { srLive.textContent = String(text).replace(/\s+/g, ' ').trim().slice(0, 800); }, 60); }
+function srWatch(node) {
+  let last = '', stable = 0, tries = 0;
+  const iv = setInterval(() => {
+    const body = node.querySelector('.mbody'), tx = body ? body.innerText.trim() : '';
+    tries++; stable = tx && tx === last && !node.querySelector('.thinking') && !(body && body.classList.contains('typing')) ? stable + 1 : 0; last = tx;
+    if (stable >= 3 || tries > 400) { clearInterval(iv); if (tx && stable >= 3) srAnnounce(tx); }
+  }, 500);
+}
+new MutationObserver(muts => { if (!srReady) return; for (const m of muts) for (const n of m.addedNodes) if (n.nodeType === 1 && n.classList.contains('msg') && n.classList.contains('jarvis')) srWatch(n); }).observe(messages, { childList: true });
 bindSwitch('#ttsToggle', 'tts', v => { if (!v) stopSpeaking(); loadVoices(); });
 bindSwitch('#soundToggle', 'sound');
 bindSwitch('#attendancePromptToggle', 'attendancePrompt');
+{ const sel = $('#attendanceMinSel'); if (sel) { sel.value = String(attMin()); sel.addEventListener('change', () => { settings.attendanceMin = +sel.value; saveSettings(); renderTasks(); toast('Attendance target: ' + attMin() + '%'); }); } }
+bindSwitch('#phoneStrictToggle', 'phoneStrict', v => log('info', 'phone commands: ' + (v ? 'strict — a fresh authenticator code with every command' : 'unlock for 10 minutes')));
 bindSwitch('#offlineSttToggle', 'offlineStt', v => { if (v) Stt.ready().then(ok => { if (!ok) { settings.offlineStt = false; saveSettings(); bindSwitchState('#offlineSttToggle', 'offlineStt'); jarvisSay({ text: 'Offline speech is not installed yet. Say **“is offline speech installed”** for how to install it.', noPersona: true }); } }); });
 bindSwitch('#translateOnlineToggle', 'translateOnline', v => log('info', 'online translation ' + (v ? 'on' : 'off — replies translated by the local model')));
 bindSwitch('#neuralVoiceToggle', 'neuralVoice', v => log('info', 'online neural voice (FRIDAY, Telugu, Kannada) ' + (v ? 'on' : 'off')));
@@ -5766,7 +5961,7 @@ async function renderPhoneAuth(shown) {
   if (shown) {
     const key = shown.secret.replace(/(.{4})/g, '$1 ').trim();
     box.innerHTML = '<b>Phone commands.</b> In <b>Google Authenticator</b> (or Microsoft Authenticator): <b>+</b> → <b>Enter a setup key</b> → account <code>JARVIS</code>, key <code>' +
-      escHtml(key) + '</code>, time-based. Then send <code>unlock 123456</code> (your current code) in ntfy, and commands work for 15 minutes. Keep this key secret. <button class="linkbtn" id="phoneAuthHide" type="button">HIDE KEY</button>';
+      escHtml(key) + '</code>, time-based. Then send <code>unlock 123456</code> (your current code) in ntfy, and commands work for 10 minutes (or turn on strict mode: a fresh code with every command). Keep this key secret. <button class="linkbtn" id="phoneAuthHide" type="button">HIDE KEY</button>';
     $('#phoneAuthHide').onclick = () => renderPhoneAuth();
     return;
   }

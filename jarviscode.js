@@ -125,7 +125,7 @@ module.exports = function setupJarvisCode(app, { llm, DEFAULT_MODEL, SANDBOX, an
     const history = (Array.isArray(b.history) ? b.history : []).slice(-8)
       .filter(h => h && (h.role === 'user' || h.role === 'assistant') && typeof h.text === 'string' && h.text.trim())
       .map(h => ({ role: h.role, content: h.text.slice(0, 3000) }));
-    const ask = (extra) => llm.complete({ model: model(req), system: SYSTEM[mode],
+    const ask = (extra) => llm.complete({ priority: 2, model: model(req), system: SYSTEM[mode],
       messages: [...history, { role: 'user', content: context + '\n\nRequest: ' + prompt + (extra || '') }],
       temperature: mode === 'build' ? 0.2 : 0.4, maxTokens: mode === 'build' ? 8000 : 1500, numCtx: mode === 'build' ? 24576 : 16384, timeoutMs: 600000 });
     let out;

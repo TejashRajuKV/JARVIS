@@ -1,8 +1,11 @@
+// Too old a Node gives one plain sentence now, not a crash deep inside a request later (nodecheck.js).
+{ const nodeCheck = require('./nodecheck').check(); if (nodeCheck.fatal) { console.error('\n' + nodeCheck.fatal + '\n'); process.exit(1); } if (nodeCheck.warn) console.warn('[JARVIS] ' + nodeCheck.warn); }
 const express = require('express');
 const { spawn, exec, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 
 // One JARVIS per user: a second start (an AI tool, VS Code, a terminal) reuses the running one instead of adding a copy
 // with its own chat, ntfy stream and wake-word listener. This runs before anything else starts work (instance.js).
@@ -38,11 +41,23 @@ app.use((req, res, next) => {
     return res.redirect(302, `http://localhost:${PORT}${req.originalUrl}`);
   next();
 });
+// Slow-request and blocked-event-loop log (for "JARVIS froze for a few seconds"): a request that takes over 3 s, or one the page gave up on, is logged with its path and time;
+// and if the server itself could not run for over 1.5 s (a long synchronous job) it says how long. Paths only — never bodies or query text.
+app.use((req, res, next) => {
+  const t0 = Date.now(); let done = false;
+  res.on('finish', () => { done = true; const ms = Date.now() - t0; if (ms > 3000) console.log('[slow] ' + req.method + ' ' + req.path + ' ' + ms + ' ms'); });
+  res.on('close', () => { if (!done) console.log('[unfinished] ' + req.method + ' ' + req.path + ' after ' + (Date.now() - t0) + ' ms (the page stopped waiting)'); });
+  next();
+});
+{ let last = Date.now(); const iv = setInterval(() => { const now = Date.now(), lag = now - last - 500; last = now; if (lag > 1500) console.log('[lag] the server was busy and could not answer for ' + Math.round(lag / 100) / 10 + ' s'); }, 500); if (iv.unref) iv.unref(); }
 app.use(express.json({ limit: '3mb' }));
 // App lock (applock.js): while it is on and not unlocked, every /api request is refused and the page is replaced by a
 // standalone lock page. Mounted before the static files so even index.html is held back. Needs a Windows Hello key.
 let helloApi = null;
 const appLock = require('./applock')({ getConfig: () => config, saveConfig: () => saveConfig(), getHello: () => helloApi, PORT, rootDir: __dirname });
+// (before the lock gate, so the lock page has it too) JARVIS's own pages carry a Content-Security-Policy (csp.js): only its own scripts plus the fingerprinted camera libraries, connections only back here.
+const pageCsp = require('./csp');
+app.use((req, res, next) => { if (pageCsp.isPagePath(req.path)) res.setHeader('Content-Security-Policy', pageCsp.buildCsp()); next(); });
 app.use(appLock.gate);
 // no-cache = the browser re-checks each file on load (a cheap 304 when unchanged), so an updated JARVIS is never
 // run with yesterday's scripts still cached.
@@ -121,6 +136,7 @@ const saveState = () => { clearTimeout(stateTimer); stateTimer = setTimeout(writ
 process.on('exit', () => { if (stateTimer) writeStateNow(); });
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0));
 const STATE_KEY = /^jarvis\.[\w.-]{1,40}$/;
+const StateMerge = require('./statemerge');
 const scheduler = require('./scheduler');
 scheduler(app, { getState: () => appState, saveState, PORT, IS_WIN, llm, DEFAULT_MODEL, getConfig: () => config, saveConfig, procOf: k => procOf(k) });
 // Ctrl+Shift+J: send the selected text from any app to JARVIS (opt-in in Settings; hotkey.js).
@@ -136,23 +152,45 @@ app.get('/api/state.js', (req, res) => {
   res.set({ 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store' })
     .send('window.JARVIS_STATE = ' + JSON.stringify(appState).replace(/</g, '\\u003c') + ';');
 });
+// The lists that more than one tab (or the phone page) can change. When one changes, every OTHER tab is told at once and takes the new copy, so a tab that was
+// open all morning no longer writes its old todos/classes/expenses over what another tab just saved (the page writes whole lists, so the last writer used to win).
+const SYNC_KEYS = new Set(['jarvis.todos', 'jarvis.reminders', 'jarvis.deadlines', 'jarvis.classes', 'jarvis.attendance', 'jarvis.marks', 'jarvis.studyPlans', 'jarvis.expenses', 'jarvis.habits', 'jarvis.memory', 'jarvis.budget']);
+// "Only one tab says it": every open tab runs the same alert checks, so each would announce the same class or warning. A tab asks to CLAIM an alert first; the first asker
+// wins for `ttlSec` seconds and every other tab is told no. (In memory only: after a restart, the first tab to ask wins again.)
+const claims = new Map();
+app.post('/api/claim', (req, res) => {
+  const key = String((req.body && req.body.key) || '').slice(0, 120);
+  if (!key) return res.status(400).json({ error: 'key required' });
+  const now = Date.now(), ttl = Math.max(1, Math.min(86400, Math.round(Number(req.body.ttlSec) || 3600))) * 1000;
+  for (const [k, until] of claims) if (until <= now) claims.delete(k);
+  if (claims.has(key)) return res.json({ success: true, won: false });
+  claims.set(key, now + ttl); if (claims.size > 2000) claims.delete(claims.keys().next().value);
+  res.json({ success: true, won: true });
+});
 app.post('/api/state', (req, res) => {
   const set = req.body && req.body.set;
   if (!set || typeof set !== 'object' || Array.isArray(set)) return res.status(400).json({ error: 'expected {set: {key: value}}' });
   const bad = Object.keys(set).find(k => !STATE_KEY.test(k));
   if (bad) return res.status(400).json({ error: 'invalid key: ' + bad });
-  for (const [k, v] of Object.entries(set)) {
+  const changed = [], mergedBack = {}, base = req.body.base && typeof req.body.base === 'object' ? req.body.base : {};
+  for (const [k, v0] of Object.entries(set)) {
+    let v = v0;
+    const before = SYNC_KEYS.has(k) ? JSON.stringify(appState[k]) : null;
+    // A whole list from a tab that was not up to date: keep what another tab added meanwhile, honour this tab's deletions (statemerge.js).
+    if (v !== null && k in appState && base[k] !== undefined) { const m = StateMerge.mergeState(k, appState[k], v, base[k]); if (m.merged) { v = m.value; if (m.changed) mergedBack[k] = v; } }
     if (v === null) delete appState[k];
     // The server fires reminders; a tab's stale copy must not un-fire or rewind them (scheduler.js).
     else if (k === 'jarvis.reminders') appState[k] = scheduler.mergeReminders(appState[k], v);
     else appState[k] = v;
+    if (SYNC_KEYS.has(k) && JSON.stringify(appState[k]) !== before) changed.push(k);
   }
   saveState();
+  if (changed.length && typeof app.locals.broadcast === 'function') for (const k of changed) app.locals.broadcast({ type: 'state', key: k, value: appState[k] === undefined ? null : appState[k], src: String(req.body.src || '').slice(0, 32) });
   // Other open tabs of this JARVIS show a changed chat at once (the writer's own tab ignores it: same src).
   if ('jarvis.chat' in set && Array.isArray(set['jarvis.chat']) && typeof app.locals.broadcast === 'function') {
     app.locals.broadcast({ type: 'state', key: 'jarvis.chat', value: set['jarvis.chat'], src: String(req.body.src || '').slice(0, 32) });
   }
-  res.json({ success: true });
+  res.json({ success: true, merged: mergedBack });      // lists the server combined with another tab's changes: the writing tab takes these
 });
 // "Erase all" keeps the migrated marker, so another browser's stale localStorage can't repopulate it afterwards.
 app.delete('/api/state', (req, res) => { backup.snapshot('before-erase'); appState = appState['jarvis.migrated'] ? { 'jarvis.migrated': true } : {}; saveState(); res.json({ success: true }); });
@@ -207,6 +245,9 @@ const INTERNAL_FILES = new Set([CONFIG_FILE, STATE_FILE].map(f => norm(f)));
 function isInternal(p) {
   const r = path.resolve(p);
   if (norm(r).startsWith(norm(path.join(SANDBOX, '.backups')) + path.sep)) return true;
+  // every dot-file / dot-folder directly in ~/jarvis is JARVIS's own data (screenshot text index, chat archive, AI call log, backup settings, locks…)
+  const relS = path.relative(SANDBOX, r);
+  if (relS && !relS.startsWith('..') && !path.isAbsolute(relS) && relS.split(path.sep)[0].replace(/[. ]+$/, '').startsWith('.')) return true;
   const base = path.basename(r).replace(/:.*$/, '').replace(/[. ]+$/, '');
   return INTERNAL_FILES.has(norm(path.join(path.dirname(r), base)));
 }
@@ -219,12 +260,15 @@ function isInternal(p) {
 const HOME_DIR = os.homedir();
 const BLOCKED_DIRS = [process.env.SystemRoot || 'C:\\Windows', process.env.ProgramFiles || 'C:\\Program Files',
   process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', process.env.ProgramData || 'C:\\ProgramData', path.join(HOME_DIR, 'AppData'),
-  ...['.ssh', '.aws', '.gnupg', '.azure', '.kube', '.docker', '.password-store'].map(d => path.join(HOME_DIR, d))].map(d => path.resolve(d));
+  ...['.ssh', '.aws', '.gnupg', '.azure', '.kube', '.docker', '.password-store', '.claude', '.codex', '.gemini', '.config/gh', '.config/gcloud', '.config/git'].map(d => path.join(HOME_DIR, ...d.split('/')))].map(d => path.resolve(d));
+// credential files that sit loose in the home folder
+const BLOCKED_HOME_FILES = new Set(['.git-credentials', '.netrc', '_netrc', '.npmrc', '.pypirc', '.bash_history', '.psql_history', '.mysql_history', '.python_history', '.node_repl_history', '.boto', '.s3cfg', '.yarnrc', '.gitconfig'].map(f => norm(path.join(HOME_DIR, f))));
 const BLOCKED_NAMES = /^(\$recycle\.bin|system volume information|recovery|\$windows\.~bt|\$windows\.~ws)$/i;
 const under = (p, dir) => { const a = norm(path.resolve(p)), b = norm(dir); return a === b || a.startsWith(b + path.sep); };
 function blockedPath(p, { forWrite } = {}) {
   const r = path.resolve(p);
   if (BLOCKED_DIRS.some(d => under(r, d))) return true;
+  if (BLOCKED_HOME_FILES.has(norm(path.join(path.dirname(r), path.basename(r).replace(/:.*$/, '').replace(/[. ]+$/, ''))))) return true;
   if (r.split(path.sep).some(seg => BLOCKED_NAMES.test(seg))) return true;
   if (isInternal(r) || (rootOf(r) === SANDBOX && inTrash(r))) return true;
   if (forWrite && under(r, __dirname)) return true;   // JARVIS never rewrites its own program files
@@ -244,9 +288,21 @@ function approvedChange(req, res, action, ...paths) {
   const ps = paths.filter(Boolean);
   if (ps.some(p => blockedPath(p, { forWrite: true }))) { res.status(403).json({ error: 'That location is off-limits (Windows, program or app-data folders, or JARVIS itself)' }); return false; }
   const outside = ps.filter(p => zoneOf(p) === 'laptop');
-  if (outside.length && req.body.approved !== true) { res.status(409).json({ needsApproval: true, action, paths: outside, error: 'This changes files outside ~/jarvis and needs your permission' }); return false; }
+  if (outside.length) {
+    // A body flag alone ("approved": true) proves nothing: anything that can reach this route could set it. The 409 hands out a one-time token for exactly THIS
+    // action on exactly THESE paths, valid for 5 minutes; the page sends it back after the person pressed ALLOW. A token is used up by one retry.
+    const sig = action + '|' + outside.map(p => norm(path.resolve(p))).sort().join('|');
+    const tok = String(req.body.approvalToken || ''), rec = approvalTokens.get(tok);
+    if (req.body.approved === true && rec && rec.sig === sig && rec.exp > Date.now()) { approvalTokens.delete(tok); return true; }
+    const token = crypto.randomBytes(16).toString('hex');
+    const now = Date.now(); for (const [k, v] of approvalTokens) if (v.exp < now) approvalTokens.delete(k);
+    if (approvalTokens.size > 500) approvalTokens.delete(approvalTokens.keys().next().value);
+    approvalTokens.set(token, { sig, exp: now + 5 * 60000 });
+    res.status(409).json({ needsApproval: true, approvalToken: token, action, paths: outside, error: 'This changes files outside ~/jarvis and needs your permission' }); return false;
+  }
   return true;
 }
+const approvalTokens = new Map();
 
 // Find by name across the laptop: Desktop, Documents, Downloads (and OneDrive's), the top of your home folder, and
 // other drives a few levels down. Folder- or file-names as people say them (sameName: "dss print" → dsa_sprint; a
@@ -857,7 +913,15 @@ function cleanLimit(l) {
   const n = parseInt(l.n, 10), unit = ['line', 'sentence', 'word', 'point'].includes(l.unit) ? l.unit : null;
   return unit && n >= 1 && n <= (unit === 'word' ? 500 : 30) ? { n, unit } : null;
 }
+// When the page will not run a tool call anyway (a tool already did the work and the AI only phrases the answer, a summary, a rewrite…), the ACTIONS and TOOLS
+// sections — about 1,500 tokens of a small model's 8K — are left out, along with the rules that talk about tools.
 function buildSystemPrompt(ctx = {}) {
+  const full = buildSystemPromptFull(ctx);
+  if (ctx.noTools !== true) return full;          // only a real true (a string or a number never switches the tools off by accident)
+  return full.replace(/\nACTIONS\n[\s\S]*?\nWHAT YOU KNOW ABOUT THE USER/, '\nWHAT YOU KNOW ABOUT THE USER')
+    .split('\n').filter(l => !/<<read_screen|open_best or research|use research|Never mention tool names/.test(l)).join('\n');
+}
+function buildSystemPromptFull(ctx = {}) {
   const now = new Date();
   const facts = Array.isArray(ctx.memory) && ctx.memory.length ? ctx.memory.slice(0, 20).map(m => `- ${m}`).join('\n') : '- (none yet)';
   const tasks = Array.isArray(ctx.tasks) && ctx.tasks.length ? ctx.tasks.slice(0, 15).map(t => `- ${t}`).join('\n') : '- (none)';
@@ -975,14 +1039,9 @@ app.post('/api/summarize', async (req, res) => {
    structured intent. The model is constrained to a strict JSON schema and a known
    intent whitelist — it can never invent a tool. If parsing fails or the model is
    unreachable, the page falls back to the rule-engine result unchanged. */
+// Must be exactly the keys of TOOL_BY_INTENT in nlu-qwen.js (tests/nluq.test.js checks): the model can only name intents JARVIS really runs.
 const NLU_INTENT_WHITELIST = [
-  'OPEN_APPLICATION','CLOSE_APPLICATION','OPEN_WEB','WEB_SEARCH','SITE_SEARCH',
-  'BRIGHTNESS','VOLUME','MUTE','DARK_MODE','BATTERY','WEATHER','TIME','DATE',
-  'TIMER','REMINDER','TASK_ADD','TASK_LIST','TASK_DONE','TASK_DELETE',
-  'READ_FILE','LIST_FILES','SEARCH_FILES','CREATE_FOLDER','CREATE_FILE',
-  'SCREENSHOT','READ_SCREEN','LOCK','SLEEP','SHUTDOWN','RESTART',
-  'PLAY_MUSIC','PAUSE','NEXT_TRACK','PREV_TRACK',
-  'WEATHER','MAPS','CONVERT','CALCULATE','CONVERSATION'
+  'OPEN_APPLICATION','CLOSE_APPLICATION','OPEN_WEB','WEB_SEARCH','SITE_SEARCH','BRIGHTNESS','DARK_MODE','WEATHER','READ_FILE','LIST_FILES','SEARCH_FILES','CREATE_FOLDER','SCREENSHOT','CALCULATE','VOLUME','MUTE','BATTERY','TIME','DATE','TIMER','TASK_ADD','TASK_LIST','PLAY_MUSIC','PAUSE','NEXT_TRACK','PREV_TRACK','CONVERSATION'
 ];
 app.post('/api/nlu/parse', async (req, res) => {
   const text = String((req.body && req.body.text) || '').slice(0, 800);
@@ -1041,7 +1100,7 @@ app.post('/api/chat', async (req, res) => {
   res.on('close', () => { if (!res.writableFinished) ctrl.abort(); });
   try {
     // Every provider's stream is re-emitted as Ollama-style NDJSON ({message:{content}}), which the page already reads.
-    const s = await llm.openStream({ model: model || DEFAULT_MODEL, system: buildSystemPrompt(context), messages: clean,
+    const s = await llm.openStream({ priority: 0, model: model || DEFAULT_MODEL, system: buildSystemPrompt(context), messages: clean,
       images: withImage ? [image] : null, temperature: 0.5, maxTokens: numPredict, numCtx: withImage ? 12288 : 8192, signal: ctrl.signal });
     res.setHeader('Content-Type', 'application/x-ndjson');
     res.setHeader('Cache-Control', 'no-cache');
@@ -1227,6 +1286,8 @@ app.post('/api/tool/writeFile', (req, res) => {
     if (exists && (req.body.overwrite || req.body.append)) { try { backup = Date.now() + '_' + path.basename(p); fs.copyFileSync(p, path.join(TRASH, backup)); } catch { backup = null; } }
     if (req.body.append && exists) fs.appendFileSync(p, (content.startsWith('\n') ? '' : '\n') + content);
     else fs.writeFileSync(p, content);
+    if (!exists) undoLog.add({ label: 'created ' + path.basename(p), endpoint: '/tool/undoCreate', body: { name: p } });
+    else if (backup) undoLog.add({ label: 'changed ' + path.basename(p), endpoint: '/tool/restoreVersion', body: { backup, name: p } });
     res.json({ success: true, name: rel(p), path: p, created: !exists, appended: !!(req.body.append && exists), backup });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1246,6 +1307,7 @@ app.post('/api/tool/createFolder', (req, res) => {
   try {
     const existed = fs.existsSync(p);
     fs.mkdirSync(p, { recursive: true });
+    if (!existed) undoLog.add({ label: 'created the folder ' + path.basename(p), endpoint: '/tool/undoCreate', body: { name: p } });
     res.json({ success: true, name: rel(p), path: p, existed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1257,14 +1319,21 @@ function exactItem(name, kind) {
   if (path.isAbsolute(s) && !/^[/\\]/.test(s)) { const p = anyPath(s); return p && fs.existsSync(p) && (!kind || (kind === 'folder') === fs.statSync(p).isDirectory()) ? p : null; }
   return findAllowed(s, { kind, exact: true });
 }
-// Into JARVIS's trash (so "undo" can restore it). Across drives a rename fails, so copy, then remove.
+// Into JARVIS's trash (so "undo" can restore it). The trash lives on the item's own drive (trashkeep.js), so this is a rename, not a copy onto C:.
+const trashKeep = require('./trashkeep').createTrashKeep({ TRASH, SANDBOX });
+// How to reverse each file action, written down so "undo" still works after the page is reloaded (undolog.js).
+const undoLog = require('./undolog')(app, { SANDBOX });
 function moveToTrash(p) {
-  const trashName = `${Date.now()}_${path.basename(p)}`, dest = path.join(TRASH, trashName);
-  fs.mkdirSync(TRASH, { recursive: true });
+  const trashName = `${Date.now()}_${path.basename(p)}`, dir = trashKeep.dirFor(p), dest = path.join(dir, trashName);
+  fs.mkdirSync(dir, { recursive: true });
   try { fs.renameSync(p, dest); }
   catch (e) { if (e.code !== 'EXDEV') throw e; fs.cpSync(p, dest, { recursive: true }); fs.rmSync(p, { recursive: true, force: true }); }
+  if (dir !== TRASH) trashKeep.remember(dir);
   return trashName;
 }
+// Items older than 30 days leave the trash for good: once at start, then daily.
+setTimeout(() => { try { trashKeep.prune(); } catch { /* the trash is tidied next time */ } }, 30000).unref();
+setInterval(() => { try { trashKeep.prune(); } catch { /* next time */ } }, 24 * 3600e3).unref();
 app.post('/api/tool/deleteItem', (req, res) => {
   const p = exactItem(req.body.name, req.body.kind);
   if (!p || p === SANDBOX || blockedPath(p, { forWrite: true })) return res.status(404).json({ error: `I can't find "${req.body.name}" (or it's somewhere I never delete)` });
@@ -1273,6 +1342,7 @@ app.post('/api/tool/deleteItem', (req, res) => {
   try {
     const original = rel(p);
     const trashName = moveToTrash(p);
+    undoLog.add({ label: 'deleted ' + path.basename(p), endpoint: '/tool/restoreItem', body: { trashName, original } });
     res.json({ success: true, name: rel(p), trashed: true, trashName, original });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1310,36 +1380,36 @@ function moveAcross(src, dest) {
 app.post('/api/tool/renameFile', (req, res) => {
   const pr = twoPaths(req.body.oldName, req.body.newName, res);
   if (!pr || !approvedChange(req, res, 'rename', pr.src, pr.dest)) return;
-  try { moveAcross(pr.src, pr.dest); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
+  try { moveAcross(pr.src, pr.dest); undoLog.add({ label: 'renamed ' + path.basename(pr.src), endpoint: '/tool/undoMove', body: { to: pr.dest, from: pr.src } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/tool/copyFile', (req, res) => {
   const pr = twoPaths(req.body.src, req.body.dest, res);
   if (!pr || !approvedChange(req, res, 'copy into', pr.dest)) return;   // the original isn't changed
-  try { fs.cpSync(pr.src, pr.dest, { recursive: true }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
+  try { fs.cpSync(pr.src, pr.dest, { recursive: true }); undoLog.add({ label: 'copied ' + path.basename(pr.src), endpoint: '/tool/undoCreate', body: { name: pr.dest } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/tool/moveFile', (req, res) => {
   const pr = twoPaths(req.body.src, req.body.dest, res);
   if (!pr || !approvedChange(req, res, 'move', pr.src, pr.dest)) return;
-  try { moveAcross(pr.src, pr.dest); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
+  try { moveAcross(pr.src, pr.dest); undoLog.add({ label: 'moved ' + path.basename(pr.src), endpoint: '/tool/undoMove', body: { to: pr.dest, from: pr.src } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ---- undo helpers (page "undo"): restore from the trash, move back, remove a just-created item ---- */
-const RECENT = 15 * 60000;
+const RECENT = 30 * 60000;
 app.post('/api/tool/restoreItem', (req, res) => {
   const t = String(req.body.trashName || '');
   if (!/^\d+_[^\\/:*?"<>|]+$/.test(t)) return res.status(400).json({ error: 'Invalid trash item' });
-  const src = path.join(TRASH, t);
-  if (!fs.existsSync(src)) return res.status(404).json({ error: 'That item is no longer in the trash' });
   const dest = anyPath(String(req.body.original || ''), { forWrite: true });
   if (!dest) return res.status(400).json({ error: 'Invalid original location' });
+  const src = trashKeep.locate(t, dest);
+  if (!src) return res.status(404).json({ error: 'That item is no longer in the trash (items are removed after 30 days)' });
   if (fs.existsSync(dest)) return res.status(409).json({ error: `"${rel(dest)}" exists again, so I won't overwrite it` });
   if (!approvedChange(req, res, 'restore', dest)) return;
-  try { moveAcross(src, dest); res.json({ success: true, name: rel(dest) }); }
+  try { moveAcross(src, dest); undoLog.consume('/tool/restoreItem', { trashName: t }); res.json({ success: true, name: rel(dest) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/tool/restoreVersion', (req, res) => { // puts back the file as it was before an overwrite/append
@@ -1349,23 +1419,24 @@ app.post('/api/tool/restoreVersion', (req, res) => { // puts back the file as it
   if (!fs.existsSync(src)) return res.status(404).json({ error: 'The earlier version is no longer in the trash' });
   if (!dest) return res.status(400).json({ error: 'Invalid file' });
   if (!approvedChange(req, res, 'restore the earlier version of', dest)) return;
-  try { fs.copyFileSync(src, dest); res.json({ success: true, name: rel(dest) }); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { fs.copyFileSync(src, dest); undoLog.consume('/tool/restoreVersion', { backup: t }); res.json({ success: true, name: rel(dest) }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/tool/undoMove', (req, res) => { // moves "to" back to "from" (undo of rename/move)
   const to = anyPath(String(req.body.to || ''), { forWrite: true }), from = anyPath(String(req.body.from || ''), { forWrite: true });
   if (!to || !from || !fs.existsSync(to)) return res.status(404).json({ error: 'The moved item isn\u2019t there any more' });
   if (fs.existsSync(from)) return res.status(409).json({ error: `"${rel(from)}" exists again, so I won't overwrite it` });
   if (!approvedChange(req, res, 'move back', to, from)) return;
-  try { moveAcross(to, from); res.json({ success: true, name: rel(from) }); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { moveAcross(to, from); undoLog.consume('/tool/undoMove', { to, from }); res.json({ success: true, name: rel(from) }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/tool/undoCreate', (req, res) => { // removes something JARVIS created a moment ago (goes to the trash, not deleted)
   const p = exactItem(req.body.name);
   if (!p || p === SANDBOX || blockedPath(p, { forWrite: true })) return res.status(404).json({ error: `I can't find "${req.body.name}"` });
   try {
     const st = fs.statSync(p);
-    if (Date.now() - (st.birthtimeMs || st.ctimeMs) > RECENT) return res.status(403).json({ error: 'That was made more than 15 minutes ago, so I won\u2019t remove it automatically' });
+    if (Date.now() - (st.birthtimeMs || st.ctimeMs) > RECENT) return res.status(403).json({ error: 'That was made more than 30 minutes ago, so I won\u2019t remove it automatically' });
     if (!approvedChange(req, res, 'remove', p)) return;
     moveToTrash(p);
+    undoLog.consume('/tool/undoCreate', { name: p });
     res.json({ success: true, name: rel(p) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1436,7 +1507,7 @@ const docText = file => { try { return doctext.extractDocText(file, fs.readFileS
 // Semantic search: opt-in in Settings; needs an embedding model (default: Ollama's nomic-embed-text).
 const semModel = () => String((appState['jarvis.settings'] || {}).embedModel || 'nomic-embed-text').slice(0, 80);
 const semEnabled = () => (appState['jarvis.settings'] || {}).semanticSearch === true;
-const rag = require('./rag')(app, { allRoots, SKIP_DIRS, rel, isInternal, pdfPages: pdf.pdfPages, docText,
+const rag = require('./rag')(app, { allRoots, SKIP_DIRS, rel, isInternal, pdfPages: pdf.pdfPages, docText, cacheFile: path.join(SANDBOX, '.rag-cache.json'),
   semantic: { enabled: semEnabled, model: semModel, embed: (m, inputs) => llm.embed(m, inputs) } });
 rag.startWatcher(); // new/changed files are picked up automatically (still cheap; explicit reindex stays available)
 
@@ -1835,6 +1906,7 @@ app.post('/api/tool/runningApps', (req, res) => {
 });
 
 /* ---------------- fetch a web page as text (for summaries) ---------------- */
+const NetSafe = require('./netsafe');
 const PRIVATE_HOST = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.0\.0\.0|\[?::1\]?$|\[?f[cd])/i;
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36';
 function decodeEntities(s) {
@@ -1851,7 +1923,8 @@ async function pageText(href, { timeout = 10000, max = 8000 } = {}) {
   let url;
   try { url = new URL(String(href || '')); } catch { throw new Error('Invalid URL'); }
   if (!['http:', 'https:'].includes(url.protocol) || PRIVATE_HOST.test(url.hostname)) throw new Error('Only public http(s) pages');
-  const r = await fetch(url.href, { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html,text/plain', 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(timeout), redirect: 'follow' });
+  // netsafe.js: the host is resolved and every address checked, and redirects are followed one hop at a time with the same check (a public page may not send us to this laptop).
+  const r = await NetSafe.safeFetch(url.href, { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html,text/plain', 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(timeout) });
   if (!r.ok) throw new Error(`Page returned HTTP ${r.status}`);
   const html = (await r.text()).slice(0, 1024 * 1024);
   const title = stripTags((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
@@ -1860,7 +1933,7 @@ async function pageText(href, { timeout = 10000, max = 8000 } = {}) {
     .replace(/<br\s*\/?>|<\/(p|div|li|h\d|tr|section|article)>/gi, '\n')
     .replace(/<[^>]+>/g, ' '))
     .replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
-  return { title, url: url.href, text: text.slice(0, max) };
+  return { title, url: r.finalUrl || url.href, text: text.slice(0, max) };
 }
 
 app.post('/api/tool/fetchPage', async (req, res) => {
@@ -2273,13 +2346,47 @@ const git = (req, res, args, empty) => execFile('git', args, { cwd: GIT_CWD(req)
 app.post('/api/tool/gitStatus', (req, res) => git(req, res, ['status', '--short', '--branch'], 'Working tree clean'));
 app.post('/api/tool/gitLog', (req, res) => git(req, res, ['log', '--oneline', '-5'], 'No commits yet'));
 app.post('/api/tool/gitDiff', (req, res) => git(req, res, ['diff', '--stat'], 'No changes'));
-app.post('/api/tool/gitCommit', (req, res) => {
-  const message = String(req.body.message || '').trim();
+// Committing WRITES, so unlike status/log/diff it never guesses a folder (and never falls back to JARVIS's own): the project is named, or it is the only git
+// project you gave JARVIS. What `git add -A` would stage is listed first, and a file that looks like a secret (by name or by what is inside) stops the commit.
+const gitsafe = require('./gitsafe');
+const gitRun = (args, cwd) => new Promise(resolve => execFile('git', args, { cwd, windowsHide: true, timeout: 30000, maxBuffer: 4 * 1048576 }, (err, out, serr) => resolve({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, out: String(out || ''), err: String(serr || (err && err.message) || '') })));
+const isGitRepo = d => { try { return fs.existsSync(path.join(d, '.git')); } catch { return false; } };
+function gitProjects() {
+  const out = [];
+  for (const r of [...config.roots, SANDBOX, path.join(SANDBOX, 'Projects'), path.join(SANDBOX, 'Code')]) {
+    if (isGitRepo(r) && r !== SANDBOX) { out.push(r); continue; }
+    try { for (const e of fs.readdirSync(r, { withFileTypes: true })) if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules' && isGitRepo(path.join(r, e.name))) out.push(path.join(r, e.name)); } catch { /* gone */ }
+  }
+  return [...new Set(out.map(d => path.resolve(d)))].slice(0, 40);
+}
+function gitRepoForWrite(req) {
+  const asked = String((req.body && req.body.repo) || '').trim();
+  const repos = gitProjects();
+  if (asked) {
+    const want = asked.toLowerCase(), hit = repos.find(r => path.basename(r).toLowerCase() === want) || repos.find(r => path.basename(r).toLowerCase().includes(want));
+    return hit ? { dir: hit } : { error: 'I found no git project called “' + asked.slice(0, 40) + '” among your project folders.', choices: repos.map(r => path.basename(r)) };
+  }
+  if (repos.length === 1) return { dir: repos[0] };
+  if (!repos.length) return { error: 'None of your project folders is a git repository. Add one in Settings → Projects first.', choices: [] };
+  return { error: 'Which project? Say it like “commit in ' + path.basename(repos[0]) + ' with message …”.', choices: repos.map(r => path.basename(r)) };
+}
+app.post('/api/tool/gitPending', async (req, res) => {
+  const t = gitRepoForWrite(req); if (t.error) return res.status(400).json({ error: t.error, choices: t.choices });
+  const p = await gitsafe.pending(gitRun, t.dir); if (p.error) return res.status(500).json({ error: p.error });
+  res.json({ success: true, repo: path.basename(t.dir), files: p.files.slice(0, 200), count: p.files.length, secrets: gitsafe.findSecrets(p.files, t.dir) });
+});
+app.post('/api/tool/gitCommit', async (req, res) => {
+  const message = String(req.body.message || '').trim().slice(0, 2000);
   if (!message) return res.status(400).json({ error: 'Commit message required' });
-  execFile('git', ['add', '-A'], { cwd: GIT_CWD(req), windowsHide: true }, err => {
-    if (err) return res.status(500).json({ error: 'git add failed' });
-    git(req, res, ['commit', '-m', message], 'Committed');
-  });
+  const t = gitRepoForWrite(req); if (t.error) return res.status(400).json({ error: t.error, choices: t.choices });
+  const p = await gitsafe.pending(gitRun, t.dir); if (p.error) return res.status(500).json({ error: p.error });
+  if (!p.files.length) return res.status(400).json({ error: 'There is nothing to commit in ' + path.basename(t.dir) + '.' });
+  const secrets = gitsafe.findSecrets(p.files, t.dir);
+  if (secrets.length) return res.status(409).json({ error: 'I won’t commit this: ' + secrets.slice(0, 4).map(s => s.path + ' (' + s.why + ')').join('; ') + '. Add it to .gitignore, or commit by hand if you are sure.', secrets });
+  const add = await gitRun(['add', '-A'], t.dir); if (add.code !== 0) return res.status(500).json({ error: 'git add failed: ' + add.err.trim().split('\n')[0].slice(0, 120) });
+  const c = await gitRun(['commit', '-m', message], t.dir);
+  if (c.code !== 0) return res.status(500).json({ error: String(c.err || c.out).trim().split('\n')[0].slice(0, 160) || 'git commit failed' });
+  res.json({ success: true, repo: path.basename(t.dir), files: p.files.length, output: c.out.trim() || 'Committed' });
 });
 
 app.post('/api/tool/checkPort', (req, res) => {

@@ -54,7 +54,7 @@ function createWhisper({ dirs = [], run = realRun, tmp = os.tmpdir(), threads = 
       const text = r.out.split(/\r?\n/).map(s => s.trim()).filter(s => s && !NOISE.test(s)).join(' ').replace(/\s{2,}/g, ' ').trim();
       return { text, seconds: Math.round(w.seconds * 10) / 10, ms: Date.now() - t0 };
     } catch (e) { return { error: 'Could not read the audio: ' + String((e && e.message) || e).slice(0, 100) }; }
-    finally { fsp.unlink(wav).catch(() => {}); }
+    finally { await fsp.unlink(wav).catch(() => {}); }
   }
   // one at a time: the laptop's CPU is shared with the lecture itself
   const transcribe = (buf, o) => { const p = queue.then(() => transcribeOne(buf, o), () => transcribeOne(buf, o)); queue = p.catch(() => {}); return p; };

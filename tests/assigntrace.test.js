@@ -93,5 +93,16 @@ check('trace: ordinary text is not an error', !T.parseTrace('what is the capital
 check('trace: junk never throws', T.parseTrace('').frames.length === 0 && T.parseTrace(null).mine.length === 0 && T.parseTrace('at '.repeat(20000)).frames.length === 0);
 check('trace: a file:/// URL becomes a Windows path', T.parseTrace('    at f (file:///C:/proj/a.mjs:3:9)').mine[0].file === 'C:\\proj\\a.mjs');
 
+// month-first dates (a college that writes 10/15/2026)
+{ const mf = t => A.findDate(t, NOW, { monthFirst: true }), day = r => r && new Date(r.at).getDate(), mon = r => r && new Date(r.at).getMonth();
+  check('monthFirst: 10/11/2026 is 11 October (day first reads it as 10 November), and says how it was read', day(mf('due 10/11/2026')) === 11 && mon(mf('due 10/11/2026')) === 9 && /month first/.test(mf('due 10/11/2026').assumed) && day(fd('due 10/11/2026')) === 10 && mon(fd('due 10/11/2026')) === 10);
+  check('monthFirst: an impossible month still falls back (15/10/2026 is 15 October either way)', day(mf('due 15/10/2026')) === 15 && mon(mf('due 15/10/2026')) === 9 && day(mf('due 10/15/2026')) === 15 && mon(mf('due 10/15/2026')) === 9);
+  check('monthFirst: the same day and month (11/11/2026) is not flagged as a guess', mf('due 11/11/2026').assumed === '');
+  check('monthFirst: dates written with a month name are not affected', day(mf('due 11 Oct 2026')) === 11 && mon(mf('due 11 Oct 2026')) === 9 && day(mf('due Oct 11 2026')) === 11);
+  const sheet = 'Assignment 2\nSubmit by 10/11/2026\n1. Explain paging';
+  const a1 = A.parseAssignment(sheet, { now: NOW, monthFirst: true }), a2 = A.parseAssignment(sheet, { now: NOW });
+  check('monthFirst: a whole assignment sheet follows the option, and the default stays day first', new Date(a1.due).getMonth() === 9 && new Date(a1.due).getDate() === 11 && new Date(a2.due).getMonth() === 10 && new Date(a2.due).getDate() === 10, [a1.due, a2.due]);
+  check('monthFirst: the option does not leak into the next call (a plain findDate is day first again)', day(fd('due 10/11/2026')) === 10);
+}
 console.log(`assigntrace: ${total - fail}/${total}`);
 process.exitCode = fail ? 1 : 0;

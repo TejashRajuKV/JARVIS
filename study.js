@@ -2,6 +2,23 @@
 /* Study planner + progress maths. Pure functions, used by the page (global `Study`) and by the server scheduler and tests. */
 const Study = (() => {
   const DAY = 864e5;
+  // One subject, many spellings: "DBMS", "dbms", "Database Management Systems", "database management system" are the same subject.
+  // The key is lower case without punctuation; a well-known full name maps to its usual short name (an unknown name is just itself).
+  const SUBJECT_FULL = {
+    dbms: 'database management system', os: 'operating system', cn: 'computer network|computer networking', dsa: 'data structures and algorithm|data structure and algorithm',
+    ds: 'data structure|data structures', coa: 'computer organization and architecture|computer organisation and architecture', co: 'computer organization|computer organisation',
+    toc: 'theory of computation', flat: 'formal language and automata theory|formal languages and automata theory', daa: 'design and analysis of algorithm',
+    se: 'software engineering', oop: 'object oriented programming|object-oriented programming|oops', oops: 'object oriented programming', cd: 'compiler design',
+    ai: 'artificial intelligence', ml: 'machine learning', dl: 'deep learning', wt: 'web technology|web technologies', dm: 'discrete mathematics|discrete maths',
+    cg: 'computer graphic', hci: 'human computer interaction', iot: 'internet of things', dc: 'distributed computing', cc: 'cloud computing', datascience: 'data science',
+    m1: 'engineering mathematics 1|mathematics 1|maths 1', m2: 'engineering mathematics 2|mathematics 2|maths 2' };
+  const SUBJECT_ALIAS = (() => { const m = {}; for (const [short, fulls] of Object.entries(SUBJECT_FULL)) { m[short] = short; for (const f of fulls.split('|')) m[f] = short; } m.oops = 'oop'; return m; })();
+  function subjectKey(name) {
+    let k = String(name || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (SUBJECT_ALIAS[k]) return SUBJECT_ALIAS[k];
+    const sing = k.replace(/s$/, '');                               // "database management systems" → "...system"
+    return SUBJECT_ALIAS[sing] || k;
+  }
   const pad = n => String(n).padStart(2, '0');
   const ymd = d => { d = new Date(d); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }; // local date
   const startOfDay = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
@@ -164,7 +181,7 @@ const Study = (() => {
      A class is due once it has ended (start + dur, 60 min when unknown), for up to maxAgeMin minutes after, unless it was asked about already (`asked`
      holds "classId|date" keys) or the subject already has as many marks today as classes that have ended (so two DBMS classes need two marks). */
   function attendanceDue({ classes = [], attendance = {}, now = Date.now(), asked = [], maxAgeMin = 240, defaultDur = 60 } = {}) {
-    const d0 = new Date(now), today = ymd(d0), askedSet = new Set(asked), nk = n => String(n).toLowerCase().replace(/\s+/g, ' ').trim();
+    const d0 = new Date(now), today = ymd(d0), askedSet = new Set(asked), nk = subjectKey;
     const todays = classes.filter(c => c && c.day === d0.getDay() && c.h >= 0).map(c => { const start = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate(), c.h, c.m || 0).getTime(); return { c, start, end: start + (c.dur || defaultDur) * 60000 }; }).sort((a, b) => a.start - b.start);
     const seen = new Map(), out = [];
     for (const t of todays) {
@@ -219,9 +236,22 @@ const Study = (() => {
     const need = Math.ceil((targetPct / 100) * total - internal - 1e-9);
     return { needed: Math.max(0, need), endMax: em, total, targetPct, possible: need <= em, already: need <= 0, internalPct: Math.round(1000 * internal / internalMax) / 10 };
   }
+  // The college's own grade scale, said once: "my grade cutoffs are O 85, A+ 75, A 65, B+ 55, B 50, C 45, P 40" → { O: 85, 'A+': 75, ... } (two or more grades, every number 1-100,
+  // higher grades needing more), or null. Grades you leave out keep the usual cut-off. Words around the pairs are ignored.
+  function parseGradeCuts(text) {
+    const t = String(text || '');
+    if (!/\b(?:grade\s+(?:cut[\s-]?offs?|scale|boundar(?:y|ies)|bands?|ranges?)|cut[\s-]?offs?(?:\s+for\s+grades?)?|grading\s+scale)\b/i.test(t)) return null;
+    const out = {}; let n = 0;
+    for (const m of t.matchAll(/(?:^|[\s,;(])(O|A\+|A|B\+|B|C|D|P)\s*(?:=|:|-|is|at|>=|≥)?\s*(\d{2,3}(?:\.\d+)?)\s*%?(?=$|[\s,;).])/g)) { const g = m[1], v = parseFloat(m[2]); if (!(v > 0 && v <= 100)) return null; out[g] = v; n++; }
+    if (n < 2) return null;
+    const order = ['O', 'A+', 'A', 'B+', 'B', 'C', 'D', 'P'], have = order.filter(g => out[g] !== undefined);
+    for (let i = 1; i < have.length; i++) if (!(out[have[i - 1]] > out[have[i]])) return null;
+    return out;
+  }
+  const gradeCuts = custom => Object.assign({}, GRADE_CUTS, custom && typeof custom === 'object' ? custom : {});
   const nums = s => { const x = parseFloat(s); return isFinite(x) ? x : NaN; };
   // Sentence → inputs for endSemNeeded, or null. Needs "need/require/score" AND the end-sem words.
-  function parseEndSem(text) {
+  function parseEndSem(text, cuts) {
     const t = String(text || '').trim();
     if (!/\b(?:end[\s-]?sem(?:ester)?|final\s+exam|finals?|external|semester\s+exam)\b/i.test(t) || !/\b(?:need|require|should\s+(?:i\s+)?(?:score|get)|must\s+(?:i\s+)?(?:score|get)|have\s+to\s+(?:score|get))\b/i.test(t)) return null;
     let m, internal = NaN, internalMax = NaN;
@@ -233,12 +263,12 @@ const Study = (() => {
     if ((m = t.match(/(?:end[\s-]?sem(?:ester)?|final|external)[^.\d]{0,25}(?:out\s+of|is\s+of|of|is|\/|for)\s*(\d{2,3})\b/i)) || (m = t.match(/\b(\d{2,3})\s*marks?\s+(?:end[\s-]?sem|final|external)/i))) endMax = nums(m[1]);
     let targetPct = NaN, target = '';
     if ((m = t.match(/(\d{2,3}(?:\.\d+)?)\s*(?:%|percent|percentage)/i))) { targetPct = nums(m[1]); target = m[1] + '%'; }
-    else if ((m = t.match(/\b(?:an?\s+|the\s+)?(O|A\+|A|B\+|B|C|P)\s+grade\b|\bgrade\s+(?:of\s+)?(O|A\+|A|B\+|B|C|P)\b|\bto\s+(?:get|score|secure|reach)\s+(?:an?\s+)?(O|A\+|A|B\+|B|C)\b(?!\w)/)) ) { const g = m[1] || m[2] || m[3]; targetPct = GRADE_CUTS[g]; target = 'grade ' + g; }
+    else if ((m = t.match(/\b(?:an?\s+|the\s+)?(O|A\+|A|B\+|B|C|P)\s+grade\b|\bgrade\s+(?:of\s+)?(O|A\+|A|B\+|B|C|P)\b|\bto\s+(?:get|score|secure|reach)\s+(?:an?\s+)?(O|A\+|A|B\+|B|C)\b(?!\w)/)) ) { const g = m[1] || m[2] || m[3]; targetPct = (cuts || GRADE_CUTS)[g]; target = 'grade ' + g; }
     else if (/\bpass\b/i.test(t)) { targetPct = 40; target = 'a pass (40%)'; }
     if (!isFinite(targetPct)) return null;
     return { internal, internalMax, endMax, targetPct, target };
   }
-  return { ymd, daysBetween, addDays, parseTopics, buildStudyPlan, streak, lastDays, subjectTotals, weekSummary, weekId, fmtMin,
-    attendancePct, bunkable, neededToReach, LETTER_POINTS, sgpa, cgpa, gradeNeeded, attendanceDue, freeSlots, fitPlan, endSemNeeded, parseEndSem, GRADE_CUTS };
+  return { subjectKey, ymd, daysBetween, addDays, parseTopics, buildStudyPlan, streak, lastDays, subjectTotals, weekSummary, weekId, fmtMin,
+    attendancePct, bunkable, neededToReach, LETTER_POINTS, sgpa, cgpa, gradeNeeded, attendanceDue, freeSlots, fitPlan, endSemNeeded, parseEndSem, parseGradeCuts, gradeCuts, GRADE_CUTS };
 })();
 if (typeof module !== 'undefined') module.exports = Study;

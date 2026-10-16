@@ -20,9 +20,23 @@ function extractHtml(text) {
   if (!/^<!doctype/i.test(t)) t = '<!DOCTYPE html>\n' + t;
   return t;
 }
+// A generated page is opened straight from disk, so its own rules are the only wall: a Content-Security-Policy meta tag lets it run its own inline script and
+// style and show its own pictures (embedded or next to it), and nothing else — no request to any other address (fetch, XHR, WebSocket, images, fonts, frames,
+// forms, links to stylesheets), and no <base> tag to redirect relative addresses. The text filters below stay as a second layer.
+const PAGE_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'";
+const stripCsp = h => String(h || '').replace(/<meta\b[^>]*http-equiv\s*=\s*["']?content-security-policy[^>]*>\s*/gi, '');
+function withCsp(html) {
+  let t = String(html || '')
+    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?content-security-policy[^>]*>/gi, '')       // the model's own policy (possibly a loose one) is replaced
+    .replace(/<base\b[^>]*>/gi, '');
+  const tag = '<meta http-equiv="Content-Security-Policy" content="' + PAGE_CSP + '">';
+  if (/<head\b[^>]*>/i.test(t)) return t.replace(/<head\b[^>]*>/i, m => m + '\n' + tag);
+  if (/<html\b[^>]*>/i.test(t)) return t.replace(/<html\b[^>]*>/i, m => m + '\n<head>' + tag + '</head>');
+  return tag + '\n' + t;
+}
 // Removes things a generated page must not do: load remote scripts or send data anywhere.
 function sanitizeHtml(html) {
-  return html
+  return withCsp(html)
     .replace(/<script\b[^>]*\bsrc\s*=\s*["']?https?:[^>]*>\s*<\/script>/gi, '<!-- external script removed by JARVIS -->')
     .replace(/<form\b([^>]*)\baction\s*=\s*["'][^"']*["']/gi, '<form$1')
     .replace(/\bfetch\s*\(\s*["']https?:/gi, 'void (')
@@ -37,6 +51,42 @@ function parseJsonLoose(text) {
   return null;
 }
 const clampScore = n => Math.max(0, Math.min(10, Math.round(Number(n) || 0)));
+
+/* ---- reading a grade out of whatever the (small) model wrote ----
+   A grade is only believed when a number was really found: a reply that can't be read is "ungraded", never a silent 0. Accepts the JSON object, a
+   score written as "7", "7/10", "7 out of 10" or a percentage-style 70 (anything from 21 to 100 is read as out of 100), and falls back to a
+   "score: 7" line in loose text. → { score 0-10, feedback, missed[], model } or null. */
+function readScoreValue(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const m = String(v == null ? '' : v).match(/(-?\d+(?:\.\d+)?)\s*(?:\/|out of)?\s*(10|100)?/i);
+  if (!m) return null;
+  let n = parseFloat(m[1]);
+  if (m[2] === '100') n /= 10;
+  return Number.isFinite(n) ? n : null;
+}
+function extractGrade(text) {
+  const t = String(text || '');
+  let j = parseJsonLoose(t);
+  if (Array.isArray(j)) j = j.find(x => x && typeof x === 'object') || null;
+  let raw = j && typeof j === 'object' ? readScoreValue(j.score != null ? j.score : j.grade != null ? j.grade : j.mark) : null;
+  if (raw === null) {                                            // loose text: score: 7, "score" = 7/10
+    const m = t.match(/["']?\bscore["']?\s*[:=]\s*["']?(-?\d+(?:\.\d+)?)\s*(?:\/|out of)?\s*(10|100)?/i);
+    if (m) raw = parseFloat(m[1]) / (m[2] === '100' ? 10 : 1);
+    if (!j || typeof j !== 'object') j = {};
+  }
+  if (raw === null || !Number.isFinite(raw) || raw < 0 || raw > 100) return null;
+  const score = clampScore(raw > 20 ? raw / 10 : raw);        // 21-100 is a percentage; 11-20 is a model getting carried away, so it is capped at 10
+  const missed = Array.isArray(j.missed) ? j.missed : typeof j.missed === 'string' && j.missed.trim() ? [j.missed] : [];
+  return { score, feedback: String(j.feedback || j.comment || '').slice(0, 400), missed: missed.map(String).slice(0, 4), model: String(j.model_answer || j.model || '').slice(0, 600) };
+}
+// ask(strict) → text. Tries normally, then once more asking for ONLY the JSON object; null if neither reply holds a score.
+async function gradeWithRetry(ask) {
+  for (const strict of [false, true]) {
+    let out; try { out = await ask(strict); } catch (e) { if (strict) throw e; continue; }
+    const g = extractGrade(out); if (g) return g;
+  }
+  return null;
+}
 
 const SITE_SYSTEM = `You are an expert front-end developer. Build ONE complete, self-contained web page.
 Rules:
@@ -133,7 +183,7 @@ module.exports = function setupSkills(app, { llm, DEFAULT_MODEL, SANDBOX, openPa
     if ((b.folder || b.dir) && approvedChange && !approvedChange(req, res, 'change the website in', file)) return;
     const change = String(b.change || '').trim().slice(0, 500);
     if (!change) return res.status(400).json({ error: 'What should I change?' });
-    const cur = fs.readFileSync(file, 'utf8');
+    const cur = stripCsp(fs.readFileSync(file, 'utf8'));          // the safety tag is added on every save; the AI neither sees nor has to keep it
     if (cur.length > 60000) return res.status(413).json({ error: 'That page is too big for me to edit in one go.' });
     let html;
     try {
@@ -235,10 +285,11 @@ Output ONLY the prompt. No code, no intro sentence, no closing remarks.`;
     const q = String(b.question || '').slice(0, 500), a = String(b.answer || '').slice(0, 2500);
     if (!q) return res.status(400).json({ error: 'No question' });
     try {
-      const out = await llm.complete({ model: model(req), system: VIVA_GRADE_SYSTEM + (b.reference ? '\nA reference answer taken from the student’s own notes is given: judge the answer against it.' : ''), messages: [{ role: 'user', content: 'Topic: ' + String(b.topic || '').slice(0, 120) + '\nQuestion: ' + q + (b.reference ? '\nReference answer (from the student’s notes): ' + String(b.reference).slice(0, 700) : '') + '\nStudent answer: ' + (a || '(no answer)') }], json: true, temperature: 0.1, maxTokens: 500, timeoutMs: 180000 });
-      const j = parseJsonLoose(out) || {};
-      res.json({ success: true, score: clampScore(j.score), feedback: String(j.feedback || '').slice(0, 400), missed: (Array.isArray(j.missed) ? j.missed : []).map(String).slice(0, 4), model: String(j.model_answer || '').slice(0, 600) });
+      const ask = strict => llm.complete({ model: model(req), system: VIVA_GRADE_SYSTEM + (strict ? '\nReply with ONLY the JSON object, nothing else: {"score": <0-10>, "feedback": "...", "missed": [], "model_answer": "..."}' : '') + (b.reference ? '\nA reference answer taken from the student’s own notes is given: judge the answer against it.' : ''), messages: [{ role: 'user', content: 'Topic: ' + String(b.topic || '').slice(0, 120) + '\nQuestion: ' + q + (b.reference ? '\nReference answer (from the student’s notes): ' + String(b.reference).slice(0, 700) : '') + '\nStudent answer: ' + (a || '(no answer)') }], json: true, temperature: 0.1, maxTokens: 500, timeoutMs: 180000 });
+      const g = await gradeWithRetry(ask);
+      if (!g) return res.status(502).json({ error: 'the AI’s reply could not be read as a score, so this answer is left ungraded' });
+      res.json({ success: true, score: g.score, feedback: g.feedback, missed: g.missed, model: g.model });
     } catch (e) { fail(res, e); }
   });
 };
-Object.assign(module.exports, { parseFix, slugify, extractHtml, sanitizeHtml, parseJsonLoose, clampScore });
+Object.assign(module.exports, { parseFix, slugify, extractHtml, sanitizeHtml, withCsp, stripCsp, PAGE_CSP, parseJsonLoose, clampScore, extractGrade, gradeWithRetry });

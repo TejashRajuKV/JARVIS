@@ -39,44 +39,36 @@ window.NLUQ = (function () {
   // ---- Qwen → JARVIS intent mapping ----
   // Qwen returns a whitelisted intent; we map it onto the existing NLU's
   // intent + tool + args schema so the rest of the pipeline is untouched.
+  // The model may only name intents that JARVIS really runs. `intent` is the real executeTool intent (omitted when the names are the same); `args` reshapes what the
+  // model sent into what that handler reads. Left out on purpose — a model's guess must never power the laptop off, lock it, delete or send anything, or make a reminder:
+  // SHUTDOWN, RESTART, SLEEP, LOCK, TASK_DELETE, TASK_DONE, REMINDER, CREATE_FILE, READ_SCREEN, MAPS, CONVERT (the rules and the planner handle those, with their checks).
   const TOOL_BY_INTENT = {
-    OPEN_APPLICATION: { tool: 'openApplication',  args: a => ({ app: a.app || a.name || '' }) },
-    CLOSE_APPLICATION: { tool: 'closeApplication', args: a => ({ app: a.app || a.name || '' }) },
-    OPEN_WEB:        { tool: 'openWeb',           args: a => ({ query: a.query || a.target || '' }) },
-    WEB_SEARCH:      { tool: 'webSearch',         args: a => ({ query: a.query || a.target || '' }) },
-    SITE_SEARCH:     { tool: 'openWeb',           args: a => ({ query: a.query || a.target || '' }) },
-    BRIGHTNESS:      { tool: 'brightness',        args: a => ({ level: clampLvl(a.level || a.value) }) },
-    VOLUME:          { tool: 'volume',            args: a => ({ level: clampLvl(a.level || a.value) }) },
-    MUTE:            { tool: 'mute',              args: () => ({}) },
-    DARK_MODE:       { tool: 'darkMode',          args: () => ({}) },
-    BATTERY:         { tool: 'battery',           args: () => ({}) },
-    WEATHER:         { tool: 'weather',           args: a => ({ city: a.city || '' }) },
-    TIME:            { tool: 'time',              args: () => ({}) },
-    DATE:            { tool: 'date',               args: () => ({}) },
-    TIMER:           { tool: 'timer',             args: a => ({ minutes: a.minutes || a.mins || a.duration || 5 }) },
-    REMINDER:        { tool: 'reminder',          args: a => ({ text: a.text || a.note || a.message || 'reminder', when: a.when || a.time || '' }) },
-    TASK_ADD:        { tool: 'addTask',           args: a => ({ text: a.text || a.task || a.title || 'task' }) },
-    TASK_LIST:       { tool: 'listTasks',          args: () => ({}) },
-    TASK_DONE:       { tool: 'completeTask',      args: a => ({ text: a.text || a.task || '' }) },
-    TASK_DELETE:     { tool: 'deleteTask',        args: a => ({ text: a.text || a.task || '' }) },
-    READ_FILE:       { tool: 'readFile',          args: () => ({}) },
-    LIST_FILES:      { tool: 'listFiles',         args: () => ({}) },
-    SEARCH_FILES:    { tool: 'searchFiles',       args: a => ({ query: a.query || a.name || '' }) },
-    CREATE_FOLDER:   { tool: 'createFolder',      args: a => ({ name: a.name || a.folder || 'New Folder' }) },
-    CREATE_FILE:     { tool: 'createFile',        args: a => ({ name: a.name || a.file || 'untitled.txt' }) },
-    SCREENSHOT:      { tool: 'screenshot',        args: () => ({}) },
-    READ_SCREEN:     { tool: 'readScreen',        args: () => ({}) },
-    LOCK:            { tool: 'lock',              args: () => ({}) },
-    SLEEP:           { tool: 'sleep',             args: () => ({}) },
-    SHUTDOWN:        { tool: 'shutdown',          args: () => ({}) },
-    RESTART:         { tool: 'restart',           args: () => ({}) },
-    PLAY_MUSIC:      { tool: 'playMusic',         args: a => ({ query: a.query || a.song || a.artist || '' }) },
-    PAUSE:           { tool: 'pause',             args: () => ({}) },
-    NEXT_TRACK:      { tool: 'nextTrack',         args: () => ({}) },
-    PREV_TRACK:      { tool: 'prevTrack',         args: () => ({}) },
-    MAPS:            { tool: 'maps',              args: a => ({ query: a.query || a.place || '' }) },
-    CONVERT:         { tool: 'convert',            args: a => ({ from: a.from || '', to: a.to || '', value: a.value }) },
-    CALCULATE:       { tool: 'calc',              args: a => ({ expr: a.expr || a.expression || a.equation || '' }) },
+    OPEN_APPLICATION:  { tool: 'openApplication',  args: a => ({ app: a.app || a.name || '' }) },
+    CLOSE_APPLICATION: { tool: 'closeApplication', args: a => ({ app: a.app || a.name || '' }) },       // JARVIS still asks YES first (confirmGate)
+    OPEN_WEB:          { tool: 'openWeb',           args: a => ({ query: a.query || a.target || '' }) },
+    WEB_SEARCH:        { tool: 'webSearch',         args: a => ({ query: a.query || a.target || '' }) },
+    SITE_SEARCH:       { tool: 'openWeb',           args: a => ({ query: a.query || a.target || '' }) },
+    BRIGHTNESS:        { tool: 'brightness',        args: a => ({ level: clampLvl(a.level || a.value) }) },
+    DARK_MODE:         { tool: 'darkMode',          args: () => ({}) },
+    WEATHER:           { tool: 'weather',           args: a => ({ city: a.city || '' }) },
+    READ_FILE:         { tool: 'readFile',          args: a => ({ name: a.name || a.file || '' }) },
+    LIST_FILES:        { tool: 'listFiles',         args: () => ({}) },
+    SEARCH_FILES:      { tool: 'searchFiles',       args: a => ({ query: a.query || a.name || '' }) },
+    CREATE_FOLDER:     { tool: 'createFolder',      args: a => ({ name: a.name || a.folder || 'New Folder' }) },
+    SCREENSHOT:        { tool: 'screenshot',        args: () => ({}) },
+    CALCULATE:         { tool: 'calc',              args: a => ({ expression: a.expression || a.expr || a.equation || '' }) },
+    VOLUME:            { tool: 'volume',     intent: 'VOLUME_SET',  args: a => ({ level: clampLvl(a.level || a.value) }) },
+    MUTE:              { tool: 'mute',       intent: 'VOLUME_MUTE', args: () => ({}) },
+    BATTERY:           { tool: 'battery',    intent: 'SYS_BATTERY', args: () => ({}) },
+    TIME:              { tool: 'time',       intent: 'GET_TIME',    args: () => ({}) },
+    DATE:              { tool: 'date',       intent: 'GET_DATE',    args: () => ({}) },
+    TIMER:             { tool: 'timer',      intent: 'SET_TIMER',   args: a => { const m = Number(a.minutes || a.mins || a.duration || 5); return { seconds: Math.max(1, Math.min(86400, Math.round((isFinite(m) ? m : 5) * 60))) }; } },
+    TASK_ADD:          { tool: 'addTask',    intent: 'ADD_TODO',    args: a => ({ text: String(a.text || a.task || a.title || '').slice(0, 140) }) },
+    TASK_LIST:         { tool: 'listTasks',  intent: 'LIST_TODOS',  args: () => ({}) },
+    PLAY_MUSIC:        { tool: 'playMusic',  intent: 'YOUTUBE_PLAY', args: a => ({ query: a.query || a.song || a.artist || '' }) },
+    PAUSE:             { tool: 'pause',      intent: 'MEDIA_PLAY',  args: () => ({}) },
+    NEXT_TRACK:        { tool: 'nextTrack',  intent: 'MEDIA_NEXT',  args: () => ({}) },
+    PREV_TRACK:        { tool: 'prevTrack',  intent: 'MEDIA_PREV',  args: () => ({}) },
   };
 
   function clampLvl(v) { const n = Number(v); if (!isFinite(n)) return undefined; return Math.max(0, Math.min(100, Math.round(n))); }
@@ -143,7 +135,7 @@ window.NLUQ = (function () {
     }
 
     const out = {
-      intent: qwen.intent,
+      intent: mapper.intent || qwen.intent,
       confidence: qwen.confidence,
       tool: mapper.tool,
       args: mapper.args(qwen.args || {}),

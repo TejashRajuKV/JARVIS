@@ -92,6 +92,70 @@ const LifeParse = (() => {
   const money = n => '₹' + (Math.round(n * 100) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 });
   const csv = expenses => 'date,amount,category,note\n' + [...expenses].sort((a, b) => a.t - b.t).map(e => [ymd(e.t), e.amount, e.cat, '"' + String(e.note || '').replace(/"/g, '""') + '"'].join(',')).join('\n') + '\n';
 
+  /* ---------- recurring expenses (rent, subscriptions, the gym) ---------- */
+  // "I pay 199 for netflix every month" · "pay 5000 for rent every month on the 1st" · "add a monthly expense 299 spotify on the 12th"
+  // · "show my recurring expenses" · "stop recurring netflix" → { op:'add', amount, note, cat, day } | { op:'list' } | { op:'remove', name }
+  const REC_A = new RegExp('^(?:please\\s+)?(?:i\\s+)?(?:pay|paid|spend|spent)\\s+' + AMT + '\\s*(?:(?:on|for|to)\\s+)?(.+?)\\s+(?:every|each|per)\\s+month(?:\\s+(?:on\\s+)?(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)?)?\\s*$', 'i');
+  const REC_B = new RegExp('^(?:please\\s+)?(?:add|set\\s+up|create|make|start)\\s+(?:a\\s+)?(?:monthly|recurring)\\s+(?:expense|payment|bill)\\s*[:\\-]?\\s*(?:of\\s+)?' + AMT + '\\s*(?:(?:on|for|to)\\s+)?(.+?)(?:\\s+(?:on\\s+)?(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)(?:\\s+of\\s+(?:every|each)\\s+month)?)?\\s*$', 'i');
+  const REC_LIST = /^(?:please\s+)?(?:show|list|what\s+are|what(?:'s| is))?\s*(?:me\s+)?(?:my\s+)?(?:recurring|monthly)\s+(?:expenses|payments|bills|subscriptions)\s*[?.!]*$/i;
+  const REC_DEL = /^(?:please\s+)?(?:stop|remove|delete|cancel)\s+(?:my\s+)?(?:recurring|monthly)\s+(?:(?:expense|payment|bill)\s+)?(?:for\s+)?(.+?)\s*[.!]*$/i;
+  function parseRecurring(text, now = Date.now()) {
+    const t = String(text || '').trim().replace(/[.!]+$/, '');
+    let m;
+    if ((m = t.match(REC_LIST))) return { op: 'list' };
+    if ((m = t.match(REC_DEL)) && m[1].length >= 2 && !/^(?:expenses?|payments?|bills?|subscriptions?|all)$/i.test(m[1])) return { op: 'remove', name: m[1].trim().toLowerCase() };
+    if ((m = t.match(REC_A)) || (m = t.match(REC_B))) {
+      const amount = toNumber(m[1], m[2]); if (!(amount > 0) || amount > 10000000) return null;
+      const note = String(m[3] || '').replace(/\s+/g, ' ').replace(/^(?:the|a|an|my)\s+/i, '').replace(/[,;:\-–\s]+$/, '').trim().slice(0, 60);
+      if (!note) return null;
+      let day = m[4] ? +m[4] : new Date(now).getDate();
+      if (!(day >= 1 && day <= 31)) return null;
+      return { op: 'add', amount, note, cat: categorize(note), day };
+    }
+    return null;
+  }
+  // Which recurring items are due: their day of the month has come (a 31st counts on the last day of a shorter month) and this month is not logged yet.
+  // → [{ rec, t }] where t = noon of the day it fell on this month
+  function dueRecurring(list, now = Date.now()) {
+    const d = new Date(now), key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'), last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(), out = [];
+    for (const rec of list || []) {
+      if (!rec || !(rec.amount > 0) || rec.last === key) continue;
+      const day = Math.min(rec.day || 1, last);
+      if (d.getDate() >= day) out.push({ rec, t: new Date(d.getFullYear(), d.getMonth(), day, 12).getTime(), key });
+    }
+    return out;
+  }
+
+  /* ---------- monthly budget ---------- */
+  // "set my budget to 5000" · "my monthly budget is 12k" · "remove my budget" · "how's my budget" → { op:'set', amount } | { op:'clear' } | { op:'show' }
+  const BAMT = String.raw`(?:₹|rs\.?\s*|inr\s*)?(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|lakh|lakhs)?(?:\s*(?:rupees|rs|inr))?`;
+  const BUD_SET = [
+    new RegExp(String.raw`^(?:please\s+)?(?:set|make|change|update|put)\s+(?:my\s+|a\s+)?(?:monthly\s+|spending\s+)*budget\s+(?:to|as|at|of|=)\s*`+ BAMT +String.raw`(?:\s*(?:a|per|each|every)\s+month|\s+monthly)?\s*[.!]*$`, 'i'),
+    new RegExp(String.raw`^(?:please\s+)?(?:my\s+)?(?:monthly\s+|spending\s+)*budget\s+(?:is|will be|should be)\s*`+ BAMT +String.raw`(?:\s*(?:a|per|each|every)\s+month|\s+monthly)?\s*[.!]*$`, 'i'),
+    new RegExp(String.raw`^(?:please\s+)?(?:i\s+)?(?:want|need|plan|aim)\s+to\s+(?:spend|keep (?:my )?spending)\s+(?:at most|no more than|under|less than|below|within)\s*`+ BAMT +String.raw`\s*(?:a|per|each|every)\s+month\s*[.!]*$`, 'i'),
+  ];
+  const BUD_CLEAR = /^(?:please\s+)?(?:remove|clear|delete|reset|cancel|forget|drop)\s+(?:my\s+)?(?:monthly\s+|spending\s+)*budget\s*[.!]*$/i;
+  const BUD_SHOW = /^(?:please\s+)?(?:(?:what(?:'s| is)|show|how(?:'s| is)|check)\s+(?:me\s+)?(?:my\s+)?(?:monthly\s+|spending\s+)*budget(?:\s+(?:left|status|so far|this month))?|how much (?:of my )?(?:budget|money)\s+(?:do i have\s+)?left(?:\s+this month)?|budget\s+(?:left|status))\s*[?.!]*$/i;
+  function parseBudget(text) {
+    const t = String(text || '').trim();
+    for (const re of BUD_SET) {
+      const m = t.match(re); if (!m) continue;
+      let n = parseFloat(String(m[1]).replace(/,/g, ''));
+      const u = (m[2] || '').toLowerCase(); if (u === 'k' || u === 'thousand') n *= 1000; else if (u.startsWith('lakh')) n *= 100000;
+      return n > 0 && n <= 1e8 ? { op: 'set', amount: Math.round(n * 100) / 100 } : null;
+    }
+    if (BUD_CLEAR.test(t)) return { op: 'clear' };
+    if (BUD_SHOW.test(t)) return { op: 'show' };
+    return null;
+  }
+  // → { budget, spent, left, pct, over, level:'ok'|'warn'|'over', daysLeft, perDayLeft } for this month
+  function budgetStatus(expenses, budget, now = Date.now()) {
+    const spent = summarize(expenses, 'this month', now).total, d = new Date(now);
+    const daysLeft = Math.max(1, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() - d.getDate() + 1);
+    const left = Math.round((budget - spent) * 100) / 100, pct = Math.round(100 * spent / budget);
+    return { budget, spent, left, pct, over: Math.max(0, -left), level: spent > budget ? 'over' : pct >= 80 ? 'warn' : 'ok', daysLeft, perDayLeft: Math.max(0, Math.round(left / daysLeft)) };
+  }
+
   /* ---------- habits ---------- */
   const habitName = s => String(s || '').toLowerCase().replace(/^(?:a|an|the|my|to|for)\s+/, '').replace(/[^a-z0-9 +&'-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 30);
   const HAB_ADD = /^(?:please\s+)?(?:(?:start|begin)\s+tracking|track|add|create|new)\s+(?:a\s+|my\s+)?(?:new\s+)?habit\s*(?:called|named|of|:)?\s*(.+?)\s*[.!]*$|^(?:please\s+)?(?:start|begin)\s+tracking\s+(.+?)\s+(?:daily|every\s+day|each\s+day)\s*[.!]*$/i;
@@ -129,6 +193,6 @@ const LifeParse = (() => {
   function parseCapture(text) { const m = String(text || '').trim().match(CAP); const t = m ? m[1].trim().slice(0, 1000) : ''; return t ? { text: t } : null; }
   function parseCaptureShow(text) { const m = String(text || '').trim().match(CAP_SHOW); return m ? { day: /yesterday/i.test(text) ? -1 : 0 } : null; }
 
-  return { parseExpense, parseExpenseQuery, summarize, windowRange, categorize, money, csv, toNumber, matchHabit, habitName, streakOf, weekGrid, parseCapture, parseCaptureShow, ymd, CATS };
+  return { parseRecurring, dueRecurring, parseBudget, budgetStatus, parseExpense, parseExpenseQuery, summarize, windowRange, categorize, money, csv, toNumber, matchHabit, habitName, streakOf, weekGrid, parseCapture, parseCaptureShow, ymd, CATS };
 })();
 if (typeof module !== 'undefined') module.exports = LifeParse;

@@ -72,6 +72,51 @@ const call = async (p, body) => { let out; await routes[p]({ body }, { json: o =
   check('forgets a deleted file', (await call('/api/rag/search', { query: 'semaphore' })).results.length === 0);
   check('empty query → error', (await call('/api/rag/search', { query: '  ' })).error);
 
+  // notes in Telugu / Kannada are searchable too (the tokenizer used to see only a-z)
+  check('tokenize: Telugu and Kannada words are kept whole (with their vowel signs); English words are still stemmed', JSON.stringify(R.tokenize('నమస్తే ಕನ್ನಡ deadlocks')) === JSON.stringify(['నమస్తే', 'ಕನ್ನಡ', 'deadlock']), R.tokenize('నమస్తే ಕನ್ನಡ deadlocks'));
+  fs.writeFileSync(path.join(dir, 'telugu.md'), '# నోట్స్\nడెడ్‌లాక్ అంటే ప్రాసెస్‌లు ఒకదానికొకటి వేచి ఉండటం.\n');
+  fs.writeFileSync(path.join(dir, 'kannada.md'), 'ಸಾಮಾನ್ಯೀಕರಣ ಎಂದರೆ ಡೇಟಾ ಪುನರಾವರ್ತನೆ ಕಡಿಮೆ ಮಾಡುವುದು.\n');
+  await call('/api/rag/reindex', {});
+  const rt = await call('/api/rag/search', { query: 'డెడ్‌లాక్ అంటే' }), rk = await call('/api/rag/search', { query: 'ಡೇಟಾ ಪುನರಾವರ್ತನೆ' });
+  check('a Telugu question finds the Telugu note', rt.results.length && rt.results[0].file === 'telugu.md', rt.results);
+  check('a Kannada question finds the Kannada note', rk.results.length && rk.results[0].file === 'kannada.md', rk.results);
+  fs.unlinkSync(path.join(dir, 'telugu.md')); fs.unlinkSync(path.join(dir, 'kannada.md')); await call('/api/rag/reindex', {});
+
+  // the index is kept on disk and reused after a restart — only while a file is unchanged
+  {
+    const cdir = fs.mkdtempSync(path.join(os.tmpdir(), 'rag-cache-')), cache = path.join(cdir, '.rag-cache.json');
+    const note = path.join(cdir, 'notes.md'); fs.writeFileSync(note, 'The scheduler picks the next process to run.\n');
+    fs.utimesSync(note, new Date(1700000000000), new Date(1700000000000));       // a whole-millisecond time, so it can be set back exactly
+    const t0 = fs.statSync(note);
+    const mkRag = () => { const rt2 = {}; R({ post: (p, h) => { rt2[p] = h; }, get: (p, h) => { rt2[p] = h; } }, { allRoots: () => [cdir], SKIP_DIRS: new Set(), rel: p => path.basename(p), isInternal: p => path.basename(p).startsWith('.'), cacheFile: cache, cacheDelayMs: 20 }); return async (p, body) => { let out; await rt2[p]({ body }, { json: o => { out = o; }, status: () => ({ json: o => { out = o; } }) }); return out; }; };
+    const a = mkRag(); const ra = await a('/api/rag/search', { query: 'which process does the scheduler pick' });
+    await new Promise(r => setTimeout(r, 300));
+    check('cache: the first run finds the note and writes the index file', ra.results.length && ra.results[0].file === 'notes.md' && fs.existsSync(cache), ra.results);
+    check('cache: the index file is not itself indexed (a dot file)', ra.files === 1, ra.files);
+    // same size and same modified time, different words: a restarted JARVIS must trust the cache (proof it did not re-read the file)
+    fs.writeFileSync(note, 'The zzzzzzzzz picks the qqqq qqqqqqq to run xxxxxxxx.\n'.slice(0, t0.size - 1) + '\n'); fs.utimesSync(note, t0.atime, t0.mtime);
+    check('cache: precondition — same size and time', fs.statSync(note).size === t0.size && fs.statSync(note).mtimeMs === t0.mtimeMs);
+    const b = mkRag(); const rb = await b('/api/rag/search', { query: 'which process does the scheduler pick' });
+    check('cache: after a "restart" the old index is reused without reading the file again', rb.results.length && rb.results[0].file === 'notes.md', rb.results);
+    fs.writeFileSync(note, 'Banker algorithm avoids deadlock by checking safe states.\n');   // size and time change
+    const c = mkRag(); const rc = await c('/api/rag/search', { query: 'banker algorithm' });
+    check('cache: a file that changed (size or time) is read again, never served stale', rc.results.length && rc.results[0].file === 'notes.md' && /Banker/.test(rc.results[0].text || rc.results[0].snippet || JSON.stringify(rc.results[0])), rc.results);
+    fs.writeFileSync(cache, '{ not json'); const d = mkRag(); const rd = await d('/api/rag/search', { query: 'banker algorithm' });
+    check('cache: a damaged cache file is ignored and the index is rebuilt', rd.results.length && rd.results[0].file === 'notes.md');
+    fs.rmSync(cdir, { recursive: true, force: true });
+  }
+
+  // each shared folder gets its own share of the file limit: a huge project folder listed first cannot crowd out the notes
+  {
+    const big = fs.mkdtempSync(path.join(os.tmpdir(), 'rag-big-')), small = fs.mkdtempSync(path.join(os.tmpdir(), 'rag-small-'));
+    for (let i = 0; i < 120; i++) fs.writeFileSync(path.join(big, 'f' + i + '.md'), 'project file number ' + i + ' about compilers\n');
+    for (let i = 0; i < 5; i++) fs.writeFileSync(path.join(small, 'n' + i + '.md'), 'my lecture note ' + i + ' about semaphores\n');
+    const rt3 = {}; R({ post: (p, h) => { rt3[p] = h; }, get: (p, h) => { rt3[p] = h; } }, { allRoots: () => [big, small], SKIP_DIRS: new Set(), rel: p => path.basename(p), isInternal: () => false, maxFiles: 100 });
+    let out; await rt3['/api/rag/search']({ body: { query: 'lecture note semaphores' } }, { json: o => { out = o; }, status: () => ({ json: o => { out = o; } }) });
+    check('quota: with a limit of 100 files and two folders, the small notes folder is fully indexed even though the big one is listed first', out.results.length && /^n\d\.md$/.test(out.results[0].file) && out.files === 55, [out.files, out.results.map(x => x.file)]);
+    fs.rmSync(big, { recursive: true, force: true }); fs.rmSync(small, { recursive: true, force: true });
+  }
+
   // PDFs: a real 2-page PDF, indexed page by page and cited with page numbers
   const pdfDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ragpdf-'));
   fs.writeFileSync(path.join(pdfDir, 'lecture3.pdf'), makePdf(['Deadlock needs mutual exclusion and circular wait.', 'Paging divides memory into fixed size frames.']));

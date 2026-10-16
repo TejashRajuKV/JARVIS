@@ -26,21 +26,21 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
   /* ---------- keep-alive ---------- */
-  reset(); gets['/keepalive/status'] = { success: true, supported: true, on: false, minutes: 5 }; replies['/keepalive/set'] = { success: true, on: true };
+  reset(); gets['/keepalive/status'] = { success: true, supported: true, on: false, minutes: 2 }; replies['/keepalive/set'] = { success: true, on: true };
   let r = await S('keep JARVIS running');
   const card = said.find(x => x.confirmCard);
-  check('keepalive: asks first, says what the task is, and that it never restarts after you stopped it', card && /JARVIS Keepalive/.test(card.text) && /5 minutes/.test(card.text) && /stopped/.test(card.text), card && card.text);
+  check('keepalive: asks first, says what the task is, and that it never restarts after you stopped it', card && /JARVIS Keepalive/.test(card.text) && /2 minutes/.test(card.text) && /stopped/.test(card.text), card && card.text);
   check('keepalive: after "yes" it switches the task on', calls.some(c => c[0] === '/keepalive/set' && c[1].on === true) && /Keep-alive is on/.test(r.text), r);
-  reset(); yes = false; gets['/keepalive/status'] = { success: true, supported: true, on: false, minutes: 5 };
+  reset(); yes = false; gets['/keepalive/status'] = { success: true, supported: true, on: false, minutes: 2 };
   r = await S('keep jarvis alive'); check('keepalive: "no" changes nothing', !calls.length && /did not change/.test(r.text), r);
-  reset(); gets['/keepalive/status'] = { success: true, supported: true, on: true, minutes: 5 }; replies['/keepalive/set'] = { success: true, on: false };
+  reset(); gets['/keepalive/status'] = { success: true, supported: true, on: true, minutes: 2 }; replies['/keepalive/set'] = { success: true, on: false };
   r = await S('stop keeping JARVIS alive'); check('keepalive: off removes the task (no confirm needed)', calls.some(c => c[1].on === false) && /off/.test(r.text) && !said.some(x => x.confirmCard), r);
-  r = await S('is jarvis kept alive?'); check('keepalive: status says on', /on/.test(r.text) && /5 minutes/.test(r.text), r.text);
-  reset(); gets['/keepalive/status'] = { success: true, supported: true, on: false, minutes: 5 };
+  r = await S('is jarvis kept alive?'); check('keepalive: status says on', /on/.test(r.text) && /2 minutes/.test(r.text), r.text);
+  reset(); gets['/keepalive/status'] = { success: true, supported: true, on: false, minutes: 2 };
   r = await S('keep JARVIS running', 'phone'); check('keepalive: refused from the phone, nothing called', !calls.length && /laptop/.test(r.text), r);
   reset(); gets['/keepalive/status'] = { success: true, supported: false };
   r = await S('keep JARVIS running'); check('keepalive: not Windows → says so', /Windows/.test(r.text) && !calls.length);
-  reset(); gets['/keepalive/status'] = { success: true, supported: true, on: false, minutes: 5 }; replies['/keepalive/set'] = { error: 'Windows would not create the task (Access is denied)' };
+  reset(); gets['/keepalive/status'] = { success: true, supported: true, on: false, minutes: 2 }; replies['/keepalive/set'] = { error: 'Windows would not create the task (Access is denied)' };
   r = await S('keep jarvis running'); check('keepalive: a failure is reported plainly', /Access is denied/.test(r.text), r.text);
 
   /* ---------- backup wording ---------- */
@@ -64,6 +64,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await S('set my backup folder to D:'); check('backup set: replacing an existing folder says so', /replaces your current backup folder/.test(said.find(x => x.confirmCard).text));
   reset(); gets['/mirror/status'] = { dest: null }; replies['/mirror/setdest'] = { error: 'That folder already has other files in it.' };
   r = await S('set my backup folder to D:'); check('backup set: a server refusal is shown', /already has other files/.test(r.text));
+  /* ---------- verify my backup ---------- */
+  for (const x of ['verify my backup', 'check my backup', 'test the backup', 'validate my drive backup', 'is my backup ok?', 'is my backup intact', 'audit my backup folder']) check('verify wording: "' + x + '"', mb(x) && mb(x).op === 'verify', mb(x));
+  for (const x of ['backup status', 'is my backup up to date']) check('verify wording: "' + x + '" stays a status question', mb(x) && mb(x).op === 'status', mb(x));
+  reset(); gets['/mirror/status'] = { dest: 'D:\JARVIS-Backup' }; replies['/mirror/verify'] = { success: true, dest: 'D:\JARVIS-Backup', checked: 120, ok: 120, missing: 0, changed: 0, damaged: 0, examples: { missing: [], changed: [], damaged: [] } };
+  r = await S('verify my backup'); check('verify: all identical is said plainly, with the count and the folder', calls.map(c => c[0]).join() === '/mirror/verify' && /matches your files/.test(r.text) && /120 files/.test(r.text) && /JARVIS-Backup/.test(r.text), [calls, r.text]);
+  reset(); gets['/mirror/status'] = { dest: 'D:\JARVIS-Backup' }; replies['/mirror/verify'] = { success: true, dest: 'D:\JARVIS-Backup', checked: 50, ok: 46, missing: 2, changed: 1, damaged: 1, examples: { missing: ['jarvis/Notes/new.md', 'jarvis/Notes/b.md'], changed: ['jarvis/Notes/dbms.md'], damaged: ['jarvis/Notes/sub/os.md'] } };
+  r = await S('check my backup'); check('verify: damaged copies lead, with names, counts for missing and changed, and what to do', /1 backup copy is damaged/.test(r.text) && /os.md/.test(r.text) && /2 not in the backup yet/.test(r.text) && /1 changed since/.test(r.text) && /back up my files/.test(r.text), r.text);
+  reset(); gets['/mirror/status'] = { dest: null }; r = await S('verify my backup'); check('verify: no folder set → how to set one, nothing checked', !calls.length && /No backup folder/.test(r.text));
+  reset(); gets['/mirror/status'] = { dest: 'D:\B', running: true }; r = await S('verify my backup'); check('verify: while a backup runs it waits', !calls.length && /running right now/.test(r.text));
+  reset(); r = await S('verify my backup', 'phone'); check('verify: refused from the phone', !calls.length && /laptop/.test(r.text));
   reset(); r = await S('back up my files to D:', 'phone'); check('backup: set/run are refused from the phone', !calls.length && /laptop/.test(r.text));
   // back up to X = set + run + a note when it ends
   reset(); let polls = 0; gets['/mirror/status'] = () => ({ dest: 'D:\\JARVIS-Backup', approved: 'D:\\JARVIS-Backup', running: calls.some(c => c[0] === '/mirror/run') && polls++ < 2, lastRun: Date.now(), last: { files: 40, copied: 12, replaced: 1, errors: [] } });
@@ -95,6 +105,34 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   r = await S('how much did I spend this month');
   check('summary: total, categories with percentages, latest entries, a CSV action', /₹200/.test(r.text) && /Food/.test(r.text) && /Transport/.test(r.text) && /Latest/.test(r.text) && r.actions && r.actions[0].label === 'EXPORT AS CSV', r.text);
   r = await S('how much did I spend on food this month'); check('summary: about a category', /₹120/.test(r.text) && !/Transport/.test(r.text.split('Latest')[0]), r.text);
+  { const keepD = JSON.stringify(store.d), keepU = undo.length; store.d['jarvis.expenses'] = []; delete store.d['jarvis.budget']; undo.length = 0; r = await S('set my budget to 1000');
+    check('budget: set, saved as a number, with one undo', store.d['jarvis.budget'] === 1000 && /₹1,000/.test(r.text) && undo.length === 1, [store.d['jarvis.budget'], r.text]);
+    r = await S('spent 500 on dinner'); check('budget: under 80% adds no warning', !/budget/i.test(r.text), r.text);
+    r = await S('spent 350 on groceries'); check('budget: crossing 80% warns, with what is left', /85% of your ₹1,000 budget/.test(r.text) && /₹150 left/.test(r.text), r.text);
+    r = await S('spent 400 on shoes'); check('budget: passing it says by how much', /Over your ₹1,000 budget by ₹250/.test(r.text), r.text);
+    r = await S('how is my budget'); check('budget: status shows spent of budget and that it is over', /₹1,250 of ₹1,000/.test(r.text) && /Over by ₹250/.test(r.text), r.text);
+    undo.length = 0; r = await S('remove my budget'); check('budget: removed, with one undo, and no more warnings', !store.d['jarvis.budget'] && undo.length === 1, r.text);
+    r = await S('spent 10 on tea'); check('budget: no budget → no warning line', !/budget/i.test(r.text), r.text);
+    undo[0][1](); check('budget: undo of the removal brings it back', store.d['jarvis.budget'] === 1000);
+    delete store.d['jarvis.budget']; r = await S('what is my budget'); check('budget: asked with none set → how to set one', /no monthly budget/.test(r.text), r.text);
+    for (const k in store.d) delete store.d[k]; Object.assign(store.d, JSON.parse(keepD)); undo.length = 0; }
+  { const keepD = JSON.stringify(store.d); store.d['jarvis.expenses'] = []; delete store.d['jarvis.recurring']; undo.length = 0;
+    const today = new Date().getDate();
+    r = await S('I pay 199 for netflix every month'); const rc = store.d['jarvis.recurring'];
+    check('recurring: saved with the amount, name, category and day, answered with when the first one is, one undo', rc && rc.length === 1 && rc[0].amount === 199 && rc[0].note === 'netflix' && rc[0].day === today && /every month on the/.test(r.text) && /right away/.test(r.text) && undo.length === 1, [rc, r.text]);
+    check('recurring: it is NOT also logged as a one-off expense by the sentence itself', store.d['jarvis.expenses'].length === 0);
+    r = Life.recurTick(Date.now());
+    check('recurring: the tick logs it once, dated this month, marked "(monthly)", with one chat line', store.d['jarvis.expenses'].length === 1 && store.d['jarvis.expenses'][0].amount === 199 && /monthly/.test(store.d['jarvis.expenses'][0].note) && r && /Logged your monthly expense/.test(r.text), [store.d['jarvis.expenses'], r && r.text]);
+    check('recurring: a second tick the same month logs nothing more', Life.recurTick(Date.now()) === null && store.d['jarvis.expenses'].length === 1);
+    check('recurring: next month it is logged again', (() => { const n = new Date(); const next = new Date(n.getFullYear(), n.getMonth() + 1, Math.min(n.getDate(), 28), 10).getTime(); const rr = Life.recurTick(next); return rr && store.d['jarvis.expenses'].length === 2; })());
+    r = await S('show my recurring expenses'); check('recurring: the list shows the item and the monthly total', /netflix/.test(r.text) && /₹199 a month/.test(r.text), r.text);
+    r = await S('pay 5000 for rent every month on the 1st'); const rent = store.d['jarvis.recurring'].find(x => x.note === 'rent');
+    check('recurring: a day earlier in the month than today is not back-dated — the first entry is next month\'s', today === 1 ? rent.last === '' : /next month/.test(r.text) && rent.last !== '', [rent, r.text]);
+    r = await S('I pay 249 for netflix every month'); check('recurring: the same name again replaces the earlier one (no double)', store.d['jarvis.recurring'].filter(x => x.note === 'netflix').length === 1 && store.d['jarvis.recurring'].find(x => x.note === 'netflix').amount === 249 && /replaced/.test(r.text));
+    undo.length = 0; r = await S('stop recurring netflix'); check('recurring: stopped, past entries stay, with one undo', !store.d['jarvis.recurring'].some(x => x.note === 'netflix') && store.d['jarvis.expenses'].length === 2 && undo.length === 1, r.text);
+    undo[0][1](); check('recurring: undo brings it back', store.d['jarvis.recurring'].some(x => x.note === 'netflix'));
+    r = await S('stop recurring zzzz'); check('recurring: an unknown name is said plainly', /no recurring expense called/.test(r.text));
+    for (const k in store.d) delete store.d[k]; Object.assign(store.d, JSON.parse(keepD)); undo.length = 0; }
   r = await S('how much did I spend last month'); check('summary: nothing in the window', /Nothing logged/.test(r.text));
   replies['/tool/writeFile'] = body => ({ success: true, name: body.name });
   r = await S('export my expenses');

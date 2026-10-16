@@ -186,7 +186,7 @@ module.exports = function setupAiHealth(app, { llm, recorder, OLLAMA, DEFAULT_MO
     let deep = null;
     if (req.query.deep === '1' || req.query.deep === 'true') {
       const t0 = Date.now();
-      try { await llm.complete({ model, messages: [{ role: 'user', content: 'Reply with just the word OK.' }], maxTokens: 16, temperature: 0, timeoutMs: 60000 }); deep = { ok: true, ms: Date.now() - t0, model }; }
+      try { await llm.complete({ noQueue: true, model, messages: [{ role: 'user', content: 'Reply with just the word OK.' }], maxTokens: 16, temperature: 0, timeoutMs: 60000 }); deep = { ok: true, ms: Date.now() - t0, model }; }
       catch (e) { deep = { ok: false, error: String((e && e.message) || e).slice(0, 160), model }; }
     }
     const summary = summarize(recorder.all(), { now: Date.now(), sinceMs: DAY });

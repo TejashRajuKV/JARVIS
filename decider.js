@@ -11,6 +11,9 @@
    Plain rules, no AI call: fast, predictable, testable — and the inspector shows the signals and the reason. */
 const Decider = (() => {
   const FRESH = /\b(latest|newest|current(?:ly)?|today'?s?|tonight|right now|now|recent(?:ly)?|this (?:week|month|year|season)|20(?:2[4-9]|3\d)|news|headlines?|prices?|cost(?:s)?|stock(?: price)?|share price|exchange rate|score|scores|standings|weather|forecast|versions?|releases?|released|release date|updates?|drivers?|changelog|announced|who won|winner|results? of|schedule for|deadline for|last date|trending|live|upcoming|ceo|president|prime minister|chief minister|governor|captain|population|net worth)\b/i;
+  // Words in FRESH that are also ordinary technical words: "how do device DRIVERS work", "explain CURRENT and voltage", "what is a software UPDATE". On their
+  // own, in a how/why/explain question, they do not mean "look it up on the web". (latest, today, news, price, score, weather… always do.)
+  const WEAK_FRESH = /^(?:current(?:ly)?|now|recent(?:ly)?|costs?|versions?|releases?|released|updates?|drivers?|live|results? of|upcoming|schedule for|captain|governor|population)$/i;
   // "search" only as a request ("search for…", "search the web"), not the noun ("binary search")
   const SOURCE = /\b(search (?:for|the web|online|google|the internet)|^search\b|google|look up|lookup|on the (?:web|internet)|online|internet|official(?:ly)?|documentation|docs|according to|references?|sources?|cite|wikipedia|website of|find (?:info|information|details|out|the official|articles?|a tutorial|tutorials)(?: (?:about|on|for))?)\b/i;
   const LOCAL = /\b(?:my|this|that|these|those|our|the same|same|current|previous|last)\s+(?:\w+\s+)?(?:files?|folders?|director(?:y|ies)|projects?|code|notes?|pdfs?|documents?|laptop|computer|pc|system|screen|clipboard|repo(?:sitory)?|app|program|script)\b|\b(?:there|in it|open it|the previous one|the last one|continue|carry on|same project)\b|\b(?!(?:node|vue|next|nuxt|three|react|express|d3|chart|p5|angular|ember|backbone|socket)\.js\b)[\w-]+\.(?:py|js|ts|java|cpp|c|html?|css|json|md|txt|pdf|docx?|pptx?|xlsx?)\b/i;
@@ -86,6 +89,9 @@ const Decider = (() => {
     if (sig.implicitSearch && !sig.fresh && !sig.source) return { route: 'LOCAL', reason: 'looks like the name of something on your laptop → search your files and folders', confidence: conf(0.85), payload: {} };
     // 7. your own things — files, folders, projects, this laptop — unless you explicitly asked for the web
     if ((sig.local || sig.machine) && !sig.source) return { route: 'LOCAL', reason: 'about your own things (' + (sig.machine ? 'this laptop' : 'files, folders, projects, what we were working on') + ') → my tools and the local AI, not the web', confidence: conf(0.85), payload: {} };
+    // 7b. a how/why/explain question whose only "fresh" words are ordinary technical words → understanding, not the web
+    if (sig.fresh && sig.reasoning && sig.question && !sig.source && sig.words.fresh.every(w => WEAK_FRESH.test(String(w).trim())))
+      return { route: 'LOCAL_AI', reason: 'a how/why question about an idea (' + sig.words.fresh.slice(0, 2).map(q).join(', ') + ' is an ordinary word here, not a request for news) → the local AI', confidence: conf(0.8), payload: {} };
     // 8. fresh or outside information → web, then the local AI answers from those pages
     if (sig.fresh || sig.source) {
       const why = sig.fresh ? 'needs current information (' + sig.words.fresh.slice(0, 2).map(q).join(', ') + ')' : 'asks for outside sources (' + sig.words.source.slice(0, 2).map(q).join(', ') + ')';

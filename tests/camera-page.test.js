@@ -27,6 +27,21 @@ eval(fs.readFileSync(root('camera-page.js'), 'utf8') + ';global.Camera = Camera;
 eval(fs.readFileSync(root('watch-page.js'), 'utf8') + ';global.Watch = Watch;');
 // the camera itself is faked: no browser here
 let streams = 0, stopped = 0, indicator = new Map();
+// the real getStream: one gentle retry when the camera is not found / not ready yet, never for a refusal
+const realGetStream = Camera.getStream;
+{ const calls = []; let script = [];
+  Object.defineProperty(global, 'navigator', { configurable: true, writable: true, value: { mediaDevices: { getUserMedia: async c => { calls.push(c); const s = script.shift(); if (s instanceof Error) throw s; return s || { id: 'stream' }; } } } });
+  const err = n => Object.assign(new Error(n), { name: n });
+  (async () => {
+    script = []; let s = await realGetStream({ retryMs: 1 }); check('getStream: the first try works → one call, with the facing mode and size we asked for', calls.length === 1 && calls[0].video.facingMode === 'environment' && calls[0].video.width.ideal === 1920 && calls[0].audio === false);
+    calls.length = 0; script = [err('NotFoundError')]; s = await realGetStream({ retryMs: 1 }); check('getStream: "no camera found" is retried once with no preferences, and then works', calls.length === 2 && calls[1].video === true && s.id === 'stream', calls);
+    calls.length = 0; script = [err('OverconstrainedError')]; s = await realGetStream({ retryMs: 1 }); check('getStream: constraints that cannot be met are retried plainly too', calls.length === 2 && calls[1].video === true);
+    calls.length = 0; script = [err('NotAllowedError')]; let thrown = null; try { await realGetStream({ retryMs: 1 }); } catch (e) { thrown = e; } check('getStream: a refusal (NotAllowedError) is passed on at once — no retry, no second prompt', thrown && thrown.name === 'NotAllowedError' && calls.length === 1);
+    calls.length = 0; script = [err('NotFoundError'), err('NotFoundError')]; thrown = null; try { await realGetStream({ retryMs: 1 }); } catch (e) { thrown = e; } check('getStream: if the retry fails too, that error is thrown (so the caller can say "no camera") — only two calls', thrown && thrown.name === 'NotFoundError' && calls.length === 2);
+    calls.length = 0; script = [err('NotReadableError')]; s = await realGetStream({ retryMs: 1 }); check('getStream: a camera that is busy for a moment (NotReadableError) is retried once', calls.length === 2);
+    Object.defineProperty(global, 'navigator', { configurable: true, writable: true, value: {} }); thrown = null; try { await realGetStream({}); } catch (e) { thrown = e; } check('getStream: no camera API at all → NotFoundError, nothing to retry', thrown && thrown.name === 'NotFoundError');
+  })().catch(e => check('getStream tests ran', false, String(e)));
+}
 Camera.getStream = async () => { streams++; return { getTracks: () => [{ stop: () => { stopped++; } }] }; };
 Camera.stopStream = s => { if (s) stopped++; };
 Camera.track = (name, label, stop) => { indicator.set(name, { label, stop }); return () => indicator.delete(name); };

@@ -15,7 +15,7 @@ const crypto = require('crypto');
 
 const MARKER = '.jarvis-mirror';
 const KEEP_DAYS = 30, WEEK = 7 * 864e5, MIN_FREE = 500 * 1048576, HASH_MAX = 8 * 1048576, MAX_FILES = 80000, MAX_ERRORS = 20;
-const SKIP_IN_JARVIS = new Set(['.trash', '.diskcare', '.config.json', '.jarvis.lock', '.jarvis.pid', '.jarvis-port', '.launcher.log', '.launcher.log.err', '.keepalive.log', '.keepalive.json', '.stopped-by-user', '.restarted.json', '.jarvis-state.json', '.mirror.json', '.shotindex.json']);
+const SKIP_IN_JARVIS = new Set(['.trash', '.diskcare', '.config.json', '.jarvis.lock', '.jarvis.pid', '.jarvis-port', '.launcher.log', '.launcher.log.err', '.keepalive.log', '.keepalive.json', '.stopped-by-user', '.restarted.json', '.jarvis-state.json', '.mirror.json', '.shotindex.json', '.rag-cache.json']);
 const SKIP_DIRS = new Set(['node_modules', '__pycache__', '.venv', 'venv', 'dist', 'build', '.next', 'target', 'out', '.cache', '.gradle', '.idea']);
 const isoDay = t => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 const within = (p, root) => { const a = path.resolve(p).toLowerCase(), b = path.resolve(root).toLowerCase(); return a === b || a.startsWith(b.endsWith(path.sep) ? b : b + path.sep); };
@@ -124,9 +124,43 @@ function createMirror({ SANDBOX, roots = () => [], blockedPath = () => false, sn
       .finally(() => { running = null; progress = null; });
     return running;
   }
+  // "Verify my backup": compares what is in the backup folder with what is in JARVIS now, without changing anything.
+  //   missing  — a file that is not in the backup at all (new since the last run, or never copied)
+  //   changed  — in the backup, but the original has changed since (size or time differ): the next backup run will update it
+  //   damaged  — same size and same modified time, but the contents differ (files up to 8 MB are compared byte for byte): the BACKUP COPY is bad — run the backup again after
+  //              deleting it, or restore it from _previous
+  // The backup is only as good as its newest run; this tells you how good that is.
+  async function verify(opts = {}) {
+    if (running) throw new MirrorError('A backup is running right now. Verify when it is done.', 409);
+    const cur = load(), dest = opts.dest || cur.dest;
+    if (!dest) throw new MirrorError('No backup folder is set yet. Say “set my backup folder to D:\\JARVIS-Backup”.');
+    const d = path.resolve(String(dest));
+    if (!fs.existsSync(path.join(d, MARKER))) throw new MirrorError('That folder does not look like a JARVIS backup yet (it has no ' + MARKER + ' file). Run a backup first.');
+    const includeProjects = opts.includeProjects !== undefined ? !!opts.includeProjects : !!cur.includeProjects;
+    const t0 = now(), budget = opts.budgetMs || 10 * 60000, res = { checked: 0, ok: 0, missing: 0, changed: 0, damaged: 0, partial: false, examples: { missing: [], changed: [], damaged: [] }, dest: d };
+    const note = (kind, rel) => { res[kind]++; if (res.examples[kind].length < 5) res.examples[kind].push(rel); };
+    outer: for (const src of sources(includeProjects)) {
+      for await (const f of walk(src.dir, '', src.top, src.dirs)) {
+        if (now() - t0 > budget || res.checked >= MAX_FILES) { res.partial = true; break outer; }
+        let st; try { st = await fsp.lstat(f.full); } catch { continue; }
+        res.checked++;
+        const rel = src.label + '/' + f.rel, dst = path.join(d, ...rel.split('/'));
+        let ds = null; try { ds = fs.statSync(dst); } catch { /* not there */ }
+        if (!ds) { note('missing', rel); continue; }
+        if (ds.size !== st.size || Math.abs(ds.mtimeMs - st.mtimeMs) >= 2000) { note('changed', rel); continue; }
+        if (st.size <= HASH_MAX) {
+          try { if (await hashFile(f.full) !== await hashFile(dst)) { note('damaged', rel); continue; } } catch { /* in use: cannot tell, count it as fine */ }
+        }
+        res.ok++;
+      }
+    }
+    res.ms = now() - t0;
+    save({ ...load(), lastVerify: { at: now(), checked: res.checked, ok: res.ok, missing: res.missing, changed: res.changed, damaged: res.damaged } });
+    return res;
+  }
   function status() {
     const s = load();
-    return { dest: s.dest || null, enabled: !!s.enabled, includeProjects: !!s.includeProjects, approved: s.approved || null, lastRun: s.lastRun || null, last: s.last || null, lastError: s.lastError || null, running: !!running, progress, dueIn: s.enabled && s.lastRun ? Math.max(0, s.lastRun + WEEK - now()) : null };
+    return { lastVerify: s.lastVerify || null, dest: s.dest || null, enabled: !!s.enabled, includeProjects: !!s.includeProjects, approved: s.approved || null, lastRun: s.lastRun || null, last: s.last || null, lastError: s.lastError || null, running: !!running, progress, dueIn: s.enabled && s.lastRun ? Math.max(0, s.lastRun + WEEK - now()) : null };
   }
   function configure({ dest, enabled, includeProjects, approved }) {
     const s = load();
@@ -143,7 +177,7 @@ function createMirror({ SANDBOX, roots = () => [], blockedPath = () => false, sn
     if (s.lastTry && now() - s.lastTry < 6 * 3600e3 && s.lastError) return null;             // it failed a moment ago: try again later, not every hour
     try { return await run({}); } catch { return null; }
   }
-  return { run, status, configure, autoTick, checkDest, MARKER };
+  return { run, verify, status, configure, autoTick, checkDest, MARKER };
 }
 
 /* ---------- routes (laptop page only) ---------- */
@@ -159,6 +193,7 @@ module.exports = function setupMirror(app, { SANDBOX, roots, blockedPath, approv
     res.json({ success: true, ...m.configure({ dest: d, approved: true, includeProjects: b.includeProjects, enabled: b.enabled }) });
   }));
   app.post('/api/mirror/config', wrap(async (req, res) => { const b = req.body || {}; res.json({ success: true, ...m.configure({ enabled: b.enabled, includeProjects: b.includeProjects }) }); }));
+  app.post('/api/mirror/verify', wrap(async (req, res) => res.json({ success: true, ...(await m.verify({})) })));      // read-only: compares the backup with the originals
   app.post('/api/mirror/run', wrap(async (req, res) => {
     const st = m.status();
     if (!st.dest) throw new MirrorError('No backup folder is set yet. Say “set my backup folder to D:\\JARVIS-Backup”.');

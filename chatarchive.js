@@ -220,7 +220,7 @@ module.exports = function setupChatArchive(app, { SANDBOX, llm, DEFAULT_MODEL, d
         cloud = !!(llm.isCloud && llm.isCloud(model));
         const fmt = e => '[' + new Date(e.t).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) + '] You: ' + e.user.slice(0, 400) + '\nJARVIS: ' + e.assistant.slice(0, 500);
         try {
-          summary = await llm.complete({ model, temperature: 0.2, maxTokens: 260, timeoutMs: 120000,
+          summary = await llm.complete({ priority: 2, model, temperature: 0.2, maxTokens: 260, timeoutMs: 120000,
             system: 'You answer a question about a user’s own earlier chats with their assistant, using ONLY the dated excerpts given. Mention dates. If the excerpts do not answer the question, say so plainly. At most four short sentences. Never invent anything.',
             messages: [{ role: 'user', content: 'Question: ' + text + '\n\nExcerpts:\n' + r.exchanges.slice(0, 6).map(fmt).join('\n\n').slice(0, 4500) }] });
         } catch (e) { summary = ''; }

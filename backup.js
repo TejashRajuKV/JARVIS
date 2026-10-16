@@ -87,6 +87,8 @@ function mergeState(current, incoming, mergeReminders) {
 
 /* ---------- server wiring ---------- */
 module.exports = function setupBackup(app, { getState, setState, getConfig, saveConfig, mergeReminders, addRoot, dir, appVersion }) {
+  // A restore or import replaces everything the open tabs are showing: tell them, so they reload instead of writing their old copy back over it.
+  const tellTabs = () => { try { if (typeof app.locals.broadcast === 'function') app.locals.broadcast({ type: 'statereset' }); } catch (e) { /* no tab is listening */ } };
   const fromLaptopPage = req => req.headers['sec-fetch-site'] === 'same-origin' && /^(localhost|127\.0\.0\.1):/.test(String(req.headers.host || ''));
   const deny = res => res.status(403).json({ error: 'Back up and restore from JARVIS on the laptop.' });
   const stamp = d => new Date(d).toISOString().slice(0, 10);
@@ -142,6 +144,7 @@ module.exports = function setupBackup(app, { getState, setState, getConfig, save
     const next = mode === 'merge' ? mergeState(cur, r.backup.state, mergeReminders) : { ...r.backup.state };
     if (cur['jarvis.migrated']) next['jarvis.migrated'] = cur['jarvis.migrated']; // another browser's old copy must never come back
     setState(next);
+    tellTabs();
     let roots = 0;
     for (const p of r.backup.roots) if (addRoot(p)) roots++;
     let keys = 0;
@@ -163,6 +166,7 @@ module.exports = function setupBackup(app, { getState, setState, getConfig, save
     const clean = {}; for (const [k, v] of Object.entries(st || {})) if (STATE_KEY.test(k)) clean[k] = v;
     snapshot('before-restore');
     setState(clean);
+    tellTabs();
     res.json({ success: true, areas: Object.keys(clean).length });
   });
 

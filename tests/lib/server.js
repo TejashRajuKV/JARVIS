@@ -26,7 +26,10 @@ async function startServer({ env = {}, keepHome = false, home: reuseHome } = {})
   // Same headers a JARVIS page on this origin sends — the server refuses anything else (server.js security block).
   const headers = { 'Content-Type': 'application/json', Origin: base, 'Sec-Fetch-Site': 'same-origin' };
   async function api(method, p, body, extra = {}) {
-    const r = await fetch(base + p, { method, headers: Object.assign({}, headers, extra.headers || {}), body: body === undefined ? undefined : JSON.stringify(body) });
+    // Node's keep-alive connections are closed by the server after a few idle seconds; a request sent in the same instant is reset before the server reads it
+    // (ECONNRESET). That is a race in the test client, not a server fault, and nothing was processed, so ask once more.
+    const send = () => fetch(base + p, { method, headers: Object.assign({}, headers, extra.headers || {}), body: body === undefined ? undefined : JSON.stringify(body) });
+    let r; try { r = await send(); } catch (e) { const code = e && e.cause && (e.cause.code || e.cause.message); if (!/ECONNRESET|UND_ERR_SOCKET|other side closed/i.test(String(code))) throw e; r = await send(); }
     const text = await r.text();
     let json = null; try { json = JSON.parse(text); } catch {}
     return { status: r.status, json: json || {}, text };

@@ -105,8 +105,9 @@ function createNativeWake({ isWin, broadcast, run = spawn, now = () => Date.now(
     proc.stdout.on('data', d => { buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { onLine(buf.slice(0, i).trim()); buf = buf.slice(i + 1); } });
     proc.on('exit', () => {
       proc = null; ready = '';
-      // It died while still wanted (mic unplugged, audio device changed): try again, backing off; give up after 5.
-      if (want && restarts < 5) { restarts++; setTimeout(() => want && start(), Math.min(30000, 2000 * restarts)); }
+      // It died while still wanted (mic unplugged, audio device changed): try again, backing off — 2 s, 4 s … up to 5 minutes between tries — and never give up
+      // while the setting is on (a mic that is plugged back in an hour later should just work). Seeing it ready again resets the back-off.
+      if (want) { restarts++; setTimeout(() => want && start(), Math.min(300000, restarts <= 5 ? 2000 * restarts : 30000 * (restarts - 5))); }
     });
   }
   function stop() { want = false; if (proc) { try { proc.kill(); } catch {} proc = null; } ready = ''; }

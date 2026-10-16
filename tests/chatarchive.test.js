@@ -127,6 +127,8 @@ check('cap: when only this month is left and it is too big, the oldest part of i
 const routes = {}; const app = { post: (p, h) => { routes['POST ' + p] = h; }, get: (p, h) => { routes['GET ' + p] = h; } };
 const rdir = path.join(dir, 'routes');
 const llm = { isCloud: m => String(m).includes('::'), complete: async o => { llm.last = o; return 'On 2 October you chose SQLite.'; } };
+// the routes read the real clock; the seed is dated around Fri 9 Oct 2026, so "last week" must be measured from then, not from today
+const realDateNow = Date.now; Date.now = () => NOW + 1000;
 A(app, { SANDBOX: dir, llm, DEFAULT_MODEL: 'qwen3.5:4b', dir: rdir });
 const LAPTOP = { 'sec-fetch-site': 'same-origin', host: 'localhost:3001' }, REMOTE = { 'sec-fetch-site': 'same-origin', host: 'my-laptop.tail1234.ts.net' };
 const call = async (key, body, headers = LAPTOP) => { let o, code = 200; await routes[key]({ headers, body }, { json: x => { o = x; }, status: c => ({ json: x => { code = c; o = x; } }) }); return { code, ...o }; };
@@ -144,6 +146,7 @@ check('routes: an AI that fails still gives the matches', await (async () => { l
 check('routes: search needs words', (await call('POST /api/chatarchive/search', { text: '  ' })).code === 400 && (await call('POST /api/chatarchive/search', {})).code === 400);
 check('routes: forget needs an explicit confirmation, then erases', (await call('POST /api/chatarchive/forget', {})).code === 400 && (await call('POST /api/chatarchive/forget', { confirm: 'yes' })).code === 400 && fs.existsSync(rdir) && (await call('POST /api/chatarchive/forget', { confirm: true })).removed === 2 && !fs.existsSync(rdir));
 
+Date.now = realDateNow;
 clearInterval(keep);
 try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
 console.log(`chatarchive: ${total - fail}/${total}`);

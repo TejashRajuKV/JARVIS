@@ -58,10 +58,25 @@ const call = async (ep, body, headers = LAPTOP) => { let o, code = 200; await ro
   check('lecture notes: a short lecture is one piece; the model chosen is used and flagged as online', r.chunks === 1 && calls.every(c => c.model === 'openai::gpt-x') && r.cloud === true);
   calls.length = 0; const big = Array.from({ length: 1500 }, (_, i) => sentence(i)).join('').slice(0, 118000);
   r = await call('/api/lecture/notes', { subject: 'Long one', transcript: big });
-  check('lecture notes: a very long lecture is capped at 24 pieces, says how many were left out, and the AI is never asked about more than 24', r.success && r.chunks === 24 && r.truncated >= 1 && calls.filter(c => /note-taker/.test(c.system) && /Transcript:/.test(c.user)).length === 24 && /were not included|was not included|not included/.test(fs.readFileSync(path.join(root, r.file), 'utf8')), { chunks: r.chunks, truncated: r.truncated });
+  check('lecture notes: a very long lecture (118,000 characters, about 3 hours) is now covered in full (up to 36 pieces) and nothing is reported as left out', r.success && r.chunks >= 30 && r.chunks <= 36 && r.truncated === 0 && !/were not included|was not included/.test(fs.readFileSync(path.join(root, r.file), 'utf8')) && calls.filter(c => /note-taker/.test(c.system) && /Transcript:/.test(c.user)).length === r.chunks, { chunks: r.chunks, truncated: r.truncated });
   check('lecture notes: merging happened in groups that each fit (every request is under 3,600 characters)', calls.every(c => c.user.length <= 3600 + 80), Math.max(...calls.map(c => c.user.length)));
   mode = 'quiet'; calls.length = 0; r = await call('/api/lecture/notes', { subject: 'Chat', transcript: long.slice(0, 5000) });
   check('lecture notes: when every piece has nothing to note, it says so instead of inventing notes (and does not ask the AI to arrange nothing)', r.success && /had nothing to note/.test(fs.readFileSync(path.join(root, r.file), 'utf8')) && !calls.some(c => /clean study notes/.test(c.system)), calls.length); mode = 'ok';
+  {   // notes that are still too long after the merge rounds: the cut is SAID, not silent
+    const real = llm.complete; llm.complete = async o => (/note-taker/.test(o.system) ? '- ' + 'a long point about databases '.repeat(150) : real(o));
+    calls.length = 0; r = await call('/api/lecture/notes', { subject: 'Bloated', transcript: Array.from({ length: 300 }, (_, i) => sentence(i)).join('') });
+    const txt = r.success ? fs.readFileSync(path.join(root, r.file), 'utf8') : '';
+    check('lecture notes: when the notes cannot be merged small enough, the answer says the last part is left out (and the response flags it)', r.success && r.condensed === true && /too long to arrange in one go/.test(txt), { condensed: r.condensed });
+    llm.complete = real; calls.length = 0; r = await call('/api/lecture/notes', { subject: 'Normal', transcript: long.slice(0, 6000) });
+    check('lecture notes: a normal lecture is not flagged', r.success && r.condensed === false && !/too long to arrange/.test(fs.readFileSync(path.join(root, r.file), 'utf8')));
+  }
+  {   // exam questions look at more places of a long note when more are asked for
+    calls.length = 0; r = await call('/api/exam/questions', { name: 'big.md', n: 8 });
+    const looked8 = calls.filter(c => /exam questions/.test(c.system)).length;
+    calls.length = 0; r = await call('/api/exam/questions', { name: 'big.md', n: 14 });
+    const looked14 = calls.filter(c => /exam questions/.test(c.system)).length, secs = new Set(calls.filter(c => /exam questions/.test(c.system)).map(c => (c.user.match(/Section (\d+)/) || [])[1]));
+    check('exam: 8 questions look at 4 places of a long note, 14 questions at more (up to 6, here all 5 pieces) — spread from the start to the end', looked8 === 4 && looked14 === 5 && secs.has('0') && secs.has('25') && r.success && r.questions.length === 14, { looked8, looked14, secs: [...secs] });
+  }
   mode = 'down'; r = await call('/api/lecture/notes', { subject: 'X', transcript }); check('lecture notes: an AI that is down gives a plain error (the transcript was already saved by the page)', r.code === 502 && /unavailable/.test(r.error)); mode = 'ok';
   check('lecture notes: far too little text is refused; from another device it is refused', (await call('/api/lecture/notes', { transcript: 'hi' })).code === 400 && (await call('/api/lecture/notes', {})).code === 400 && (await call('/api/lecture/notes', { transcript }, { 'sec-fetch-site': 'same-origin', host: 'laptop.tail1.ts.net' })).code === 403 && (await call('/api/lecture/notes', { transcript }, {})).code === 403);
   check('lecture notes: the subject is made file-safe (no folders from "../")', await (async () => { const x = await call('/api/lecture/notes', { subject: '../../Windows/evil', transcript }); return x.success && /^Notes\/lecture-windows-evil-/.test(x.file) && !x.file.includes('..'); })());

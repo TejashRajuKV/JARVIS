@@ -10,7 +10,7 @@ const throwsMsg = async (fn, re) => { try { await fn(); return false; } catch (e
 const sha = b => crypto.createHash('sha256').update(b).digest('hex');
 const zlib = require('zlib');
 // the text-drawing instructions of every page, with the PDF's compression undone
-const drawn = buf => [...buf.toString('latin1').matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)].map(m => { try { return zlib.inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'); } catch { return ''; } }).join('\n');
+const drawn = buf => [...buf.toString('latin1').matchAll(/stream\r?\n([\s\S]*?)\nendstream/g)].map(m => { try { return zlib.inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'); } catch { return ''; } }).join('\n');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-'));
 
 // A PDF whose pages say "<label> page 1", "<label> page 2", …

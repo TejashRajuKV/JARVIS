@@ -113,6 +113,28 @@ const mkM = (o = {}) => M.createMirror({ SANDBOX: SB, roots: () => [SB, PROJ], b
 
   clearInterval(keep);
   try { fs.rmSync(root, { recursive: true, force: true }); } catch {}
+  /* ---------- verify: compare the backup with the originals, change nothing ---------- */
+  {
+    const DEST2 = path.join(root, 'bk2', 'JARVIS-Backup'), m2 = mkM();
+    mk(path.join(SB, 'Notes', 'dbms.md'), 'normalization notes'); mk(path.join(SB, 'Notes', 'sub', 'os.md'), 'processes'); mk(path.join(SB, 'Documents', 'a.pdf'), 'PDF'.repeat(10)); mk(path.join(SB, 'Notes', 'c.md'), 'cc'); mk(path.join(SB, 'Notes', 'd.md'), 'dd'); mk(path.join(SB, 'Notes', 'e.md'), 'ee'); mk(path.join(SB, 'Notes', 'f.md'), 'ff');
+    check('verify: with no backup folder set it says how to set one', await m2.verify({}).then(() => false, e => /No backup folder is set/.test(e.message)));
+    check('verify: a folder that is not a JARVIS backup is refused', await m2.verify({ dest: path.join(root, 'full') }).then(() => false, e => /does not look like a JARVIS backup/.test(e.message)));
+    await m2.run({ dest: DEST2 });
+    let v = await m2.verify({});
+    check('verify: right after a backup every file is fine', v.checked > 5 && v.ok === v.checked && v.missing === 0 && v.changed === 0 && v.damaged === 0, v);
+    mk(path.join(SB, 'Notes', 'brand-new.md'), 'written after the backup');
+    fs.writeFileSync(path.join(SB, 'Notes', 'dbms.md'), 'normalization notes, edited later'); fs.utimesSync(path.join(SB, 'Notes', 'dbms.md'), new Date(clock + 60000), new Date(clock + 60000));
+    const bad = path.join(DEST2, 'jarvis', 'Notes', 'sub', 'os.md'), st0 = fs.statSync(bad);
+    fs.writeFileSync(bad, 'pr0cesses'); fs.utimesSync(bad, st0.atime, st0.mtime);                    // same size and time, different bytes: a damaged copy
+    v = await m2.verify({});
+    check('verify: a new file that is not in the backup is reported as missing (with its name)', v.missing === 1 && v.examples.missing.some(x => /brand-new.md$/.test(x)), v);
+    check('verify: a file edited since the backup is "changed" (the next run will update it), not damaged', v.changed === 1 && v.examples.changed.some(x => /dbms.md$/.test(x)), v);
+    check('verify: a backup copy whose bytes differ but size and time match is reported as DAMAGED', v.damaged === 1 && v.examples.damaged.some(x => /os.md$/.test(x)), v);
+    check('verify: the counts add up and nothing was changed (the damaged copy is still as it was)', v.ok + v.missing + v.changed + v.damaged === v.checked && read(bad) === 'pr0cesses');
+    check('verify: the result is remembered in the status', m2.status().lastVerify && m2.status().lastVerify.damaged === 1);
+    const slow = await m2.verify({ budgetMs: -1 });
+    check('verify: a check that runs out of time says it was partial', slow.partial === true);
+  }
   console.log(`mirror: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;
   process.exit(process.exitCode);

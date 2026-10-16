@@ -52,6 +52,15 @@ function fakeRun() {
   off.set(true);
   check('Windows listener', 'on Linux/macOS it does nothing (and says unsupported)', f.spawned.length === 1 && off.status().supported === false);
 }
+{ // a listener that keeps dying is retried for as long as the setting is on, with growing (capped) waits — it never gives up after 5
+  const f = fakeRun(), delays = [], realSet = global.setTimeout; global.setTimeout = (fn, ms) => { delays.push(ms); return { unref() {} }; };
+  const n = W.createNativeWake({ isWin: true, broadcast: () => {}, run: f.run });
+  n.set(true);
+  for (let i = 0; i < 14; i++) f.spawned[0].p.emit('exit', 1);        // the timers are faked, so the same process object "dies" again each time
+  global.setTimeout = realSet;
+  check('Windows listener', 'after the listener dies 14 times in a row JARVIS is still scheduling another try (it used to stop after 5)', delays.length === 14, delays);
+  check('Windows listener', 'the waits grow (2 s, 4 s … then 30 s steps) and never pass 5 minutes', delays[0] === 2000 && delays[1] === 4000 && delays[4] === 10000 && delays[5] === 30000 && delays[6] === 60000 && Math.max(...delays) <= 300000, delays);
+}
 { // mic sensitivity → how sure Windows must be that it heard "Jarvis"
   const f = fakeRun();
   const n = W.createNativeWake({ isWin: true, broadcast: () => {}, run: f.run });

@@ -69,6 +69,17 @@ const reset = () => { calls.length = 0; said.length = 0; undo.length = 0; replie
   check('timetable: after "yes" only the new ones are added, with a batch tag; the existing class is untouched; the subject uses the name you already track (DBMS)', classes.length === 4 && classes.find(c => c.id === 'old1') && !classes.find(c => c.id === 'old1').batch && classes.filter(c => c.batch).length === 3 && classes.filter(c => c.batch).every(c => c.id && c.name && c.day >= 0 && c.h >= 0) && classes.some(c => c.name === 'Maths' && c.day === 2 && c.h === 9) && classes.some(c => c.name === 'CN' && c.day === 2 && c.h === 14) && classes.find(c => c.name === 'Operating Systems').room === '204' && classes.find(c => c.name === 'Operating Systems').dur === 60, classes);
   check('timetable: saved, answered with how many were added, and ONE undo entry', global.saved >= 1 && /Added \*\*3 classes\*\*/.test(r.text) && /1 already there/.test(r.text) && undo.length === 1 && /timetable/.test(undo[0][0]));
   const msg = undo[0][1](); check('timetable: undo removes exactly the imported ones, and nothing else', classes.length === 1 && classes[0].id === 'old1' && /Removed the 3 classes/.test(msg), classes);
+  reset(); classes = [{ id: 'old1', name: 'DBMS', day: 1, h: 9, m: 0, dur: 60 }];
+  r = await S('import my timetable: Mon 9:30-10:30 Operating Systems; Tue 9-10 cn');
+  const clashCard = said.filter(x => x.confirmCard).pop();
+  check('timetable: a new class overlapping one you already have is flagged in the confirmation card (and still added if you say yes)', clashCard && /1 clash/.test(clashCard.text) && /Mon.*9:00 am DBMS overlaps 9:30 am Operating Systems/.test(clashCard.text) && classes.length === 3, clashCard && clashCard.text);
+  reset(); classes = [];
+  r = await S('import my timetable: Mon 9-10 DBMS; Mon 9:30-10:30 OS; Mon 11-12 CN');
+  const clashCard2 = said.filter(x => x.confirmCard).pop();
+  check('timetable: two overlapping classes inside the import itself are flagged too; a clean one is not mentioned', clashCard2 && /1 clash/.test(clashCard2.text) && !/CN overlaps|overlaps 11/.test(clashCard2.text), clashCard2 && clashCard2.text);
+  reset(); classes = [{ id: 'old1', name: 'DBMS', day: 1, h: 9, m: 0 }];
+  r = await S('import my timetable: Mon 10-11 OS');
+  check('timetable: no overlap → no clash warning', !/clash/.test(said.filter(x => x.confirmCard).pop().text));
   reset(); yes = false; r = await S('import my timetable: Mon 9-10 DBMS'); check('timetable: saying no changes nothing', classes.length === 0 && /did not change your timetable/.test(r.text) && undo.length === 0); yes = true;
   r = await S('import my timetable: hello there'); check('timetable: text with no classes in it is explained, with the format to use', /could not read any classes/.test(r.text) && /Mon 9:00-10:00 DBMS/.test(r.text) && classes.length === 0);
   reset(); classes = [{ id: 'a', name: 'DBMS', day: 1, h: 9, m: 0 }]; r = await S('import my timetable: Mon 9-10 dbms'); check('timetable: everything already there → nothing added, said so', /already in your timetable/.test(r.text) && classes.length === 1);
@@ -215,7 +226,7 @@ const reset = () => { calls.length = 0; said.length = 0; undo.length = 0; replie
 
   reset(); classes = [{ id: 'k1', name: 'DBMS', day: 5, h: 13, m: 30 }, { id: 'k2', name: 'OS', day: 5, h: 16, m: 0 }]; attendance = { DBMS: { held: 4, attended: 3, log: [] } }; store.d['jarvis.attAsked'] = undefined; delete store.d['jarvis.attAsked'];
   let q = Student.attendanceTick(NOWF);
-  check('prompt: a class that ended is asked about, with three answers and no speech', q && /DBMS/.test(q.text) && /Did you attend/.test(q.text) && q.actions.map(a => a.label).join() === 'I ATTENDED,I MISSED IT,SKIP' && q.noTTS === true && said.length === 1, q);
+  check('prompt: a class that ended is asked about, with four answers and no speech', q && /DBMS/.test(q.text) && /Did you attend/.test(q.text) && q.actions.map(a => a.label).join() === 'I ATTENDED,I MISSED IT,CLASS CANCELLED,SKIP' && q.noTTS === true && said.length === 1, q);
   check('prompt: a class still to come (OS at 16:00) is not asked', !said.some(x => /OS/.test(x.text)));
   check('prompt: asked once — a second tick says nothing, and the memory survives in the store', Student.attendanceTick(NOWF + 60000) === null && store.d['jarvis.attAsked'].length === 1);
   undo.length = 0; said.length = 0; q.actions[0].fn();
@@ -224,8 +235,14 @@ const reset = () => { calls.length = 0; said.length = 0; undo.length = 0; replie
   reset(); classes = [{ id: 'k1', name: 'dbms', day: 5, h: 13, m: 30 }]; attendance = { DBMS: { held: 4, attended: 3, log: [] } }; delete store.d['jarvis.attAsked'];
   q = Student.attendanceTick(NOWF); q.actions[1].fn();
   check('prompt: I MISSED IT marks absent on the existing DBMS key (case-insensitive)', attendance.DBMS.held === 5 && attendance.DBMS.attended === 3 && attendance.DBMS.log[0].s === 'a' && !attendance.dbms, attendance);
-  reset(); classes = [{ id: 'k1', name: 'DBMS', day: 5, h: 13, m: 30 }]; delete store.d['jarvis.attAsked']; q = Student.attendanceTick(NOWF); q.actions[2].fn();
+  reset(); classes = [{ id: 'k1', name: 'DBMS', day: 5, h: 13, m: 30 }]; delete store.d['jarvis.attAsked']; q = Student.attendanceTick(NOWF); q.actions[3].fn();
   check('prompt: SKIP marks nothing', !attendance.DBMS && /did not mark/.test(said[said.length - 1].text));
+  reset(); classes = [{ id: 'k1', name: 'DBMS', day: 5, h: 13, m: 30 }]; attendance = { DBMS: { held: 4, attended: 3, log: [] } }; delete store.d['jarvis.attAsked']; undo.length = 0;
+  q = Student.attendanceTick(NOWF); q.actions[2].fn();
+  check('prompt: CLASS CANCELLED counts for nobody — held and attended stay 4/3 — and is logged as handled', attendance.DBMS.held === 4 && attendance.DBMS.attended === 3 && attendance.DBMS.log.length === 1 && attendance.DBMS.log[0].s === 'c' && /cancelled/.test(said[said.length - 1].text) && /75%/.test(said[said.length - 1].text), attendance);
+  delete store.d['jarvis.attAsked']; check('prompt: …so the same class is not asked about again today', Student.attendanceTick(NOWF) === null);
+  undo[undo.length - 1][1](); check('prompt: undo removes the cancelled entry', attendance.DBMS.log.length === 0 && attendance.DBMS.held === 4);
+
   reset(); classes = [{ id: 'k1', name: 'DBMS', day: 5, h: 13, m: 30 }]; delete store.d['jarvis.attAsked']; settings.attendancePrompt = false;
   check('prompt: with the setting off nothing is asked', Student.attendanceTick(NOWF) === null && said.length === 0); settings.attendancePrompt = true;
   reset(); check('prompt: no timetable → nothing', Student.attendanceTick(NOWF) === null);
@@ -238,16 +255,34 @@ const reset = () => { calls.length = 0; said.length = 0; undo.length = 0; replie
   r = await S('fit my study plan to my timetable'); check('fit: no timetable → how to import it', /import my timetable/.test(r.text));
   classes = [{ id: 'm1', name: 'DBMS', day: 1, h: 9, m: 0 }, { id: 'm2', name: 'OS', day: 1, h: 10, m: 0 }];
   r = await S('fit my study plan to my timetable'); check('fit: a timetable but no plan → lists the free gaps and how to make a plan', /free gaps/.test(r.text) && /study plan/i.test(r.text), r.text);
-  const realNowF = Date.now; Date.now = () => NOWF; const RD = global.Date;
+  const realNowF = Date.now, RD = global.Date; Date.now = () => NOWF;
+  global.Date = class extends RD { constructor(...x) { if (x.length) super(...x); else super(NOWF); } static now() { return NOWF; } };      // the plan's days are fixed dates, so "today" must be fixed too
   studyPlans = [{ id: 'sp1', name: 'DBMS', examDate: '2026-10-20', days: [{ date: '2026-10-12', topic: 'Normalization', done: false }, { date: '2026-10-13', topic: 'SQL', done: false }, { date: '2026-10-05', topic: 'old', done: true }] }];
-  r = await S('fit my study plan to my timetable'); Date.now = realNowF;
+  r = await S('fit my study plan to my timetable');
   check('fit: the plan\'s open days are given a time in the longest gap, with an ADD REMINDERS button; nothing is set yet', /fitted to your timetable/.test(r.text) && /Normalization/.test(r.text) && /SQL/.test(r.text) && !/old/.test(r.text) && r.actions && /ADD \d+ REMINDERS/.test(r.actions[0].label) && reminders.length === 0 && /Nothing is set/.test(r.text), r.text);
   undo.length = 0; r.actions[0].fn();
   check('fit: pressing it adds one reminder per placed session, saved, with one undo', reminders.length === 2 && reminders.every(x => /Study:/.test(x.text) && x.fired === false) && undo.length === 1, reminders);
   undo[0][1](); check('fit: undo removes them', reminders.length === 0);
   r = await S('fit my os study plan to my timetable'); check('fit: an unknown plan name is told, with the real names', /no study plan called/.test(r.text) && /DBMS/.test(r.text));
+  global.Date = RD; Date.now = realNowF;
 
+  // date order
+  for (const x of ['my college writes dates month first', 'read dates day first', 'use dates as month first', 'dates are mm/dd', 'treat the dates as dd/mm format', 'set dates in month-first order']) check('wording: date order taken: "' + x + '"', k(x) === 'dateorder', k(x));
+  for (const x of ['what are the dates', 'add assignment due 10/11/2026', 'dates for exams', 'my college writes dates']) check('wording: not a date-order sentence: "' + x + '"', k(x) !== 'dateorder', k(x));
+  settings.dateOrder = undefined; undo.length = 0;
+  r = await S('my college writes dates month first'); check('dateorder: saved as month first, answered with an example, one undo', settings.dateOrder === 'mdy' && /11 October/.test(r.text) && undo.length === 1, [settings.dateOrder, r.text]);
+  undo[0][1](); check('dateorder: undo goes back to day first', settings.dateOrder === 'dmy');
+  r = await S('read dates day first'); check('dateorder: day first is saved too', settings.dateOrder === 'dmy' && /10 November/.test(r.text)); settings.dateOrder = undefined; undo.length = 0;
   // end-sem
+  settings.gradeCuts = null; undo.length = 0;
+  check('wording: a grade scale sentence is taken as one', k('my grade cutoffs are O 85, A+ 75, A 65, B+ 55, B 50, C 45, P 40') === 'gradecuts' && k('what do I need in the end sem to get an A, I got 32/40 in internals') === 'endsem');
+  r = await S('my grade cutoffs are O 85, A+ 75, A 65');
+  check('gradecuts: saved in settings (merged with the usual ones), answered with the whole scale, with one undo', settings.gradeCuts.A === 65 && settings.gradeCuts['A+'] === 75 && /\*\*O\*\* 85%/.test(r.text) && /\*\*B\*\* 55%/.test(r.text) && undo.length === 1, [settings.gradeCuts, r.text]);
+  r = await S('I got 32/40 in internals, what do I need in the end sem to get an A?');
+  check('gradecuts: "an A" now means 65% — 33 of 60 — not the usual 70%', /A/.test(r.text) && /65%/.test(r.text) && /33 out of 60/.test(r.text) && !/\(70%\) needs/.test(r.text.split('For comparison')[0]), r.text);
+  undo[0][1](); check('gradecuts: undo puts the old scale back', !settings.gradeCuts);
+  r = await S('I got 32/40 in internals, what do I need in the end sem to get an A?');
+  check('gradecuts: after undo, an A is the usual 70% again (38 of 60)', /70%/.test(r.text) && /38 out of 60/.test(r.text) && /Tell me yours once/.test(r.text), r.text);
   r = await S('I got 32/40 in internals, what do I need in the end sem to get 80%?');
   check('endsem: needs 48 of 60, shows the working and lower grades for comparison', /48 out of 60/.test(r.text) && /32\/40/.test(r.text) && /A \(70%\)/.test(r.text), r.text);
   r = await S('what do I need in the end sem to get 90%, I got 10/40 in internals, end sem is out of 60'); check('endsem: out of reach is said plainly with the best possible', /out of reach/.test(r.text) && /70%/.test(r.text), r.text);
@@ -308,6 +343,21 @@ const reset = () => { calls.length = 0; said.length = 0; undo.length = 0; replie
   // the setting is off → the browser recogniser even when installed
   reset(); recs.length = 0; settings.offlineStt = false; sttLog.started = 0; await S('start lecture mode for OS'); check('offline lecture: with the setting off the browser recogniser is used and the card offers offline speech', recs.length === 1 && sttLog.started === 0 && /is offline speech installed/.test(said.find(x => x.confirmCard).text)); await S('stop the lecture');
 
+  /* ---------- the attendance target (75% unless you change it) ---------- */
+  global.attMin = () => Math.min(95, Math.max(40, Math.round(+settings.attendanceMin) || 75));
+  for (const x of ['my college needs 80% attendance', 'my university requires 85 percent attendance', 'set my attendance target to 70%', 'change my attendance requirement to 80', 'attendance target is 65 percent', 'make my attendance limit 90%', 'minimum attendance should be 80%']) check('wording: attendance target: "' + x + '"', k(x) === 'atttarget', Student.match(x));
+  check('wording: the percentage is read', Student.match('my college needs 80% attendance').pct === 80 && Student.match('set my attendance target to 70%').pct === 70 && Student.match('attendance target is 65 percent').pct === 65);
+  for (const x of ['my attendance is 80%', 'set my target', 'mark dbms present', 'my college needs a laptop', 'what is my attendance', 'attendance report', 'my college needs 80%']) check('wording: not taken as a target: "' + x + '"', k(x) !== 'atttarget', Student.match(x));
+  reset(); settings.attendanceMin = 75; undo.length = 0;
+  r = await S('my college needs 80% attendance');
+  check('target: set to 80, saved, answered, with one undo', settings.attendanceMin === 80 && /80%/.test(r.text) && undo.length === 1, [settings.attendanceMin, r.text]);
+  classes = [{ id: 'c1', name: 'DBMS', day: new Date(Date.now() + 864e5).getDay(), h: 9, m: 0 }]; attendance = { DBMS: { held: 18, attended: 15, log: [] } };
+  r = await S('can I bunk tomorrow?'); check('bunk at 80%: 15/18 (83%) → missing a class gives 78.9%, below the 80% target, so it is a no', /Not all of them/.test(r.text) && /below 80%/.test(r.text) && !/75%/.test(r.text), r.text);
+  settings.attendanceMin = 75; r = await S('can I bunk tomorrow?'); check('bunk at 75%: the same 15/18 is fine (78.9% stays above 75%)', /Yes, you can skip/.test(r.text) && /75%/.test(r.text), r.text);
+  settings.attendanceMin = 80; undo[0][1](); check('undo puts the old target back', settings.attendanceMin === 75);
+  r = await S('set my attendance target to 20%'); check('target: out of range (under 40%) is refused and nothing changes', /between 40% and 95%/.test(r.text) && settings.attendanceMin === 75);
+  r = await S('set my attendance target to 99%'); check('target: out of range (over 95%) is refused', /between 40% and 95%/.test(r.text) && settings.attendanceMin === 75);
+  settings.attendanceMin = 'garbage'; check('target: a damaged setting falls back to 75', attMin() === 75); settings.attendanceMin = 75; classes = []; attendance = {};
   clearInterval(keep);
   console.log(`student-page: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;

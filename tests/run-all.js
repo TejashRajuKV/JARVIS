@@ -7,7 +7,7 @@ let failed = 0;
 const skipped = [];
 for (const f of files) {
   // The browser end-to-end suite drives every feature through the real page, so it gets longer.
-  const r = spawnSync(process.execPath, [path.join(__dirname, f)], { encoding: 'utf8', timeout: f === 'e2e.test.js' ? 600000 : 120000 });
+  const r = spawnSync(process.execPath, [path.join(__dirname, f)], { encoding: 'utf8', timeout: f === 'e2e.test.js' ? 600000 : f === 'api.test.js' ? 300000 : 120000 });   // the API suite starts a real server and takes ~1 min, longer on a busy computer
   const lines = String(r.stdout || '').split(/\r?\n/).filter(l => l.trim() && !/^\[/.test(l));
   const ok = r.status === 0;
   // A suite that exits cleanly because it could not run here ("e2e: skipped — no Edge or Chrome found") ran no

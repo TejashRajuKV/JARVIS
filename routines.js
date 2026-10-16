@@ -59,11 +59,14 @@ const Routines = (() => {
     bumpStat('routinesRun');
     return Object.assign(res, { speak: cap(r.name) + ' complete, ' + Persona.sir() + '.', intent: 'ROUTINE_RUN', tool: 'routine' });
   }
+  // Two routines due at the same moment (or one due while another is still running) used to lose the second. Now it waits in line, once per routine, and runs when the first is done.
+  const waitingIds = [];
   async function runById(id) {
     const r = list.find(x => x.id === id);
-    if (!r || busy) return;
+    if (!r) return;
+    if (busy) { if (!waitingIds.includes(id)) { waitingIds.push(id); try { log('info', 'routine "' + r.name + '" waits for the one that is running'); } catch (e) { /* log is optional */ } } return; }
     busy = true;
-    try { jarvisSay(await run(r)); } finally { busy = false; }
+    try { jarvisSay(await run(r)); } finally { busy = false; const nextId = waitingIds.shift(); if (nextId) setTimeout(() => runById(nextId), 0); }
   }
 
   function render() {
@@ -82,6 +85,6 @@ const Routines = (() => {
     }
   }
 
-  return { list: () => list, find, match, parseSteps, create, remove, run, runById, render };
+  return { list: () => list, find, match, parseSteps, create, remove, run, runById, render, get waiting() { return waitingIds.slice(); } };
 })();
 Routines.render();

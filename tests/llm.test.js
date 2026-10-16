@@ -27,6 +27,20 @@ const check = (name, ok, extra) => { total++; if (!ok) { fail++; console.log('FA
   check('picks a haiku for anthropic', /haiku/.test(L.pickDefaultModel('anthropic', ['claude-opus-x', 'claude-haiku-y'])));
   check('falls back to the first model', L.pickDefaultModel('groq', ['zzz']) === 'zzz');
 
+  /* ---------- the local model's memory is sized to the request ---------- */
+  {
+    const M = (n, c) => Array.from({ length: n }, () => ({ role: 'user', content: 'x'.repeat(c) }));
+    check('context: a short prompt with a long reply allowed (a web page: 7,000 tokens) gets 8,192, not the 12,288 the caller allowed as a maximum', L.fitNumCtx(12288, { system: 'y'.repeat(600), maxTokens: 7000 }, M(1, 300)) === 8192);
+    check('context: a tiny chat gets the floor of 4,096', L.fitNumCtx(8192, { system: 'hi', maxTokens: 300 }, M(1, 40)) === 4096);
+    check('context: a big prompt keeps the caller\'s ceiling (it is never raised above it)', L.fitNumCtx(8192, { system: 'y'.repeat(9000), maxTokens: 1400 }, M(3, 12000)) === 8192);
+    check('context: long code (60,000 characters) plus an 8,000-token reply needs 24,576 and gets it', L.fitNumCtx(24576, { system: 'y'.repeat(2000), maxTokens: 8000 }, M(1, 60000)) === 24576);
+    check('context: each picture adds room (1,500 tokens): the same request with two pictures gets a larger memory than without', L.fitNumCtx(16384, { maxTokens: 2000, images: ['a', 'b'] }, M(1, 100)) > L.fitNumCtx(16384, { maxTokens: 2000 }, M(1, 100)));
+    check('context: Telugu / Kannada text counts per character (about 1.3 tokens each), so a non-English prompt is not squeezed into an English-sized memory', L.fitNumCtx(16384, { maxTokens: 700 }, [{ role: 'user', content: 'తెలుగు'.repeat(1500) }]) > L.fitNumCtx(16384, { maxTokens: 700 }, [{ role: 'user', content: 'x'.repeat(9000) }]));
+    check('context: no ceiling given → left alone (Ollama\'s own default applies)', L.fitNumCtx(undefined, {}, M(1, 10)) === undefined && L.fitNumCtx(0, {}, M(1, 10)) === 0);
+    check('context: always a multiple of 2,048 and never below 4,096 or above the ceiling', [100, 3000, 9000, 20000, 50000].every(c => { const n = L.fitNumCtx(16384, { maxTokens: 900, system: 's'.repeat(c) }, M(1, c)); return n % 2048 === 0 && n >= 4096 && n <= 16384; }));
+    const req = L.buildRequest('ollama', { baseUrl: 'http://x' }, { model: 'm', system: 'be brief', messages: [{ role: 'user', content: 'hello' }], maxTokens: 500, numCtx: 16384 });
+    check('context: the Ollama request carries the sized value; with no numCtx there is none', req.body.options.num_ctx === 4096 && !('num_ctx' in L.buildRequest('ollama', { baseUrl: 'http://x' }, { model: 'm', messages: [{ role: 'user', content: 'hello' }] }).body.options), req.body.options);
+  }
   /* ---------- keys ---------- */
   check('mask shows only the ends', L.maskKey('sk-proj-abcdefghijklmnop1234') === 'sk-…1234');
   check('short key fully hidden', L.maskKey('abc123') === '••••');
@@ -67,7 +81,7 @@ const check = (name, ok, extra) => { total++; if (!ok) { fail++; console.log('FA
     const r = L.buildRequest('ollama', { baseUrl: 'http://127.0.0.1:11434' }, { ...o, numCtx: 8192 });
     check('ollama url + format json', r.url === 'http://127.0.0.1:11434/api/chat' && r.body.format === 'json');
     check('ollama images on last user msg', JSON.stringify(r.body.messages[r.body.messages.length - 1].images) === '["/9j/AAAA"]');
-    check('ollama options', r.body.options.num_predict === 50 && r.body.options.num_ctx === 8192 && r.body.think === false);
+    check('ollama options', r.body.options.num_predict === 50 && r.body.options.num_ctx === 4096 && r.body.think === false);
   }
   check('reasoning OpenAI models start adapted', L.initialAdapt('openai', 'gpt-5-mini').maxCompletion === true && !L.initialAdapt('groq', 'gpt-5').maxCompletion);
   check('adaptFor: temperature complaint', L.adaptFor('Unsupported value: temperature', {}, false).noTemperature === true);
@@ -89,13 +103,19 @@ const check = (name, ok, extra) => { total++; if (!ok) { fail++; console.log('FA
   check('filterModels drops embeddings/tts, strips models/', JSON.stringify(L.filterModels(['models/gemini-2.5-flash', 'text-embedding-3-small', 'tts-1', 'gpt-4o'])) === '["gemini-2.5-flash","gpt-4o"]');
 
   /* ---------- end-to-end against a fake OpenAI-compatible server ---------- */
-  const seen = [];
+  const seen = [], hits = {};
   const srv = http.createServer((req, res) => {
     let body = ''; req.on('data', c => { body += c; }); req.on('end', () => {
       seen.push({ url: req.url, auth: req.headers.authorization, body: body ? JSON.parse(body) : null });
       if (req.headers.authorization !== 'Bearer good-key-123456') { res.writeHead(401); return res.end('{"error":{"message":"bad key good? no"}}'); }
       if (req.url === '/v1/models') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end('{"data":[{"id":"fake-chat"},{"id":"fake-embed-embedding"}]}'); }
       const b = JSON.parse(body);
+      hits[b.model] = (hits[b.model] || 0) + 1;
+      if (b.model === 'flaky' && hits[b.model] <= 2) { res.writeHead(503); return res.end('{"error":{"message":"overloaded"}}'); }
+      if (b.model === 'down') { res.writeHead(502); return res.end('{"error":{"message":"bad gateway"}}'); }
+      if (b.model === 'drop' && hits[b.model] === 1) { return req.socket.destroy(); }
+      if (b.model === 'polite' && hits[b.model] === 1) { res.writeHead(429, { 'Retry-After': '1' }); return res.end('{"error":{"message":"slow down"}}'); }
+      if (b.model === 'badreq') { res.writeHead(400); return res.end('{"error":{"message":"messages must not be empty"}}'); }
       if (b.model === 'limited') { res.writeHead(429); return res.end('{"error":{"message":"quota"}}'); }
       if ('temperature' in b && b.model === 'no-temp') { res.writeHead(400); return res.end('{"error":{"message":"Unsupported parameter: temperature"}}'); }
       if (b.model === 'thinker' && b.stream) {
@@ -127,7 +147,19 @@ const check = (name, ok, extra) => { total++; if (!ok) { fail++; console.log('FA
   let thAcc = ''; for await (const d of th.deltas) thAcc += d;
   check('reasoning-only stream → explains the empty answer', /no answer/.test(thAcc), thAcc);
   check('400 naming a parameter → retried without it', await llm.complete({ model: 'custom::no-temp', temperature: 0.5, messages: [{ role: 'user', content: 'x' }] }) === 'pong');
-  let err = ''; try { await llm.complete({ model: 'custom::limited', messages: [{ role: 'user', content: 'x' }] }); } catch (e) { err = e.message; }
+  // a busy or hiccuping provider is asked again (at most twice); a refusal that will not change is not
+  const R = { retryMs: 5, messages: [{ role: 'user', content: 'x' }] };
+  check('retry: 503 twice then fine → the answer comes (3 requests)', await llm.complete({ model: 'custom::flaky', ...R }) === 'pong' && hits.flaky === 3, hits.flaky);
+  err = ''; try { await llm.complete({ model: 'custom::down', ...R }); } catch (e) { err = e.message; }
+  check('retry: a provider that stays down is tried 3 times in all, then the friendly error', hits.down === 3 && err.length > 5, [hits.down, err]);
+  check('retry: a dropped connection is retried once', await llm.complete({ model: 'custom::drop', ...R }) === 'pong' && hits.drop === 2, hits.drop);
+  const t0r = Date.now(); check('retry: "Retry-After: 1" is respected (about a second), then it works', await llm.complete({ model: 'custom::polite', ...R }) === 'pong' && hits.polite === 2 && Date.now() - t0r >= 900, [hits.polite, Date.now() - t0r]);
+  err = ''; try { await llm.complete({ model: 'custom::badreq', ...R }); } catch (e) { err = e.message; }
+  check('retry: a 400 (a request that will never work) is NOT retried', hits.badreq === 1 && /messages must not be empty|rejected|invalid/i.test(err), [hits.badreq, err]);
+  const k0 = seen.length; err = ''; try { await llm.complete({ model: 'custom-2::fake-chat', ...R }); } catch (e) { err = e.message; }
+  check('retry: a rejected key (401) is not retried — one request only', seen.length - k0 === 1 && /rejected the API key/.test(err), [seen.length - k0, err]);
+  { const ac = new AbortController(); const p = llm.complete({ model: 'custom::down', signal: ac.signal, retryMs: 400, messages: [{ role: 'user', content: 'x' }] }).catch(e => e); setTimeout(() => ac.abort(), 100); const before = hits.down; const e = await p; check('retry: cancelling (Stop) during the pause ends it at once, with no further request', hits.down - before <= 1 && e instanceof Error, [hits.down - before, String(e).slice(0, 60)]); }
+  err = ''; try { await llm.complete({ model: 'custom::limited', retryMs: 1, messages: [{ role: 'user', content: 'x' }] }); } catch (e) { err = e.message; }
   check('429 → friendly error', /rate-limiting|credit/.test(err), err);
   err = ''; try { await llm.complete({ model: 'custom-2::fake-chat', messages: [{ role: 'user', content: 'x' }] }); } catch (e) { err = e.message; }
   check('401 → key rejected, key not echoed', /rejected the API key/.test(err) && !err.includes('wrong-key-999999'), err);

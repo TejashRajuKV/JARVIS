@@ -54,6 +54,7 @@ window.FaceGreet = (function () {
     loading = new Promise((resolve, reject) => {
       const script = document.createElement('script');
       script.src = FACEAPI_URL;
+      if (typeof CdnPins !== 'undefined' && CdnPins[FACEAPI_URL]) { script.integrity = CdnPins[FACEAPI_URL]; script.crossOrigin = 'anonymous'; }
       script.onload = async () => {
         try {
           faceapi = window.faceapi;

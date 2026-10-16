@@ -34,6 +34,11 @@ const mk = (extra = {}) => createShotIndex({ SANDBOX: S, ocr, folders: () => [A]
   let s = I.search('wifi password');
   check('search: words find the right picture; wording is by words not exact text', s.results.length === 1 && s.results[0].path === p1 && /hunter42/.test(s.results[0].snippet), s);
   s = I.search('wi-fi password'); check('search: "wi-fi" matches the hyphenated text', s.results.length === 1 && s.results[0].path === p1, s);
+  s = I.search('flights confirmations'); check('search: a plural finds the plain word ("flights" → "Flight", "confirmations" → "confirmation")', s.results.length === 1 && s.results[0].path === p2 && s.results[0].hits === 2, s);
+  s = I.search('errors'); check('search: "errors" finds "Error:"', s.results.length >= 1 && s.results[0].path === p3, s.results);
+  s = I.search('passwords'); check('search: "passwords" finds "password" and the snippet is cut around it', s.results.length === 1 && s.results[0].path === p1 && /password/i.test(s.results[0].snippet), s);
+  s = I.search('booked'); check('search: "booked" finds "booking" through the plain form (book)', s.results.length === 1 && s.results[0].path === p2, s);
+  s = I.search('xyzzys'); check('search: a word that is nowhere still finds nothing', s.results.length === 0, s);
   s = I.search('flight pnr'); check('search: two words both present rank first', s.results[0].path === p2 && s.results[0].score >= 1, s.results);
   s = I.search('cannot find module'); check('search: a phrase in order scores higher than words apart; finds the nested one', s.results[0].path === p3 && s.results[0].score > 1, s.results);
   s = I.search('error'); check('search: a word in one picture only', s.results.length === 1 && s.results[0].path === p3);

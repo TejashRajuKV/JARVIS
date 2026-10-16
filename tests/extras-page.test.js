@@ -678,6 +678,17 @@ const ex = t => Extras.intercept(t);
   }
   check('camera wording does not disturb the watchdog or other tools', (await Extras.intercept('watch youtube')) === null && /AI health/.test((await Extras.intercept('check my ai')).text));
 
+  /* ---------- one module that throws must not take the turn down ---------- */
+  { const logs = []; global.log = (kind, msg) => logs.push([kind, msg]);
+    global.Student = { intercept: async () => { throw new Error('boom in student'); } };
+    global.Life = { intercept: async x => (x === 'only life answers this' ? { text: 'from life' } : null) };
+    let r, err = null; try { r = await ex('only life answers this'); } catch (e) { err = e; }
+    check('isolation: a module that throws does not stop the next module from answering', !err && r && r.text === 'from life', [err && err.message, r]);
+    check('isolation: the failure is logged as a warning with the module’s message', logs.some(l => l[0] === 'warn' && /boom in student/.test(l[1])), logs);
+    err = null; try { r = await ex('nobody answers this sentence at all'); } catch (e) { err = e; }
+    check('isolation: when nobody answers, the turn carries on to normal handling (null), no crash', !err && (r === null || r === undefined), [err && err.message, r]);
+    delete global.Student; delete global.Life; delete global.log; }
+
   console.log(`extras-page: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;
 })();

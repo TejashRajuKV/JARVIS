@@ -33,7 +33,7 @@ const tone = t => 0.4 * Math.sin(2 * Math.PI * 220 * t);
   check('the piece is cut before the end (inside the look-back window), the rest waits', secs1 > 1.8 && secs1 < 7, secs1);
   check('text that comes back is delivered', texts[0] === 'piece 1', texts);
   delay = 30; feed(ctx, 7, tone); feed(ctx, 7, tone);                                // two more pieces while the first reply is slow: they queue, in order
-  await new Promise(r => setTimeout(r, 200));
+  for (let k = 0; k < 100 && (texts.length < sent.length || sent.length < 3); k++) await new Promise(r => setTimeout(r, 50));       // wait until every piece has been answered (a busy computer is slower than 30 ms a piece)
   check('several pieces were sent, and they were answered in the order they were sent (one at a time)', sent.length >= 3 && texts.length === sent.length && texts.every((x, i) => x === 'piece ' + (i + 1)), [sent.length, texts]);
   const before = sent.length;
   feed(ctx, 2, tone);

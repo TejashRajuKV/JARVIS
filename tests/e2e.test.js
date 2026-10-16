@@ -86,7 +86,7 @@ async function cdp(wsUrl) {
     // Seed settings like a set-up install: no speech, no first-run wizard, Online tools off.
     await S.post('/api/state', { set: { 'jarvis.settings': { tts: false, sound: false, setupDone: true, online: false, wakeWord: 'jarvis' }, 'jarvis.migrated': true } });
     browser = spawn(exe, ['--headless=new', '--remote-debugging-port=0', '--user-data-dir=' + profile, '--no-first-run', '--no-default-browser-check',
-      '--disable-extensions', '--mute-audio', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', 'about:blank'], { stdio: 'ignore', windowsHide: true });
+      '--disable-extensions', '--mute-audio', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--disable-gpu', 'about:blank'], { stdio: 'ignore', windowsHide: true });
     let portFile = path.join(profile, 'DevToolsActivePort'), port = 0;
     for (let i = 0; i < 100 && !port; i++) { await sleep(100); try { port = +fs.readFileSync(portFile, 'utf8').split('\n')[0]; } catch {} }
     if (!port) throw new Error('the browser did not open a DevTools port');
@@ -114,6 +114,7 @@ async function cdp(wsUrl) {
       const out = await page.evaluate('JSON.stringify(window.__selftest)');
       const T = JSON.parse(out || '{"results":[]}');
       for (const x of T.results) check(x.feature, x.desc, x.ok, x.detail);
+      if (T.results.some(x => !x.ok)) console.log('server log (tail):\n' + String(S.log()).slice(-1500));      // what the server said while a check failed
       console.log('e2e: ' + T.calls.length + ' tool calls (' + T.calls.filter(c => c.faked).length + ' faked laptop actions) in ' + Math.round((Date.now() - t0) / 1000) + 's');
     }
   } catch (e) {

@@ -80,7 +80,7 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
   const S = await startServer({ env: { JARVIS_TEMP_DIR: diskTemp, GIT_AUTHOR_NAME: 'JARVIS test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'JARVIS test', GIT_COMMITTER_EMAIL: 'test@example.invalid',
     JARVIS_WTTR_URL: wttr.url, JARVIS_WHISPER_DIR: path.join(diskTemp, '..', 'no-whisper-here'),
     npm_config_update_notifier: 'false', npm_config_fund: 'false', npm_config_audit: 'false' } });   // a fresh profile would make npm check the network for updates, which can take longer than the 4 s the dev-server checks allow
-  const rec = (method, p) => { const r = routeOf(method, p); if (r) hit.add(r); };
+  let lastReq = ''; const rec = (method, p) => { lastReq = method + ' ' + p; const r = routeOf(method, p); if (r) hit.add(r); };
   const post = (p, b, x) => { rec('POST', p); return S.post(p, b, x); };
   const get = (p, x) => { rec('GET', p); return S.get(p, x); };
   const del = (p, b) => { rec('DELETE', p); return S.api('DELETE', p, b); };
@@ -91,6 +91,14 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     // fetch() won't let a caller set Host, so use a raw request — this is what a DNS-rebinding page would send.
     const hostStatus = await new Promise(res => require('http').get({ host: '127.0.0.1', port: S.port, path: '/api/health', headers: { Host: 'evil.example:' + S.port } }, r => { r.resume(); res(r.statusCode); }).on('error', () => res(0)));
     check('Security', 'a foreign Host header is refused (DNS rebinding)', hostStatus === 403, hostStatus);
+    {   // the Content-Security-Policy goes out with JARVIS's own pages only
+      const page = await fetch(S.base + '/', { headers: { Origin: S.base, 'Sec-Fetch-Site': 'same-origin' } }), lockpg = await fetch(S.base + '/lock.html'), api = await fetch(S.base + '/api/health', { headers: { Origin: S.base, 'Sec-Fetch-Site': 'same-origin' } }), js = await fetch(S.base + '/script.js');
+      const h = page.headers.get('content-security-policy') || '';
+      check('Security', 'the app page carries a Content-Security-Policy: own scripts only (no inline), connections back to this server, no frames', page.status === 200 && /script-src 'self' https:\/\/cdn\.jsdelivr\.net/.test(h) && !/script-src[^;]*'unsafe-inline'/.test(h) && /frame-ancestors 'none'/.test(h) && /object-src 'none'/.test(h), h);
+      check('Security', 'the lock page has it too', (lockpg.headers.get('content-security-policy') || '') === h && lockpg.status === 200);
+      check('Security', 'API answers and script files do not carry the page policy', !api.headers.get('content-security-policy') && !js.headers.get('content-security-policy'));
+      const lockjs = await fetch(S.base + '/lock-page.js'); check('Security', 'the lock page script is a separate file (no inline script), served', lockjs.status === 200 && /unlock/i.test(await lockjs.text()));
+    }
     check('Security', 'state.js needs same-origin (another site can’t <script> it)', (await get('/api/state.js', { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status === 403);
     check('Security', 'the sandbox is the isolated temp home, not your ~/jarvis', (await get('/api/tool/sandboxInfo')).json.root === SB);
     check('Files', 'the laptop file index stays off in tests', (await get('/api/fileIndex/status')).json.ready === false);
@@ -165,6 +173,8 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     const st = await get('/api/state.js');
     check('State', 'state comes back to the page (state.js)', /revise dbms/.test(st.text) && /window\.JARVIS_STATE/.test(st.text));
     check('State', 'keys outside jarvis.* are refused', (await post('/api/state', { set: { 'evil': 1 } })).status === 400);
+    r = await post('/api/claim', { key: 'api-test-alert', ttlSec: 30 }); const r2 = await post('/api/claim', { key: 'api-test-alert', ttlSec: 30 });
+    check('State', 'the first tab to claim an alert wins it and the second is told no (only one tab says it)', r.json.won === true && r2.json.won === false && (await post('/api/claim', {})).status === 400);
     check('State', 'a malformed body is refused', (await post('/api/state', { set: [1] })).status === 400);
 
     /* ---------- files ---------- */
@@ -184,6 +194,22 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     await post('/api/config', { action: 'add', path: path.join(S.home, 'jarvis') });  // no-op attempt; config file now exists
     check('Security', 'JARVIS’s own config file can’t be read through file tools', (await post('/api/tool/readFile', { name: '.config.json' })).status === 404);
     check('Security', 'the shared state file can’t be read through file tools', (await post('/api/tool/readFile', { name: '.jarvis-state.json' })).status === 404);
+    {   // every dot-file / dot-folder in ~/jarvis is JARVIS's own data (screenshot text, chat archive, AI log…), and loose credential files in the home folder are off-limits
+      fs.writeFileSync(path.join(SB, '.zz-secret.json'), '{"files":{"x":{"t":"password is hunter42"}}}'); fs.mkdirSync(path.join(SB, '.zz-archive'), { recursive: true }); fs.writeFileSync(path.join(SB, '.zz-archive', '2026-10.jsonl'), '{"u":"secret"}'); fs.writeFileSync(path.join(SB, 'Notes', 'visible.md'), 'hello');
+      const names = ['.zz-secret.json', '.zz-archive/2026-10.jsonl', '.zz-archive', '.zz-nothing-here.json', '.zz-secret.json::$DATA', '.zz-secret.json.', path.join(SB, '.zz-secret.json'), path.join(SB, '.zz-archive', '2026-10.jsonl')];
+      const codes = []; for (const n of names) codes.push((await post('/api/tool/readFile', { name: n })).status);
+      check('Security', 'dot-files and dot-folders in ~/jarvis can’t be read through file tools (any spelling)', codes.every(c => c === 404 || c === 403), codes);
+      const wr = await post('/api/tool/writeFile', { name: '.zz-secret.json', content: 'x', overwrite: true }); check('Security', '…nor overwritten (a bare name lands in Code/, the real file keeps its content)', fs.readFileSync(path.join(SB, '.zz-secret.json'), 'utf8').includes('hunter42'), [wr.status, wr.text.slice(0, 120)]);
+      const wn = await post('/api/tool/writeFile', { name: '.zz-new.json', content: 'x' }); const wd = await post('/api/tool/writeFile', { name: path.join(SB, '.zz-new.json'), content: 'x' }); check('Security', 'a dot-file can’t be created at the top of ~/jarvis by full path either', wd.status >= 400 && !fs.existsSync(path.join(SB, '.zz-new.json')), [wd.status, wd.text.slice(0, 120)]);
+      check('Security', 'ordinary notes still read fine', (await post('/api/tool/readFile', { name: 'Notes/visible.md' })).json.content === 'hello');
+      const home = S.home; for (const f of ['.git-credentials', '.npmrc', '.netrc']) fs.writeFileSync(path.join(home, f), 'token=abc');
+      const hc = []; for (const f of ['.git-credentials', '.npmrc', '.netrc']) hc.push((await post('/api/tool/readFile', { name: path.join(home, f) })).status);
+      check('Security', 'credential files in the home folder (.git-credentials, .npmrc, .netrc) can’t be read through file tools', hc.every(c => c === 404 || c === 403), hc);
+      fs.mkdirSync(path.join(home, '.claude'), { recursive: true }); fs.writeFileSync(path.join(home, '.claude', 'creds.json'), '{}');
+      check('Security', 'tool folders with logins (.claude) are off-limits too', [403, 404].includes((await post('/api/tool/readFile', { name: path.join(home, '.claude', 'creds.json') })).status));
+      fs.writeFileSync(path.join(home, 'notes-outside.txt'), 'plain'); check('Security', 'a normal file elsewhere in the home folder still reads', (await post('/api/tool/readFile', { name: path.join(home, 'notes-outside.txt') })).json.content === 'plain');
+      for (const f of ['.zz-secret.json', 'Code/.zz-secret.json', 'Code/.zz-new.json']) fs.rmSync(path.join(SB, f), { force: true }); fs.rmSync(path.join(SB, '.zz-archive'), { recursive: true, force: true }); for (const f of ['.git-credentials', '.npmrc', '.netrc']) fs.rmSync(path.join(home, f), { force: true });
+    }
     r = await post('/api/tool/createFolder', { name: 'DSA' });
     check('Files', 'create a folder', r.json.success && fs.statSync(path.join(SB, 'DSA')).isDirectory(), r.json);
     check('Files', 'creating it again says it existed', (await post('/api/tool/createFolder', { name: 'DSA' })).json.existed === true);
@@ -314,6 +340,22 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
       check('Git', 'git log shows it', /test commit/.test((await post('/api/tool/gitLog', { repo: 'gitdemo' })).json.output || ''));
       check('Git', 'git diff answers', (await post('/api/tool/gitDiff', { repo: 'gitdemo' })).status === 200);
       check('Git', 'commit needs a message', (await post('/api/tool/gitCommit', { repo: 'gitdemo', message: ' ' })).status === 400);
+      // committing never guesses: the project is named or the only one; the files are listed first; secrets stop it
+      fs.writeFileSync(path.join(repo, 'b.txt'), 'y');
+      let gp = await post('/api/tool/gitPending', {});
+      check('Git', 'with exactly one git project it is used without being named, and the pending files are listed (what git add -A would stage)', gp.json.success && gp.json.repo === 'gitdemo' && gp.json.count === 1 && gp.json.files[0].path === 'b.txt' && gp.json.secrets.length === 0, gp.text.slice(0, 200));
+      const repo2 = path.join(SB, 'gitdemo2'); fs.mkdirSync(repo2); execFileSync('git', ['init', '-q'], { cwd: repo2 });
+      gp = await post('/api/tool/gitCommit', { message: 'x' });
+      check('Git', 'with two git projects and none named, a commit is refused and the choices are given (it never guesses, never uses JARVIS’s own folder)', gp.status === 400 && /Which project/.test(gp.json.error) && gp.json.choices.includes('gitdemo') && gp.json.choices.includes('gitdemo2'), gp.text.slice(0, 200));
+      check('Git', 'an unknown project name is a 400 that lists the real ones', (await post('/api/tool/gitCommit', { repo: 'nope-zz', message: 'x' })).status === 400);
+      check('Git', 'nothing to commit is said plainly', (await post('/api/tool/gitCommit', { repo: 'gitdemo2', message: 'x' })).status === 400);
+      fs.writeFileSync(path.join(repo, '.env'), 'API_KEY=abc'); fs.writeFileSync(path.join(repo, 'config.js'), 'const password = "hunter2hunter2hunter2";');
+      gp = await post('/api/tool/gitCommit', { repo: 'gitdemo', message: 'oops' });
+      check('Git', 'secrets stop the commit (409): a .env file by name, a hard-coded password by content — nothing is staged', gp.status === 409 && gp.json.secrets.length === 2 && !/staged|Committed/.test(gp.text) && !/b.txt/.test(execFileSync('git', ['diff', '--cached', '--name-only'], { cwd: repo }).toString()), gp.text.slice(0, 260));
+      fs.rmSync(path.join(repo, '.env')); fs.rmSync(path.join(repo, 'config.js'));
+      gp = await post('/api/tool/gitCommit', { repo: 'gitdemo', message: 'second commit' });
+      check('Git', 'with the secrets gone the commit goes through and says how many files', gp.json.success && gp.json.repo === 'gitdemo' && gp.json.files === 1, gp.text.slice(0, 200));
+      fs.rmSync(repo2, { recursive: true, force: true });
     } else check('Git', 'git is installed (needed for the git commands)', false);
 
     /* ---------- agent ---------- */
@@ -446,13 +488,13 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
       check('Disk care', 'apply and undo are refused when they do not come from JARVIS on the laptop', (await post('/api/disk/apply', { planId: tidyId }, foreign)).status === 403 && (await post('/api/disk/undo', { runId: '20260101000000-abcdef' }, foreign)).status === 403 && (await post('/api/disk/applyPermanent', { planId: tidyId }, foreign)).status === 403);
       r = await post('/api/disk/apply', { planId: tidyId });
       check('Disk care', 'apply: Downloads is outside ~/jarvis, so the normal "needs your OK" answer (409) comes first and nothing moves', r.status === 409 && r.json.needsApproval === true && r.json.paths.includes(dl) && fs.existsSync(path.join(dl, 'api-report.pdf')), r.text.slice(0, 300));
-      r = await post('/api/disk/apply', { planId: tidyId, approved: true });
+      r = await post('/api/disk/apply', { planId: tidyId, approved: true, approvalToken: r.json.approvalToken });
       const tidyRun = r.json.runId;
       check('Disk care', 'apply with approval: files land in category folders and a run id is returned', r.json.success && r.json.moved === 3 && /^\d{14}-[a-f0-9]{6}$/.test(tidyRun) && fs.existsSync(path.join(dl, 'Documents', 'api-report.pdf')) && fs.existsSync(path.join(dl, 'Images', 'api-photo.jpg')) && fs.existsSync(path.join(dl, 'Installers', 'api-setup.exe')) && fs.existsSync(path.join(dl, 'api-half.crdownload')) && fs.existsSync(path.join(dl, 'api-fresh.txt')), r.text.slice(0, 300));
       check('Disk care', 'a plan can only be applied once, and a made-up plan id or a file list sent by the page does nothing', (await post('/api/disk/apply', { planId: tidyId, approved: true })).status === 410 && (await post('/api/disk/apply', { planId: 'feedfacefeedface', approved: true, items: [{ from: path.join(dl, 'api-fresh.txt') }] })).status === 410 && fs.existsSync(path.join(dl, 'api-fresh.txt')));
       r = await post('/api/disk/undo', { runId: tidyRun });
       check('Disk care', 'undo asks for approval too (it writes into Downloads) and moves nothing until it has it', r.status === 409 && !fs.existsSync(path.join(dl, 'api-report.pdf')));
-      r = await post('/api/disk/undo', { runId: tidyRun, approved: true });
+      r = await post('/api/disk/undo', { runId: tidyRun, approved: true, approvalToken: r.json.approvalToken });
       check('Disk care', 'undo: all three files are back, the empty category folders are gone, and asking again is refused', r.json.success && r.json.restored === 3 && fs.existsSync(path.join(dl, 'api-report.pdf')) && !fs.existsSync(path.join(dl, 'Documents')) && (await post('/api/disk/undo', { runId: tidyRun, approved: true })).status === 409);
       check('Disk care', 'plan errors are plain: unknown folder 404, a whole drive 400, a system folder refused, JARVIS trash 400, unknown kind 400', (await post('/api/disk/plan', { kind: 'tidy', folder: 'no-such-folder-xyz' })).status === 404 && (await post('/api/disk/plan', { kind: 'tidy', folder: path.parse(S.home).root })).status === 400 && [403, 404].includes((await post('/api/disk/plan', { kind: 'tidy', folder: 'C:\\Windows\\System32' })).status) && [400, 404].includes((await post('/api/disk/plan', { kind: 'tidy', folder: path.join(S.sandbox, '.trash') })).status) && (await post('/api/disk/plan', { kind: 'nope' })).status === 400);
       // large files → the JARVIS trash → undo; and duplicates
@@ -629,12 +671,13 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     {
       const X = { headers: { 'Sec-Fetch-Site': 'cross-site' } };
       r = await get('/api/keepalive/status');
-      check('Keep-alive', 'status answers (supported on Windows, off at first, the interval is 5 minutes)', r.status === 200 && r.json.success === true && (process.platform !== 'win32' || (r.json.supported === true && r.json.on === false && r.json.minutes === 5)), r.text.slice(0, 200));
+      check('Keep-alive', 'status answers (supported on Windows, off at first, the interval is 2 minutes)', r.status === 200 && r.json.success === true && (process.platform !== 'win32' || (r.json.supported === true && r.json.on === false && r.json.minutes === 2)), r.text.slice(0, 200));
       check('Keep-alive', 'switching it and acknowledging a restart are refused from another site', (await post('/api/keepalive/set', { on: true }, X)).status === 403 && (await post('/api/keepalive/ack', {}, X)).status === 403);
       r = await get('/api/mirror/status');
       check('Backup', 'status of a fresh install: no folder, not on, not running', r.status === 200 && r.json.dest === null && r.json.enabled === false && r.json.running === false, r.text.slice(0, 200));
       check('Backup', 'every route refuses another site', (await get('/api/mirror/status', X)).status === 403 && (await post('/api/mirror/setdest', { dest: 'D:\\JARVIS-Backup' }, X)).status === 403 && (await post('/api/mirror/run', {}, X)).status === 403 && (await post('/api/mirror/config', { enabled: true }, X)).status === 403);
       check('Backup', 'running with no folder set, a relative path, a whole drive, and turning weekly on with no folder are plain 400s', (await post('/api/mirror/run', {})).status === 400 && (await post('/api/mirror/setdest', { dest: 'backup' })).status === 400 && (await post('/api/mirror/setdest', { dest: 'C:\\' })).status === 400 && (await post('/api/mirror/config', { enabled: true })).status === 400);
+      { const v = await post('/api/mirror/verify', {}); check('Backup', 'verify with no backup folder set is a plain 400 saying how to set one, and another site is refused', v.status === 400 && /No backup folder/.test(v.json.error) && (await post('/api/mirror/verify', {}, X)).status === 403, v.json); }
       check('Backup', 'a folder inside ~/jarvis (the thing being backed up) is refused', (await post('/api/mirror/setdest', { dest: path.join(S.sandbox, 'Backups') })).status === 400);
       // screenshot search: the test home has no screenshots, so nothing is read
       r = await get('/api/shots/status');
@@ -710,31 +753,65 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
       // Changes outside ~/jarvis: 409 needsApproval, nothing changed; with approved:true it happens.
       z = await post('/api/tool/renameFile', { oldName: deskFile, newName: 'zone-renamed.txt' });
       check('Access', 'rename on the Desktop asks for permission first', z.status === 409 && z.json.needsApproval && fs.existsSync(deskFile), z.json);
-      z = await post('/api/tool/renameFile', { oldName: deskFile, newName: 'zone-renamed.txt', approved: true });
+      const forgedRename = await post('/api/tool/renameFile', { oldName: deskFile, newName: 'zone-renamed.txt', approved: true });
+      check('Access', 'a bare "approved: true" is not an approval — no token, nothing changes (409 with a fresh token)', forgedRename.status === 409 && !!forgedRename.json.approvalToken && forgedRename.json.approvalToken !== z.json.approvalToken && fs.existsSync(deskFile), forgedRename.json);
+      const otherTok = await post('/api/tool/deleteItem', { name: deskFile });
+      const wrongAction = await post('/api/tool/renameFile', { oldName: deskFile, newName: 'zone-renamed.txt', approved: true, approvalToken: otherTok.json.approvalToken });
+      check('Access', 'a token given for a different action (delete) cannot approve a rename, and a made-up token does nothing', wrongAction.status === 409 && fs.existsSync(deskFile) && (await post('/api/tool/renameFile', { oldName: deskFile, newName: 'zone-renamed.txt', approved: true, approvalToken: 'deadbeef' })).status === 409);
+      const okTok = await post('/api/tool/renameFile', { oldName: deskFile, newName: 'zone-renamed.txt' });
+      z = await post('/api/tool/renameFile', { oldName: deskFile, newName: 'zone-renamed.txt', approved: true, approvalToken: okTok.json.approvalToken });
+      const replay = await post('/api/tool/renameFile', { oldName: deskFile, newName: 'zone-renamed.txt', approved: true, approvalToken: okTok.json.approvalToken });
+      check('Access', 'a token works once: using it again asks again', replay.status === 409 || replay.status === 404 || replay.json.success !== true, replay.json);
       const renamed = path.join(desk, 'zone-renamed.txt');
       check('Access', 'approved rename happens, next to the original', z.json.success && fs.existsSync(renamed) && !fs.existsSync(deskFile), z.json);
       const newFile = path.join(desk, 'zone-new.md');
       z = await post('/api/tool/writeFile', { name: newFile, content: 'hi' });
       check('Access', 'writing a new Desktop file asks first', z.status === 409 && z.json.needsApproval && !fs.existsSync(newFile), z.json);
-      z = await post('/api/tool/writeFile', { name: newFile, content: 'hi', approved: true });
+      z = await post('/api/tool/writeFile', { name: newFile, content: 'hi', approved: true, approvalToken: z.json.approvalToken });
       check('Access', 'approved write happens', z.json.success && fs.readFileSync(newFile, 'utf8').includes('hi'), z.json);
       const newDir = path.join(desk, 'zone-dir');
       z = await post('/api/tool/createFolder', { name: newDir });
       check('Access', 'creating a Desktop folder asks first', z.status === 409 && !fs.existsSync(newDir), z.json);
-      z = await post('/api/tool/createFolder', { name: newDir, approved: true });
+      z = await post('/api/tool/createFolder', { name: newDir, approved: true, approvalToken: z.json.approvalToken });
       check('Access', 'approved Desktop folder creation happens', z.json.success && fs.existsSync(newDir), z.json);
       z = await post('/api/tool/createFolder', { name: newDir });
       check('Access', 're-creating an existing Desktop folder needs no approval', z.status === 200 && z.json.existed === true, z.json);
       z = await post('/api/tool/deleteItem', { name: renamed });
       check('Access', 'deleting on the Desktop asks first', z.status === 409 && z.json.needsApproval && fs.existsSync(renamed), z.json);
-      z = await post('/api/tool/deleteItem', { name: renamed, approved: true });
+      z = await post('/api/tool/deleteItem', { name: renamed, approved: true, approvalToken: z.json.approvalToken });
       check('Access', 'approved delete goes to JARVIS’s trash', z.json.success && z.json.trashName && !fs.existsSync(renamed), z.json);
       const t = z.json;
       z = await post('/api/tool/restoreItem', { trashName: t.trashName, original: t.original });
       check('Access', 'restoring to the Desktop asks first', z.status === 409 && !fs.existsSync(renamed), z.json);
-      z = await post('/api/tool/restoreItem', { trashName: t.trashName, original: t.original, approved: true });
+      z = await post('/api/tool/restoreItem', { trashName: t.trashName, original: t.original, approved: true, approvalToken: z.json.approvalToken });
       check('Access', 'approved restore brings the Desktop file back', z.json.success && fs.readFileSync(renamed, 'utf8') === 'desktop words', z.json);
 
+      {   // undo that survives a reload: the server remembers how to reverse each file action (undolog.js)
+        const XU = { headers: { 'Sec-Fetch-Site': 'cross-site' } };
+        await post('/api/tool/writeFile', { name: 'Notes/undo-probe.md', content: 'v1', overwrite: true });
+        let up = await get('/api/undo/pending');
+        check('Undo log', 'the laptop page can read the list; another site cannot', up.status === 200 && Array.isArray(up.json.items) && (await get('/api/undo/pending', XU)).status === 403);
+        const del = await post('/api/tool/deleteItem', { name: 'Notes/undo-probe.md' });
+        up = await get('/api/undo/pending');
+        const rec = up.json.items.find(i => i.endpoint === '/tool/restoreItem' && i.body.trashName === del.json.trashName);
+        check('Undo log', 'deleting a file records the call that brings it back (restoreItem with its trash name), with a label and a time', !!rec && /deleted undo-probe/.test(rec.label) && Date.now() - rec.t < 60000, up.text.slice(0, 300));
+        const back = await post('/api/tool/restoreItem', { trashName: rec.body.trashName, original: rec.body.original });
+        up = await get('/api/undo/pending');
+        check('Undo log', 'running the undo gives the file back and removes its record (so it is never offered twice)', back.json.success && !up.json.items.some(i => i.body.trashName === rec.body.trashName), back.json);
+        await post('/api/tool/renameFile', { oldName: 'Notes/undo-probe.md', newName: 'undo-probe-2.md' });
+        up = await get('/api/undo/pending');
+        const mv = up.json.items.find(i => i.endpoint === '/tool/undoMove' && /undo-probe-2/.test(i.body.to));
+        check('Undo log', 'a rename records undoMove with the full old and new paths', !!mv && /undo-probe\.md$/.test(mv.body.from) && path.isAbsolute(mv.body.to), mv);
+        const un = await post('/api/tool/undoMove', mv.body);
+        check('Undo log', 'undoMove puts it back and drops the record', un.json.success && !(await get('/api/undo/pending')).json.items.some(i => i.endpoint === '/tool/undoMove' && /undo-probe-2/.test(i.body.to)));
+        await post('/api/tool/writeFile', { name: 'Notes/undo-probe.md', content: 'v2', overwrite: true });
+        up = await get('/api/undo/pending'); const ow = up.json.items.find(i => i.endpoint === '/tool/restoreVersion' && /undo-probe/.test(i.body.name));
+        check('Undo log', 'overwriting a file records restoreVersion with the backup name', !!ow && /^\d+_undo-probe\.md$/.test(ow.body.backup), ow);
+        await post('/api/tool/writeFile', { name: 'Notes/undo-probe-new.md', content: 'x' }); up = await get('/api/undo/pending');
+        check('Undo log', 'creating a new file records undoCreate', up.json.items.some(i => i.endpoint === '/tool/undoCreate' && /undo-probe-new/.test(i.body.name)));
+        check('Undo log', 'the record file is a dot-file in ~/jarvis that the file tools cannot read', fs.existsSync(path.join(SB, '.undo-log.json')) && (await post('/api/tool/readFile', { name: '.undo-log.json' })).status >= 400);
+        await post('/api/tool/deleteItem', { name: 'Notes/undo-probe.md' }); await post('/api/tool/deleteItem', { name: 'Notes/undo-probe-new.md' });
+      }
       // ~/jarvis itself never asks.
       z = await post('/api/tool/writeFile', { name: 'Notes/zone-home.md', content: 'home' });
       check('Access', 'writing inside ~/jarvis needs no approval', z.json.success, z.json);
@@ -755,7 +832,7 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     check('Settings', 'erase all data clears state (after a safety snapshot)', r.json.success && !/revise dbms/.test((await S.get('/api/state.js')).text), r.json);
   } catch (e) {
     // If the server died, its own last words say why.
-    check('Harness', 'suite ran to the end', false, e.stack + '\n--- server log (last lines) ---\n' + S.log().split('\n').slice(-15).join('\n'));
+    check('Harness', 'suite ran to the end', false, 'last request: ' + lastReq + (e && e.cause ? ' (cause: ' + (e.cause.code || e.cause.message) + ')' : '') + '\n' + e.stack + '\n--- server log (last lines) ---\n' + S.log().split('\n').slice(-15).join('\n'));
   } finally {
     await S.stop();
     wttr.close();

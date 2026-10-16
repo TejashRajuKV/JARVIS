@@ -429,7 +429,7 @@ async function summarize(model, llm, modelId, onProgress) {
     let s = null;
     if (llm) {
       try {
-        const t = (await llm.complete({ model: modelId, system: SUMMARY_SYSTEM, messages: [{ role: 'user', content: moduleFacts(m) }], temperature: 0.2, maxTokens: 70, timeoutMs: 60000 })).trim().replace(/\s+/g, ' ');
+        const t = (await llm.complete({ priority: 2, model: modelId, system: SUMMARY_SYSTEM, messages: [{ role: 'user', content: moduleFacts(m) }], temperature: 0.2, maxTokens: 70, timeoutMs: 60000 })).trim().replace(/\s+/g, ' ');
         if (t && !/^UNKNOWN\.?$/i.test(t) && t.length <= 240) { s = { text: t.replace(/^["']|["']$/g, ''), ai: true }; ai++; }
       } catch {}
     }

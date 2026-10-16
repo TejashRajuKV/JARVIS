@@ -30,6 +30,11 @@ const CASES = [
   ['find the latest React documentation and explain how hooks work', 'WEB_AI'], ['find latest information about react', 'WEB_AI'],
   ['what is the latest python version', 'WEB_AI'], ['who won the last ipl', 'WEB_AI'], ['what does the internet say about bun vs node', 'WEB_AI'],
   ['upcoming release date of gta 6', 'WEB_AI'],
+  // concept questions that merely CONTAIN a word like driver / current / version / update stay with the local AI
+  ['how do device drivers work', 'LOCAL_AI'], ['explain current and voltage in simple words', 'LOCAL_AI'], ['why do software updates sometimes break things', 'LOCAL_AI'], ['how does version control work', 'LOCAL_AI'],
+  ['explain how a live migration of virtual machines works', 'LOCAL_AI'], ['why is the cost of recursion high', 'LOCAL_AI'], ['how does a release pipeline work', 'LOCAL_AI'], ['explain the difference between current and recent in english grammar', 'LOCAL_AI'],
+  // …but real freshness still goes to the web, even inside a how/why question
+  ['why did the latest nvidia driver break games', 'WEB_AI'], ['explain what happened in today\'s news', 'WEB_AI'], ['how much is the price of an rtx 3050 now', 'WEB_AI'], ['what is the current version of node', 'WEB_AI'], ['who is the current president of india', 'WEB_AI'],
   // places → Google Maps
   ['what are the nearest restaurants to bengaluru(kodigehalli)', 'MAPS'], ['hotels near me', 'MAPS'], ['best cafes in indiranagar', 'MAPS'],
   ['nearest hospital', 'MAPS'], ['where can i find an atm near kodigehalli', 'MAPS'], ['any good pg near kodigehalli', 'MAPS'], ['restaurants in my area', 'MAPS'],

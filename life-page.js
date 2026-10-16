@@ -35,11 +35,11 @@ const Life = (() => {
     if (source === 'phone') return say(PHONE_NO);
     if (op === 'on') {
       if (cur.on) return say('Keep-alive is already on.');
-      const go = await ask('Keep JARVIS running? I will add a Windows scheduled task named **JARVIS Keepalive** that runs every **5 minutes** and starts JARVIS again only if it is not running.\n\n- It never restarts JARVIS after **you** stopped it (Stop JARVIS, or “quit”).\n- It runs as you, hidden, with no extra permissions. **“Stop keeping JARVIS alive”** removes it.', 'YES, KEEP IT RUNNING');
+      const go = await ask('Keep JARVIS running? I will add a Windows scheduled task named **JARVIS Keepalive** that runs every **2 minutes** and starts JARVIS again only if it is not running.\n\n- It never restarts JARVIS after **you** stopped it (Stop JARVIS, or “quit”).\n- It runs as you, hidden, with no extra permissions. **“Stop keeping JARVIS alive”** removes it.', 'YES, KEEP IT RUNNING');
       if (!go) return say('Okay, I did not change anything.');
       const r = await callTool('/keepalive/set', { on: true });
       if (r.error) return say('I could not set that up: ' + r.error);
-      return say('✓ **Keep-alive is on.** Windows will start JARVIS again within 5 minutes if it stops by itself. Say **“stop keeping JARVIS alive”** to remove it.', { speak: 'Keep alive is on.' });
+      return say('✓ **Keep-alive is on.** Windows will start JARVIS again within 2 minutes if it stops by itself. Say **“stop keeping JARVIS alive”** to remove it.', { speak: 'Keep alive is on.' });
     }
     if (!cur.on && !cur.note) return say('Keep-alive is already off.');
     const r = await callTool('/keepalive/set', { on: false });
@@ -87,6 +87,23 @@ const Life = (() => {
     };
     setTimeout(tick, pollMs);
   }
+  // "verify my backup": compares the backup folder with the originals, changes nothing (mirror.js verify)
+  const BK_VERIFY = /^(?:please\s+)?(?:(?:verify|check|test|validate|audit)\s+(?:my\s+|the\s+)?(?:file\s+|drive\s+)?(?:backup|mirror)(?:\s+(?:copy|folder|files))?|is\s+my\s+(?:file\s+|drive\s+)?backup\s+(?:ok(?:ay)?|intact|complete|good|healthy|damaged|corrupt(?:ed)?))\s*[?.!]*$/i;
+  async function mirrorVerify(source) {
+    if (source === 'phone') return say(PHONE_NO);
+    const s = await getJSON('/mirror/status');
+    if (s.error) return say('I could not check: ' + s.error);
+    if (!s.dest) return say('No backup folder is set yet. Say **“back up my files to D:”** first.');
+    if (s.running) return say('A backup is running right now. Ask me again when it is done.');
+    const r = await callTool('/mirror/verify', {});
+    if (r.error) return say(r.error);
+    const ex = (k, label) => r.examples && r.examples[k] && r.examples[k].length ? '\n- ' + label + ': ' + r.examples[k].map(x => '`' + x + '`').join(', ') + (r[k] > r.examples[k].length ? ' …' : '') : '';
+    const head = r.damaged ? '⚠ **' + pl(r.damaged, 'backup copy is', 'backup copies are') + ' damaged**' : r.missing || r.changed ? '◐ **Your backup is behind**' : '✓ **Your backup matches your files**';
+    const lines = [head + ' — checked ' + pl(r.checked, 'file') + ' in `' + (r.dest || s.dest) + '`' + (r.partial ? ' (stopped early — too many files or it took too long)' : '') + '.',
+      '- ✓ ' + r.ok + ' identical', r.missing ? '- ' + r.missing + ' not in the backup yet (new since the last run)' : '', r.changed ? '- ' + r.changed + ' changed since the last run' : '', r.damaged ? '- ⚠ ' + r.damaged + ' damaged: same size and date as your file but different contents' : ''].filter(Boolean);
+    const advice = r.damaged ? '\n\nDelete the damaged copies from the backup folder and say **“back up my files”** — they are copied again. (Their older versions, if any, are in `_previous`.)' : r.missing || r.changed ? '\n\nSay **“back up my files”** to bring it up to date.' : '';
+    return say(lines.join('\n') + ex('damaged', 'Damaged') + ex('missing', 'Not backed up yet') + ex('changed', 'Changed') + advice, { speak: r.damaged ? 'Some backup copies are damaged.' : r.missing || r.changed ? 'Your backup is behind.' : 'Your backup matches your files.' });
+  }
   async function mirrorRun(source) {
     if (source === 'phone') return say(PHONE_NO);
     const s = await getJSON('/mirror/status');
@@ -123,6 +140,7 @@ const Life = (() => {
   async function backup(m, source) {
     switch (m.op) {
       case 'status': return mirrorStatus();
+      case 'verify': return mirrorVerify(source);
       case 'run': return mirrorRun(source);
       case 'set': return mirrorSet(m.dest, false, source);
       case 'to': return mirrorSet(m.dest, true, source);
@@ -133,6 +151,7 @@ const Life = (() => {
   }
   function matchBackup(t) {
     let m;
+    if (BK_VERIFY.test(t)) return { op: 'verify' };
     if (BK_STATUS.test(t)) return { op: 'status' };
     if ((m = t.match(BK_SET))) return { op: 'set', dest: m[1] };
     if ((m = t.match(BK_TO))) return { op: 'to', dest: m[1] };
@@ -164,7 +183,74 @@ const Life = (() => {
     list.push(item); saveExpenses(list);
     undo('logged an expense', () => { const cur = expenses(), n = cur.length; saveExpenses(cur.filter(x => x.id !== item.id)); return n === expenses().length ? 'That expense was already gone.' : 'Removed ' + J.money(item.amount) + (item.note ? ' for ' + item.note : '') + '.'; });
     const today = J.summarize(list, 'today'), month = J.summarize(list, 'this month');
-    return say('✓ Logged **' + J.money(e.amount) + '**' + (e.note ? ' for **' + e.note + '**' : '') + ' (' + e.cat + (Math.abs(e.t - Date.now()) > 6 * 36e5 ? ', ' + dateLabel(e.t) : '') + '). Today **' + J.money(today.total) + '**, this month **' + J.money(month.total) + '**. Say **“undo”** to take it back.', { speak: 'Logged ' + Math.round(e.amount) + ' rupees.', suggestions: ['How much did I spend this month?'] });
+    return say('✓ Logged **' + J.money(e.amount) + '**' + (e.note ? ' for **' + e.note + '**' : '') + ' (' + e.cat + (Math.abs(e.t - Date.now()) > 6 * 36e5 ? ', ' + dateLabel(e.t) : '') + '). Today **' + J.money(today.total) + '**, this month **' + J.money(month.total) + '**. Say **“undo”** to take it back.' + budgetLine(list, false), { speak: 'Logged ' + Math.round(e.amount) + ' rupees.', suggestions: ['How much did I spend this month?'] });
+  }
+  /* ---- recurring expenses: logged by themselves on their day each month (while JARVIS is open; one catch-up when it opens late) ---- */
+  const recurring = () => st('jarvis.recurring', []);
+  const saveRecurring = l => put('jarvis.recurring', l.slice(0, 40));
+  const ordinal = n => n + (n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th');
+  function recurringOp(r) {
+    const list = recurring();
+    if (r.op === 'list') {
+      if (!list.length) return say('You have no recurring expenses. Say **“I pay 199 for netflix every month”** (or **“pay 5000 for rent every month on the 1st”**) and I will log it for you each month.');
+      const total = list.reduce((a, x) => a + x.amount, 0);
+      return say('**Recurring expenses** (' + J.money(total) + ' a month)\n' + list.map(x => '- ' + J.money(x.amount) + ' **' + x.note + '** on the ' + ordinal(x.day) + ' *(' + x.cat + ')*').join('\n') + '\n\nSay **“stop recurring ' + list[0].note + '”** to remove one.');
+    }
+    if (r.op === 'remove') {
+      const hit = list.filter(x => x.note.toLowerCase().includes(r.name));
+      if (!hit.length) return say('I have no recurring expense called **' + r.name + '**. Say **“show my recurring expenses”** to see them.');
+      saveRecurring(list.filter(x => !hit.includes(x)));
+      undo('removed a recurring expense', () => { saveRecurring([...recurring(), ...hit]); return 'Brought back ' + hit.map(x => x.note).join(', ') + '.'; });
+      return say('✓ Stopped logging **' + hit.map(x => x.note).join(', ') + '** every month. Past entries stay. Say **“undo”** to bring it back.');
+    }
+    const dup = list.find(x => x.note.toLowerCase() === r.note.toLowerCase());
+    const rec = { id: rid(), amount: r.amount, note: r.note, cat: r.cat, day: r.day, last: '' };
+    const now = new Date(), todayKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    if (r.day < now.getDate()) rec.last = todayKey;                    // this month's day has already gone: the first entry is next month's, not a back-dated one
+    const next = dup ? list.map(x => (x === dup ? rec : x)) : [...list, rec];
+    saveRecurring(next);
+    undo('set up a recurring expense', () => { saveRecurring(list); return 'Removed the recurring ' + r.note + '.'; });
+    const firstNote = rec.last ? 'The first entry will be next month.' : r.day === now.getDate() ? 'I will log the first one right away.' : 'The first one is logged on the ' + ordinal(r.day) + '.';
+    return say('✓ **' + J.money(r.amount) + ' ' + r.note + '** will be logged every month on the ' + ordinal(r.day) + ' *(' + r.cat + ')*. ' + firstNote + (dup ? ' (It replaced the earlier ' + J.money(dup.amount) + ' one.)' : '') + ' JARVIS has to be open that day; if it was closed I log it when it opens. Say **“undo”** to remove it.');
+  }
+  // Called from the page's one-minute tick: logs what is due, once per month per item, with one line in the chat.
+  function recurTick(now) {
+    try {
+      const due = J.dueRecurring(recurring(), now || Date.now());
+      if (!due.length) return null;
+      const exp = expenses(), list = recurring();
+      for (const d of due) { exp.push({ id: rid(), t: d.t, amount: d.rec.amount, cat: d.rec.cat, note: d.rec.note + ' (monthly)' }); const r = list.find(x => x.id === d.rec.id); if (r) r.last = d.key; }
+      saveExpenses(exp); saveRecurring(list);
+      const reply = say('🔁 Logged your monthly ' + (due.length === 1 ? 'expense' : 'expenses') + ': ' + due.map(d => '**' + J.money(d.rec.amount) + ' ' + d.rec.note + '**').join(', ') + '.' + budgetLine(exp, false), { noTTS: true });
+      if (typeof jarvisSay === 'function') jarvisSay(reply);
+      return reply;
+    } catch (e) { return null; }
+  }
+  /* ---- monthly budget: one number; JARVIS warns from 80% and when it is passed ---- */
+  const budget = () => { const b = +st('jarvis.budget', 0); return b > 0 ? b : 0; };
+  const budgetLine = (list, sayFull) => {
+    const b = budget(); if (!b) return '';
+    const s = J.budgetStatus(list, b);
+    if (s.level === 'over') return '\n\n⚠ **Over your ' + J.money(b) + ' budget by ' + J.money(s.over) + '** (' + s.pct + '% used).';
+    if (s.level === 'warn') return '\n\n⚠ **' + s.pct + '% of your ' + J.money(b) + ' budget is used** — ' + J.money(s.left) + ' left for ' + pl(s.daysLeft, 'day') + ' (about ' + J.money(s.perDayLeft) + ' a day).';
+    return sayFull ? '\n\n' + s.pct + '% of your ' + J.money(b) + ' budget is used — ' + J.money(s.left) + ' left for ' + pl(s.daysLeft, 'day') + ' (about ' + J.money(s.perDayLeft) + ' a day).' : '';
+  };
+  function budgetOp(b) {
+    const before = budget();
+    if (b.op === 'set') {
+      put('jarvis.budget', b.amount);
+      undo('set the budget', () => { put('jarvis.budget', before); return before ? 'Your budget is back to ' + J.money(before) + '.' : 'Removed the budget again.'; });
+      return say('✓ Monthly budget set to **' + J.money(b.amount) + '**. I will warn you from 80% and when you pass it.' + budgetLine(expenses(), true) + '\n\nSay **“undo”** to go back.');
+    }
+    if (b.op === 'clear') {
+      if (!before) return say('You have no budget set. Say **“set my budget to 5000”**.');
+      put('jarvis.budget', 0);
+      undo('removed the budget', () => { put('jarvis.budget', before); return 'Your budget is back: ' + J.money(before) + '.'; });
+      return say('✓ Removed your ' + J.money(before) + ' budget. Say **“undo”** to bring it back.');
+    }
+    if (!before) return say('You have no monthly budget yet. Say **“set my budget to 5000”** and I will warn you as you get close.');
+    const s = J.budgetStatus(expenses(), before);
+    return say('**Budget this month:** spent ' + J.money(s.spent) + ' of ' + J.money(before) + ' (' + s.pct + '%).' + (s.level === 'over' ? ' **Over by ' + J.money(s.over) + '.**' : ' ' + J.money(s.left) + ' left for ' + pl(s.daysLeft, 'day') + ', about ' + J.money(s.perDayLeft) + ' a day.'));
   }
   function expenseSummary(q) {
     const list = expenses();
@@ -368,7 +454,7 @@ const Life = (() => {
 
   /* ================= help ================= */
   const HELP = /^(?:\/life|(?:life|everyday)\s+tools|(?:what\s+can\s+you\s+do\s+(?:with|for)\s+)?(?:my\s+)?(?:expenses|habits)\s+help)\s*$/i;
-  const help = () => say('**Everyday tools**\n- **Expenses:** “spent 120 on lunch”, “how much did I spend this month”, “export my expenses”\n- **Habits:** “track habit gym”, “I did gym”, “my gym streak”, “habits”\n- **Quick capture:** “jot down buy a charger”, “show my inbox”, or press **Ctrl+Shift+N**\n- **Keep JARVIS running:** “keep JARVIS running”, “stop keeping JARVIS alive”\n- **Backup to another drive:** “back up my files to D:”, “run a backup”, “backup status”, “turn on weekly backup”\n- **Screenshot search:** “find the screenshot with the wifi password”, “index my screenshots”');
+  const help = () => say('**Everyday tools**\n- **Expenses:** “spent 120 on lunch”, “how much did I spend this month”, “export my expenses”, “set my budget to 5000”\n- **Habits:** “track habit gym”, “I did gym”, “my gym streak”, “habits”\n- **Quick capture:** “jot down buy a charger”, “show my inbox”, or press **Ctrl+Shift+N**\n- **Keep JARVIS running:** “keep JARVIS running”, “stop keeping JARVIS alive”\n- **Backup to another drive:** “back up my files to D:”, “run a backup”, “backup status”, “turn on weekly backup”\n- **Screenshot search:** “find the screenshot with the wifi password”, “index my screenshots”');
 
   /* ================= router ================= */
   async function intercept(text, source) {
@@ -380,6 +466,8 @@ const Life = (() => {
     if (KA_OFF.test(t)) return keepalive('off', source);
     const bk = matchBackup(t); if (bk) return backup(bk, source);
     const sh = matchShot(t); if (sh) return shots(sh, source);
+    const rc = J.parseRecurring(t); if (rc) return recurringOp(rc);
+    const bg = J.parseBudget(t); if (bg) return budgetOp(bg);
     if (EXP_EXPORT.test(t)) return exportExpenses();
     if (EXP_FORGET.test(t)) return expensesForget();
     const eq = J.parseExpenseQuery(t); if (eq) return expenseSummary(eq);
@@ -400,6 +488,6 @@ const Life = (() => {
     const cp = J.parseCapture(t); if (cp) return capture(cp.text);
     return null;
   }
-  return { intercept, matchBackup, matchShot, normDest, openCapture, help, set pollMs(v) { pollMs = v; }, expenses, habits };
+  return { intercept, recurTick, matchBackup, matchShot, normDest, openCapture, help, set pollMs(v) { pollMs = v; }, expenses, habits };
 })();
 if (typeof module !== 'undefined') module.exports = Life;
