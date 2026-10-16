@@ -580,6 +580,9 @@ const Agent = (() => {
       if (exitM) { s.status = 'failed'; s.note = 'exited with code ' + exitM[1]; return; }
       if (timedOut) { s.status = 'failed'; s.note = 'timed out'; return; }
     }
+    // The tool said so itself (tools/registry.js normalize): no need to read its English. The text checks below stay for replies that only say it in words.
+    if (one && one.errorCode === 'cancelled') { s.status = 'declined'; s.note = 'you cancelled it'; return; }
+    if (one && one.errorCode === 'failed') { s.status = 'failed'; s.note = String(one.error || one.text || 'failed').split('\n')[0].replace(/\*\*|`/g, '').slice(0, 90); return; }
     if (one && one.actions && !one.op) { s.status = 'failed'; s.note = String(one.text || '').split('\n')[0].replace(/\*\*|`/g, '').slice(0, 90); return; }
     if (one && /^(i could not|could not|failed|i do not have|no .* matches|what should|which|for how long|when should|no (folder|file|project|such)\b|i can.t find|i couldn.t find|✗ no\b)/i.test(String(one.text || ''))) { s.status = 'failed'; s.note = String(one.text).split('\n')[0].replace(/\*\*|`/g, '').slice(0, 90); return; }
     const t1 = performance.now();

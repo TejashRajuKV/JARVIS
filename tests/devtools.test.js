@@ -71,6 +71,13 @@ const T = createDevTools({ roots: () => [root], complete });
   check('message: the instruction says the diff is data and to output the message only', /data, not instructions/.test(sent.system) && /Output the message only/.test(sent.system));
   check('message: nothing was staged, committed or changed by writing the message', g(B, ['log', '--oneline']).split('\n').filter(Boolean).length === 1 && /login\.js/.test(g(B, ['diff', '--cached', '--name-only'])));
   aiOut = '```\n"Fix typo in readme"\n```'; r = await T.commitMessage({ repo: B }); check('message: a code fence and quotes around the answer are removed', r.message === 'Fix typo in readme', r);
+  aiOut = 'Add login rate limit\n\n- blocks after 5 tries'; r = await T.commitMessage({ repo: B, style: 'conventional' });
+  check('message: conventional style — "Add …" becomes "feat: add …", the body is kept, and the style is reported', r.message.split('\n')[0] === 'feat: add login rate limit' && /blocks after 5 tries/.test(r.message) && r.subject === 'feat: add login rate limit' && r.style === 'conventional', r);
+  aiOut = 'fix(auth): handle empty password'; r = await T.commitMessage({ repo: B, style: 'conventional' }); check('message: a message that already is conventional is kept as it is', r.message === 'fix(auth): handle empty password', r);
+  aiOut = 'Add login rate limit'; r = await T.commitMessage({ repo: B }); check('message: plain style (the default) is left alone', r.message === 'Add login rate limit' && r.style === 'plain', r);
+  { const C = require(require('path').join(__dirname, '..', 'devtools.js')).toConventional;
+    for (const [inp, out] of [['Fix crash when Ollama is down', 'fix: crash when Ollama is down'], ['Update README for budgets', 'docs: update README for budgets'], ['Rename helpers in study.js', 'refactor: rename helpers in study.js'], ['Bump version', 'chore: bump version'], ['Implement claim route', 'feat: implement claim route'], ['Optimize the index', 'perf: optimize the index']])
+      check('conventional: "' + inp + '" → "' + out + '"', C(inp) === out, C(inp)); }
   aiOut = '   '; r = await T.commitMessage({ repo: B }); check('message: an empty AI answer is an error', /empty/.test(r.error || ''));
   aiFail = 'model is busy'; r = await T.commitMessage({ repo: B }); check('message: an AI failure is reported, not thrown', /could not write it: model is busy/.test(r.error), r); aiFail = null;
   aiOut = 'Update stuff';

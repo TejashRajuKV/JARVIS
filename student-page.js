@@ -260,13 +260,16 @@ const Student = (() => {
   }
 
   /* ================= study plan fitted to the timetable ================= */
+  // Your own reminders at a fixed time ("gym at 6pm", "call mom at 8") keep half an hour free, so a study session is not put on top of them.
+  // Timers, routines and study reminders this tool made itself do not count (re-fitting a plan must not avoid its own old sessions).
+  const busyReminders = () => (typeof reminders !== 'undefined' ? reminders : []).filter(r => r && !r.fired && !r.timerId && !r.routineId && !/^Study:/.test(r.text || '') && r.at > Date.now()).map(r => ({ at: r.at, min: 30 }));
   function fitStudy(m) {
     const today = Study.ymd(new Date());
     const plans = (typeof studyPlans !== 'undefined' ? studyPlans : []).filter(p => p.examDate >= today && p.days.some(d => !d.done && d.date >= today));
     const freeOnly = !plans.length || /free/.test(m.raw || '');
     if (!classes.length) return say('I need your timetable to find the gaps. Say **“import my timetable”** (from a photo, a calendar file or pasted lines) first.');
     if (!plans.length) {
-      const slots = Study.freeSlots({ classes, from: Date.now(), days: 7, minMin: 45 });
+      const slots = Study.freeSlots({ classes, busy: busyReminders(), from: Date.now(), days: 7, minMin: 45 });
       if (!slots.length) return say('Your next 7 days have no gap of 45 minutes or more between 8 am and 9 pm.');
       const byDay = new Map(); for (const s of slots) { if (!byDay.has(s.date)) byDay.set(s.date, []); byDay.get(s.date).push(s); }
       const f = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -277,7 +280,7 @@ const Student = (() => {
     if (m.name && !named) return say('I have no study plan called “' + m.name + '”. Your plans: ' + plans.map(p => '**' + p.name + '**').join(', ') + '.');
     const plan = named || plans.slice().sort((a, b) => (a.examDate < b.examDate ? -1 : 1))[0];
     const studyMin = Math.max(30, Math.min(180, m.min || 60));
-    const fit = Study.fitPlan({ plan, classes, now: Date.now(), studyMin });
+    const fit = Study.fitPlan({ plan, classes, busy: busyReminders(), now: Date.now(), studyMin });
     if (!fit.length) return say('Nothing is left to schedule in **' + plan.name + '**.');
     const f = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const dl = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });

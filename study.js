@@ -198,13 +198,15 @@ const Study = (() => {
   /* ---- gaps in the day's timetable ---- */
   // → [{ date:'YYYY-MM-DD', start, end, min }] — for `days` days from `from`: the stretches between classes (and before the first / after the last) inside
   //   [dayStart, dayEnd] hours that are at least minMin long.
-  function freeSlots({ classes = [], from = Date.now(), days = 14, dayStart = 8, dayEnd = 21, minMin = 45, defaultDur = 60 } = {}) {
+  // \`busy\`: other things already at a fixed time — [{ at, min }] (e.g. your reminders: "gym at 6pm" keeps 6:00–6:30 free of study).
+  function freeSlots({ classes = [], busy: extra = [], from = Date.now(), days = 14, dayStart = 8, dayEnd = 21, minMin = 45, defaultDur = 60 } = {}) {
     const out = [], base = new Date(from);
     for (let i = 0; i < days; i++) {
       const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
       const lo = new Date(d.getFullYear(), d.getMonth(), d.getDate(), dayStart).getTime(), hi = new Date(d.getFullYear(), d.getMonth(), d.getDate(), dayEnd).getTime();
       let cursor = Math.max(lo, i === 0 ? Math.ceil(from / 300000) * 300000 : lo);
-      const busy = classes.filter(c => c && c.day === d.getDay()).map(c => { const s = new Date(d.getFullYear(), d.getMonth(), d.getDate(), c.h, c.m || 0).getTime(); return [s, s + (c.dur || defaultDur) * 60000]; }).sort((a, b) => a[0] - b[0]);
+      const dayExtra = (extra || []).filter(x => x && x.at >= lo - 6 * 3600e3 && x.at < hi).map(x => [x.at, x.at + (x.min || 30) * 60000]);
+      const busy = classes.filter(c => c && c.day === d.getDay()).map(c => { const s = new Date(d.getFullYear(), d.getMonth(), d.getDate(), c.h, c.m || 0).getTime(); return [s, s + (c.dur || defaultDur) * 60000]; }).concat(dayExtra).sort((a, b) => a[0] - b[0]);
       const push = (s, e) => { if (e - s >= minMin * 60000) out.push({ date: ymd(d), start: s, end: e, min: Math.round((e - s) / 60000) }); };
       for (const [s, e] of busy) { if (s > cursor) push(cursor, Math.min(s, hi)); cursor = Math.max(cursor, e); if (cursor >= hi) break; }
       if (cursor < hi) push(cursor, hi);
@@ -213,9 +215,9 @@ const Study = (() => {
   }
   // The plan's days that are still to do, each put into the longest free stretch of ITS day (earliest on a tie); a day with no stretch is returned with
   // `none: true`. → [{ date, topic, start, end, min }]
-  function fitPlan({ plan, classes = [], now = Date.now(), studyMin = 60, dayStart = 8, dayEnd = 21 } = {}) {
+  function fitPlan({ plan, classes = [], busy = [], now = Date.now(), studyMin = 60, dayStart = 8, dayEnd = 21 } = {}) {
     if (!plan || !Array.isArray(plan.days)) return [];
-    const slots = freeSlots({ classes, from: now, days: 60, dayStart, dayEnd, minMin: Math.min(studyMin, 45) });
+    const slots = freeSlots({ classes, busy, from: now, days: 60, dayStart, dayEnd, minMin: Math.min(studyMin, 45) });
     const today = ymd(now);
     return plan.days.filter(d => !d.done && d.date >= today && d.date <= plan.examDate).map(d => {
       const best = slots.filter(s => s.date === d.date).sort((a, b) => b.min - a.min || a.start - b.start)[0];

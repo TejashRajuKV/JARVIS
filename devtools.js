@@ -73,8 +73,8 @@ function createDevTools({ git = realGit, roots = () => [], complete, now = Date.
     return { label: w.label, since: w.since, repos: out, total: out.reduce((n, x) => n + x.commits.length, 0), searched: repos.length };
   }
 
-  // The uncommitted changes of ONE repository → a commit message. `choices` when several repositories have changes and none was named.
-  async function commitMessage({ repo, model } = {}) {
+  // The uncommitted changes of ONE repository → a commit message (style 'conventional' → "feat: …", "fix(api): …"). `choices` when several repositories have changes and none was named.
+  async function commitMessage({ repo, model, style } = {}) {
     let target = repo ? path.resolve(repo) : null;
     if (target && !within(target, roots())) return { error: 'That folder is not one of your project folders.' };
     if (!target) {
@@ -100,8 +100,9 @@ function createDevTools({ git = realGit, roots = () => [], complete, now = Date.
     try { text = await complete({ model, system, user: body, maxTokens: 300 }); } catch (e) { return { error: 'The AI could not write it: ' + String((e && e.message) || e).slice(0, 120) }; }
     const msg = String(text || '').replace(/^```\w*\n?|\n?```$/g, '').replace(/^["']|["']$/g, '').trim();
     if (!msg) return { error: 'The AI gave an empty answer.' };
-    const subject = msg.split('\n')[0].slice(0, 100);
-    return { message: msg, subject, repo: target, name: path.basename(target), files: names.length + untracked.length, staged, truncated };
+    const fixed = style === 'conventional' ? toConventional(msg) : msg;
+    const subject = fixed.split('\n')[0].slice(0, 100);
+    return { message: fixed, subject, style: style === 'conventional' ? 'conventional' : 'plain', repo: target, name: path.basename(target), files: names.length + untracked.length, staged, truncated };
   }
 
   // Frames of an error text that are inside the allowed folders → the lines around each (never outside them).
@@ -136,6 +137,22 @@ function createDevTools({ git = realGit, roots = () => [], complete, now = Date.
 }
 
 /* ---------- routes (laptop page only) ---------- */
+// "Conventional Commits" style (type: subject): kept if the AI already wrote it that way, otherwise the type is read from the first verb
+// (Add/Implement → feat, Fix/Correct → fix, docs/README → docs, Refactor/Rename/Move/Split → refactor, Test → test, anything else → chore).
+const CONV_TYPES = /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]{1,30}\))?!?: \S/;
+function toConventional(msg) {
+  const lines = String(msg || '').split('\n'), first = (lines[0] || '').trim();
+  if (CONV_TYPES.test(first)) return lines.join('\n');
+  const verb = (first.match(/^[A-Za-z]+/) || [''])[0].toLowerCase();
+  const type = /^(add|adds|added|implement|introduce|create|support|allow|enable|new)$/.test(verb) ? 'feat' : /^(fix|fixes|fixed|correct|resolve|repair|handle|prevent|stop)$/.test(verb) ? 'fix'
+    : /^(doc|docs|document|readme)$/.test(verb) || /\breadme\b|\bdocs?\b/i.test(first) && !/^(add|fix)/i.test(verb) ? 'docs' : /^(refactor|rename|move|split|extract|clean|tidy|simplify|reorganize|reorganise)$/.test(verb) ? 'refactor'
+    : /^(test|tests)$/.test(verb) ? 'test' : /^(speed|optimi[sz]e|cache)$/.test(verb) ? 'perf' : 'chore';
+  // "Fix crash…" → "fix: crash…" (the verb that IS the type is not said twice)
+  const body = type === 'fix' && /^fix/.test(verb) ? first.replace(/^[A-Za-z]+\s*/, '') || first : first;
+  const rest = body ? body.charAt(0).toLowerCase() + body.slice(1) : 'update';
+  lines[0] = (type + ': ' + rest).slice(0, 100);
+  return lines.join('\n');
+}
 module.exports = function setupDevTools(app, { llm, DEFAULT_MODEL, roots, blockedPath, SANDBOX }) {
   const dev = createDevTools({
     roots: () => roots(),
@@ -157,7 +174,7 @@ module.exports = function setupDevTools(app, { llm, DEFAULT_MODEL, roots, blocke
   app.post('/api/dev/git/message', wrap(async (req, res) => {
     const b = req.body || {}; const repo = b.repo ? await named(b.repo) : null;
     if (b.repo && !repo) return res.status(404).json({ error: 'I found no project called “' + String(b.repo).slice(0, 40) + '”.' });
-    const r = await dev.commitMessage({ repo, model: b.model });
+    const r = await dev.commitMessage({ repo, model: b.model, style: b.style === 'conventional' ? 'conventional' : 'plain' });
     if (r.error) return res.status(r.gitMissing ? 501 : /AI/.test(r.error) ? 502 : 400).json({ error: r.error });
     res.json({ success: true, ...r });
   }));
@@ -171,4 +188,4 @@ module.exports = function setupDevTools(app, { llm, DEFAULT_MODEL, roots, blocke
   }));
   return dev;
 };
-Object.assign(module.exports, { createDevTools, windowOf, SECRET_FILES });
+Object.assign(module.exports, { createDevTools, windowOf, SECRET_FILES, toConventional });

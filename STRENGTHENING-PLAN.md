@@ -50,7 +50,7 @@ Each item says *what is weak now → what to do → how we prove it* (every chan
 
 | # | Weak now | Do | Proof | Effort |
 |---|---|---|---|---|
-| 1.1 | Synchronous scans block the server (file index, `laptopSearch`, `findAllowed`, `similarNames` over up to 1.5M paths, RAG scan, diskcare, CSV). Reminders and SSE stall. | Move indexing and name search to a `worker_threads` worker; persist the index and update incrementally. Trigram prefilter before Jaro-Winkler. | test: server answers `/api/health` within 200 ms while a big scan runs | L |
+| 1.1 ◐ (measured: with the real index the heaviest searches block ≤0.1 s, so a worker was not worth it; the RAG index is now persisted and slow requests/lag are logged) | Synchronous scans block the server (file index, `laptopSearch`, `findAllowed`, `similarNames` over up to 1.5M paths, RAG scan, diskcare, CSV). Reminders and SSE stall. | Move indexing and name search to a `worker_threads` worker; persist the index and update incrementally. Trigram prefilter before Jaro-Winkler. | test: server answers `/api/health` within 200 ms while a big scan runs | L |
 | 1.2 ✅ | (done: the server pushes every changed shared list to the other tabs, which adopt it; a stale tab's whole-list save is three-way merged by id on the server (statemerge.js); import/restore reloads every tab) Last-writer-wins state: two tabs (or the phone page) overwrite each other's todos; import/restore doesn't reach open tabs. | Patch operations with version counters per key; a server "state epoch" pushed over SSE so all tabs reload after restore. | instance test with two clients | L |
 | 1.3 ✅ | ✔ `callToolRaw` has no timeout; `busy` is released while a plan or approval is pending, so a second command can interleave. | Timeouts per call class; an explicit "awaiting approval" state that queues other input. | page test | M |
 | 1.4 ✅ | Timers and focus sessions live in page memory — a reload loses them; routines are dropped if the page is busy; alert de-dup is per tab. | Store timers/focus as server reminders; queue routines while busy; keep alert keys in shared state. | scheduler + page tests | M |
@@ -81,7 +81,7 @@ Each item says *what is weak now → what to do → how we prove it* (every chan
 **Chat and understanding**
 - *Chat/AI brain:* token counting and per-model history caps; the queue from 1.6.
 - *Rule engine:* ✅ negations ("don't lock the screen", "never open chrome") now do nothing and say so (NEGATED intent; before, "don't open" closed the app and "don't lock" locked the screen). Add a lint test that flags rules shadowed by earlier ones.
-- *Context ("there", "it", "the second one"):* persist focus across reload; show what "it" refers to.
+- *Context ("there", "it", "the second one"):* ✅ focus persists across a reload; show what "it" refers to.
 - *Did-you-mean:* faster ranking with a trigram prefilter (see 1.1).
 
 **Voice**
@@ -93,7 +93,7 @@ Each item says *what is weak now → what to do → how we prove it* (every chan
 - *Apps/system:* graceful close (0.1); a long-lived PowerShell helper so each action isn't a fresh 0.3–1 s spawn; real volume level instead of key presses.
 - *Screen/vision/clipboard:* consent gate (0.7); OCR language packs beyond English.
 - *Files:* 0.3, 1.9; sign approvals (0.2).
-- *Disk and photo care:* async walker; persist plans across restart; remind that trash frees no space until emptied.
+- *Disk and photo care:* async walker; persist plans across restart; ✅ every move to the trash already says “empty my JARVIS trash” frees the space.
 - *Keep-alive:* ✅ now checks every 2 minutes (was 5; turn it off and on again to update an existing task).
 - *Backup/mirror:* (incremental runs already resume and keep 30 days of old versions) ✅ a "verify backup" command; state-epoch reload (1.2).
 - *Screenshot search:* encrypt the index at rest (Windows DPAPI); incremental status counter; ✅ word-stem search.
@@ -103,7 +103,7 @@ Each item says *what is weak now → what to do → how we prove it* (every chan
 - *Attendance:* ✅ per-college threshold setting; ✅ subject aliases ("DBMS" = "Database Management Systems", ~25 common subjects); ✅ a CANCELLED button; server-queued prompts for missed classes.
 - *Timetable import:* ✅ clash detection (overlaps flagged before you confirm); room/batch filter.
 - *Assignments:* ✅ month-first dates option; recurring/weekly assignments; link the to-dos to the deadline.
-- *Study plan fitting:* choose morning/evening preference; avoid clashing with existing reminders; re-fit when a class is added.
+- *Study plan fitting:* choose morning/evening preference; ✅ avoid clashing with existing reminders; re-fit when a class is added.
 - *End-sem calculator:* ✅ the college's grade scale is stored once ("my grade cutoffs are O 85, A+ 75 …").
 - *Exam/viva/flashcards:* 2.3, 2.5; spaced-repetition stats; export to Anki.
 - *Notes/RAG:* ✅ the index is persisted (JSON cache keyed by size+mtime); ✅ per-root quotas so notes beat project folders; ✅ Unicode tokenizer for Telugu/Kannada; ✅ asking before sending excerpts to a cloud model was already done (confirmCloud 'files').
@@ -114,13 +114,13 @@ Each item says *what is weak now → what to do → how we prove it* (every chan
 - *Website generator:* version history (not just one previous file); multi-file output; CSP (0.8).
 - *Coding-AI hand-off:* ✔ author-specific `D:\Trae`, `D:\Windsurf`… paths → take install paths from settings; re-detect on demand.
 - *Dev projects/git:* persist dev-server PIDs and adopt them after restart; read the port from the process, not stdout regex; 0.4.
-- *Developer helpers (new):* standup options (week view, other author); commit message styles (conventional/plain); explain-error "apply the fix" as a preview.
+- *Developer helpers (new):* standup options (week view, other author); ✅ commit message styles (conventional/plain); explain-error "apply the fix" as a preview.
 
 **Automation**
-- *Multi-step agent:* structured `{status}` results instead of grepping English reply text; server-issued run token for guarded routes; parallel planner calls.
+- *Multi-step agent:* ◐ structured results: every tool result now carries ok/errorCode and the agent uses them first (the English checks remain as a fallback for replies that only say it in words); server-issued run token for guarded routes; parallel planner calls.
 - *Routines/triggers/scheduler:* ✅ a routine builder panel (NEW / EDIT, steps checked as you type, optional schedule); run safe-tier routines on the server so no tab is needed; replace the 20-second PowerShell battery poll with a cheaper source.
 - *Qwen NLU assist:* ✅ done — now 26 intents, all with a real handler (risky ones removed; tests/nluq.test.js). Was: about 24 of its 38 intents have no handler — map them to real intents and test, or remove the feature.
-- *Pattern learning:* "YES, make it a routine" should actually create the routine.
+- *Pattern learning:* ✅ "YES, make it a routine" now creates and schedules the routine.
 
 **Everyday**
 - *Web/research/maps:* read the Online switch server-side; ✅ `redirect:'manual'` with re-validation per hop and DNS-resolved address checks (netsafe.js); optional SearXNG/Brave API instead of HTML scraping.
@@ -136,7 +136,7 @@ Each item says *what is weak now → what to do → how we prove it* (every chan
 
 1. ✅ (executeTool's tools now live in tools/<area>.js behind tools/registry.js, with a uniform ok/errorCode) **Split `script.js`** (6,184 lines; `executeTool` is one ~1,900-line switch with 188 cases) into modules per area, behind a registry; make `Extras.intercept` isolate each module in try/catch (✅ done) so one throwing module can't kill the turn. (L)
 2. **Test the untested:** ✅ `codepanel.js` (browser e2e: open, own chat, folder, close), ✅ `nlu-qwen.js`, ✅ `lock-client.js`, ✅ `tts.js`, `hud-overlay.js`, `boot-cinema.js`; make the browser e2e suite stable (the zero-width fake camera flake) and run it in CI; refresh the stale `tests/report.md`. (M)
-3. **Accessibility:** `role="log"`/`aria-live` on the message list, labels on icon buttons, don't rely on colour alone, keyboard path through every card. (M)
+3. ✅ (screen-reader names on every switch/input, chat is a live log, tests/a11y.test.js) **Accessibility:** `role="log"`/`aria-live` on the message list, labels on icon buttons, don't rely on colour alone, keyboard path through every card. (M)
 4. **Onboarding:** a short "first 5 minutes" screen instead of a 1,195-line README; fewer default-on switches; a first-run check that tells you Node/Ollama/Edge problems in plain words. (M)
 5. **Portability:** isolate the Windows-only parts (PowerShell, WinRT, `tasklist`, `netstat`) behind one adapter so the rest can run elsewhere. (L)
 

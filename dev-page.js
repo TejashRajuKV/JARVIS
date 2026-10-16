@@ -23,7 +23,7 @@ const Dev = (() => {
     new RegExp('^(?:please\\s+)?(?:show|list)\\s+(?:me\\s+)?my\\s+commits\\s*' + WIN + '?\\s*[.!?]*$', 'i'),
     new RegExp('^(?:my\\s+)?commits\\s+' + WIN + '\\s*[.!?]*$', 'i'),
   ];
-  const MESSAGE = /^(?:please\s+)?(?:write|suggest|generate|draft|give\s+me|make|create)\s+(?:me\s+)?(?:a\s+|an\s+|the\s+)?(?:good\s+|git\s+)?commit\s+message(?:\s+(?:for|from)\s+(?:my\s+)?(?:changes|work|code|diff|this)(?:\s+(?:in|for|on)\s+(.+?))?)?(?:\s+(?:in|for|on)\s+(.+?))?\s*[.!?]*$|^(?:please\s+)?what\s+should\s+(?:my|the)\s+commit\s+message\s+be\s*[?.!]*$/i;
+  const MESSAGE = /^(?:please\s+)?(?:write|suggest|generate|draft|give\s+me|make|create)\s+(?:me\s+)?(?:a\s+|an\s+|the\s+)?(?:good\s+|git\s+)?(?:conventional\s+|semantic\s+)?commit\s+message(?:\s+in\s+(?:the\s+)?(?:conventional|semantic)(?:\s+commits?)?\s+(?:style|format))?(?:\s+(?:for|from)\s+(?:my\s+)?(?:changes|work|code|diff|this)(?:\s+(?:in|for|on)\s+(.+?))?)?(?:\s+(?:in|for|on)\s+(.+?))?\s*[.!?]*$|^(?:please\s+)?what\s+should\s+(?:my|the)\s+commit\s+message\s+be\s*[?.!]*$/i;
   const STANDUP = /^(?:please\s+)?(?:write|make|draft|give\s+me|generate|prepare)\s+(?:me\s+)?(?:my\s+|a\s+|the\s+)?(?:daily\s+)?stand[\s-]?up(?:\s+(?:update|notes?|report|message))?\s*[.!?]*$|^(?:my\s+)?(?:daily\s+)?stand[\s-]?up(?:\s+(?:update|notes?))?\s*[.!?]*$/i;
   const EXPLAIN = [
     /^(?:please\s+)?why\s+(?:did|has|does|is|was)\s+(?:my|the)\s+(?:build|compile|compilation|code|program|script|app|test|tests|run|install|npm\s+install|deploy(?:ment)?)\s+(?:fail(?:ed)?|failing|break|broke|crash(?:ed)?|not\s+work(?:ing)?|giving\s+(?:an\s+)?error)\s*[?.!]*$/i,
@@ -36,7 +36,7 @@ const Dev = (() => {
     t = String(t || '').trim(); let m;
     if (STANDUP.test(t)) return { kind: 'standup' };
     for (const re of SUMMARY) if ((m = t.match(re))) return { kind: 'summary', window: normWin(m[1]), repo: re === SUMMARY[0] ? (m[2] || '').trim() : '' };
-    if ((m = t.match(MESSAGE))) return { kind: 'message', repo: (m[1] || m[2] || '').replace(/^(?:the\s+|my\s+)/i, '').replace(/\s+(?:project|repo|repository)$/i, '').trim() };
+    if ((m = t.match(MESSAGE))) return { kind: 'message', style: /\b(?:conventional|semantic)\b/i.test(t) ? 'conventional' : 'plain', repo: (m[1] || m[2] || '').replace(/^(?:the\s+|my\s+)/i, '').replace(/\s+(?:project|repo|repository)$/i, '').trim() };
     for (const re of EXPLAIN) if ((m = t.match(re))) return { kind: 'explain', from: /screen|terminal/i.test(m[1] || '') ? 'screen' : /clipboard/i.test(m[1] || '') ? 'clipboard' : '' };
     return null;
   }
@@ -79,13 +79,13 @@ const Dev = (() => {
     if (source === 'phone') return say(PHONE_NO);
     if (aiOff()) return say('Writing a commit message needs the AI brain, and it is off or not reachable.');
     if (cloud()) { const go = await ask('Your AI model runs online (**' + provider() + '**). Writing the message sends the **code changes** (not secrets files like .env or keys) to them. Send it?', 'YES, SEND IT'); if (!go) return say('Okay, nothing was sent.'); }
-    return messageFor(m.repo || undefined);
+    return messageFor(m.repo || undefined, m.style);
   }
-  async function messageFor(repo) {
+  async function messageFor(repo, style) {
     typeof setState === 'function' && setState('PROCESSING', 'Reading your changes…');
-    const r = await callTool('/dev/git/message', { repo, model: llm.model });
+    const r = await callTool('/dev/git/message', { repo, model: llm.model, style: style === 'conventional' ? 'conventional' : 'plain' });
     if (r.error) return say(r.error);
-    if (r.choices) return say('More than one project has changes. Which one?', { actions: r.choices.slice(0, 6).map(c => ({ label: c.name.toUpperCase().slice(0, 24), fn: async () => jarvisSay(await messageFor(c.name)) })) });
+    if (r.choices) return say('More than one project has changes. Which one?', { actions: r.choices.slice(0, 6).map(c => ({ label: c.name.toUpperCase().slice(0, 24), fn: async () => jarvisSay(await messageFor(c.name, style)) })) });
     return say('**Commit message for ' + r.name + '** *(' + pl(r.files, 'file') + (r.staged ? ', staged' : ', not staged') + (r.truncated ? ', diff shortened' : '') + ')*\n\n```text\n' + r.message + '\n```\n\nI only wrote the text — nothing was staged or committed. ' + (r.staged ? '' : 'Stage your files first with `git add`. ') + '*Made by the AI from the diff: check it says what you actually did.*',
       { speak: 'Here is a commit message: ' + r.subject, actions: [{ label: 'COPY MESSAGE', fn: () => copy(r.message).then(() => { if (typeof toast === 'function') toast('Copied'); }) }] });
   }

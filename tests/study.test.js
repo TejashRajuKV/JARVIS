@@ -76,5 +76,17 @@ check('subjectKey: an unknown name is just itself, tidied (case, spaces, punctua
   check('gradeCuts: your numbers replace the usual ones; the grades you left out keep the usual cut-off', S.gradeCuts({ A: 65 }).A === 65 && S.gradeCuts({ A: 65 }).O === 90 && S.gradeCuts(null).A === 70 && S.GRADE_CUTS.A === 70);
   check('parseEndSem: a grade target uses the cuts you pass in', S.parseEndSem('i got 32/40 in internals what do i need in the end sem to get an A', S.gradeCuts({ A: 65 })).targetPct === 65 && S.parseEndSem('i got 32/40 in internals what do i need in the end sem to get an A').targetPct === 70);
 }
+
+// your own reminders keep their time free
+{ const from = new Date(2026, 9, 10, 7, 0).getTime(), six = new Date(2026, 9, 10, 18, 0).getTime();     // a Saturday, no classes
+  const plain = S.freeSlots({ classes: [], from, days: 1 }), withGym = S.freeSlots({ classes: [], busy: [{ at: six, min: 30 }], from, days: 1 });
+  check('freeSlots: with no classes the day is one stretch 8 am–9 pm', plain.length === 1 && plain[0].min === 13 * 60, plain);
+  check('freeSlots: a reminder at 6 pm (30 min) splits it: 8:00–18:00 and 18:30–21:00', withGym.length === 2 && new Date(withGym[0].end).getHours() === 18 && new Date(withGym[1].start).getHours() === 18 && new Date(withGym[1].start).getMinutes() === 30, withGym.map(x => [new Date(x.start).toTimeString().slice(0, 5), new Date(x.end).toTimeString().slice(0, 5)]));
+  const day = S.ymd(from), plan = { examDate: day, days: [{ date: day, topic: 'Graphs', done: false }] };
+  const busyAll = [{ at: new Date(2026, 9, 10, 8, 0).getTime(), min: 600 }];      // 8 am–6 pm taken
+  const fit = S.fitPlan({ plan, classes: [], busy: busyAll, now: from, studyMin: 60 });
+  check('fitPlan: the study session goes around what is already booked (after 6 pm here)', fit.length === 1 && !fit[0].none && new Date(fit[0].start).getHours() >= 18, fit);
+  check('freeSlots: a reminder on another day does not touch this one', S.freeSlots({ classes: [], busy: [{ at: six + 864e5, min: 30 }], from, days: 1 }).length === 1);
+}
 console.log(`study: ${total - fail}/${total}`);
 process.exitCode = fail ? 1 : 0;

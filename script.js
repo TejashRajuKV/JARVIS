@@ -88,7 +88,7 @@ const store = (() => {
   // Settings/UI-state keys don't count as "real data", so a fresh browser can't claim the slot by merely opening.
   // Once claimed, jarvis.migrated stays set (even through "Erase all"), so old copies can't resurrect later.
   // Other browsers' old localStorage is left untouched, just no longer used.
-  const TRIVIAL = /^jarvis\.(settings|chipTab|cmdHistory|focusToday|agentCounter|migrated|serverAlerted)$/;
+  const TRIVIAL = /^jarvis\.(settings|chipTab|cmdHistory|focusToday|focusCtx|focusState|agentCounter|migrated|serverAlerted)$/;
   if (!cache['jarvis.migrated'] && !Object.keys(cache).some(k => !TRIVIAL.test(k))) {
     const local = {};
     for (let i = 0; i < localStorage.length; i++) {
@@ -202,11 +202,23 @@ const ctx = { lastApp: null, lastIntent: null, lastFile: null, pending: null };
 // results of the last list or search — so "create a folder there", "open it" and "open the second one" mean something.
 ctx.focus = { folder: null, file: null, created: null, results: [] };
 const FOCUS_MS = 15 * 60 * 1000;
+// The focus survives a reload (a page refresh in the middle of "open it" / "create a folder there" used to forget what "it" was): kept in the store,
+// picked up again on load for whatever is still inside the 15 minutes.
+let focusSaveT = null;
+const saveFocusCtx = () => { clearTimeout(focusSaveT); focusSaveT = setTimeout(() => { try { store.set('jarvis.focusCtx', ctx.focus); } catch (e) { /* only a convenience */ } }, 300); };
+(function restoreFocusCtx() {
+  try {
+    const f = store.get('jarvis.focusCtx', null), now = Date.now();
+    if (!f || typeof f !== 'object') return;
+    for (const k of Object.keys(f)) if (f[k] && typeof f[k] === 'object' && !Array.isArray(f[k]) && f[k].path && now - f[k].t < FOCUS_MS) ctx.focus[k] = f[k];
+    if (Array.isArray(f.results) && f.resultsT && now - f.resultsT < FOCUS_MS) { ctx.focus.results = f.results.slice(0, 30); ctx.focus.resultsT = f.resultsT; }
+  } catch (e) { /* start fresh */ }
+})();
 const CONFIRM_MIN = 0.6;   // medium-confidence band for spoken commands: [CONFIRM_MIN, 0.85) → "did you mean …?"
 // (a drive root keeps its slash: "D:\" — "D:" alone would mean the current folder on D)
-function setFocus(kind, p) { if (p) ctx.focus[kind] = { path: /^[a-z]:[\\/]*$/i.test(String(p)) ? String(p)[0].toUpperCase() + ':\\' : String(p).replace(/[\\/]+$/, '') || String(p), t: Date.now() }; }
+function setFocus(kind, p) { if (p) { ctx.focus[kind] = { path: /^[a-z]:[\\/]*$/i.test(String(p)) ? String(p)[0].toUpperCase() + ':\\' : String(p).replace(/[\\/]+$/, '') || String(p), t: Date.now() }; saveFocusCtx(); } }
 function focusOf(kind) { const f = ctx.focus[kind]; return f && Date.now() - f.t < FOCUS_MS ? f : null; }
-function setResults(paths) { ctx.focus.results = (paths || []).filter(Boolean).slice(0, 30); ctx.focus.resultsT = Date.now(); }
+function setResults(paths) { ctx.focus.results = (paths || []).filter(Boolean).slice(0, 30); ctx.focus.resultsT = Date.now(); saveFocusCtx(); }
 const joinPath = (dir, name) => /[\\/]$/.test(dir) ? dir + name : dir + (/\\/.test(dir) || /^[a-z]:/i.test(dir) ? '\\' : '/') + name;
 // The newest thing in focus ("open it"): a folder or file shown, found or created in the last 15 minutes.
 function focusNewest() {
