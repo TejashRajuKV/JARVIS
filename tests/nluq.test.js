@@ -13,7 +13,8 @@ const ctx = vm.createContext({ window: win, document: doc, settings: win.setting
 vm.runInContext(fs.readFileSync(root('nlu-qwen.js'), 'utf8'), ctx);
 const NLUQ = win.NLUQ;
 
-const script = fs.readFileSync(root('script.js'), 'utf8'), server = fs.readFileSync(root('server.js'), 'utf8');
+// the tool handlers live in script.js and tools/<area>.js
+const script = [root('script.js'), ...fs.readdirSync(root('tools')).filter(f => f.endsWith('.js')).map(f => path.join(root('tools'), f))].map(f => fs.readFileSync(f, 'utf8')).join('\n'), server = fs.readFileSync(root('server.js'), 'utf8');
 const wl = [...(server.match(/const NLU_INTENT_WHITELIST = \[([\s\S]*?)\];/)[1]).matchAll(/'([A-Z_]+)'/g)].map(m => m[1]);
 const mine = NLUQ.INTENT_WHITELIST;
 check('the server whitelist and the client map name exactly the same intents', wl.slice().sort().join() === mine.slice().sort().join(), { onlyServer: wl.filter(x => !mine.includes(x)), onlyClient: mine.filter(x => !wl.includes(x)) });

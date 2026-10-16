@@ -119,6 +119,7 @@ Everything below works today. The phrases are examples you can type or say; the 
 **⚡ Automate**
 - **Multi-step commands:** "open VS Code, create a folder DSA and start a 25 minute focus" — previewed, validated by the server, executed with **RETRY / CONTINUE / ROLLBACK**, each step verified for real, and inspectable afterwards.
 - **Routines:** built-in (study mode, morning, bedtime, leaving), your own, and scheduled ("run my morning routine every day at 7am").
+- **Routine builder** — Tasks tab → ROUTINES → **＋ NEW ROUTINE** (or **EDIT** on any routine): a name, one step per line the way you would say it, and an optional schedule (“every day at 9am”). As you type, each step shows what JARVIS will do with it (✓ open application, ✓ focus start…) and a step it does not know by itself is marked **?** before you save. SAVE makes or changes the routine and its schedule with one “undo”; a name that is already taken or a schedule it cannot read is refused with the reason.
 - **Triggers:** "when I plug in my charger, start study mode", "when the battery drops below 20%…".
 - **Global hotkey:** select text in any app → explain / summarise / rewrite / translate / fix code.
 - **Smart alerts & panic mode:** low battery, high RAM, deadlines; say "panic" to pause all automation, "resume" to continue.
@@ -982,7 +983,8 @@ When **Settings → Show how I understood you** is on (or you ask "how did you u
 | `speechfix.js` | Repairs commonly misheard command words and picks the best of the recogniser's alternatives |
 | `wakeword.js` | Background Windows listener for the wake word, so "Jarvis" works while you are in another tab |
 | `index.html` | The page |
-| `script.js` | Turn pipeline, UI, tasks, reminders, focus, files, streaming, settings |
+| `script.js` | Turn pipeline, UI, tasks, reminders, focus, files, streaming, settings; `executeTool` is now a short dispatcher |
+| `tools/registry.js`, `tools/*.js` | The tools themselves, one file per area — `apps`, `web`, `tasks` (timers, focus, to-dos, reminders, deadlines, timetable, routines), `study`, `system` (power, volume, media, system info, laptop controls, screen), `files`, `code` (code → file → run, snippets, git, clipboard), `productivity`. Every intent belongs to exactly one area; every result also carries `ok` and `errorCode` (`failed` / `cancelled` / `not_found` / `needs_ai`), hidden from saved chats. A file that fails to load costs only its own area |
 | `nlu.js` | Normalization, intent rules, fuzzy matching, dates/times, coding-AI phrase parser |
 | `agent.js` | Multi-step router, plans, state-aware previews, confirmations, verification, failure recovery (diagnose → fix → retry → verify), RETRY / CONTINUE / ROLLBACK, guided templates, command learning |
 | `routines.js`, `triggers.js`, `study.js`, `undo.js`, `wizard.js`, `lang.js`, `persona.js` | Routines, trigger logic, study & attendance maths, undo stack, guided setup, languages, personality lines |
@@ -1017,7 +1019,7 @@ Opt-in checks on the real laptop — sets volume and brightness and opens/closes
 npm run test:live
 ```
 
-90 suites check every feature, not just the phrases:
+92 suites check every feature, not just the phrases:
 
 | Suite | Checks | What it covers |
 |---|---|---|
@@ -1084,6 +1086,7 @@ npm run test:live
 | `voice.test.js` | 28 | Waiting for the end of a sentence and for the recogniser's final words, tap-to-send, Telugu/Kannada collection |
 | `wakeword.test.js` | 19 | Background wake-word listener protocol |
 | `llmqueue.test.js` | 17 | The local-model queue: one at a time, chat before background, nothing cut off, slots given back after a finished / failed / abandoned / cancelled call, extra lanes on request |
+| `toolregistry.test.js` · `routines.test.js` | 29 · 22 | Every intent in exactly one tool area, the page loads and caches them in order, the real dispatcher (first area wins, a crash names its area), `ok`/`errorCode` on every result · finding routines by what you say, splitting steps, create/replace/remove with undo, runs that wait in line |
 | `statemerge.test.js` | 26 | Saving a stale list: another tab’s additions kept, this tab’s deletions honoured, attendance by subject, older pages without a base still replace, through the real route |
 | `statesync.test.js` | 13 | Two tabs against a real server: a saved list is pushed to the other tab (only when it changed), settings are not, the chat still is, an import tells every tab to reload |
 | `tts.test.js` · `lockclient.test.js` | 21 · 21 | The online-voice route against a fake socket (input checks, rate limits, escaping, cache, clean failures) · the page half of the app lock (reload when locked, throttled keep-alive pings, nothing reloads twice) |

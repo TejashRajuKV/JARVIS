@@ -375,6 +375,21 @@
     jarvisSay = realSay;
     check('Alerts', 'alertOnce says it once; a second ask for the same alert (another tab) stays quiet', said1 === 1 && seen.filter(m => /e2e alert text/.test(m.text)).length === 1, seen.map(m => m.text));
   }
+  {   // the routine builder: NEW ROUTINE in the Tasks tab opens a panel; SAVE makes the routine
+    Routines.render();
+    const newBtn = document.querySelector('#routineList .rt-new');
+    check('Routines', 'the Tasks tab has a NEW ROUTINE button and an EDIT button on each routine', !!newBtn && document.querySelectorAll('#routineList .rt-edit').length === Routines.list().length);
+    newBtn.click(); await sleepMs(100);
+    const panel = document.querySelector('.cam-panel'), inputs = panel && panel.querySelectorAll('.rt-builder input, .rt-builder textarea');
+    check('Routines', 'it opens the builder: name, steps, schedule', !!panel && inputs && inputs.length === 3);
+    inputs[0].value = 'e2e builder'; inputs[1].value = 'mute' + String.fromCharCode(10) + 'do the funky thing'; inputs[1].dispatchEvent(new Event('input'));
+    const pv = panel.querySelector('.rt-preview').innerText;
+    check('Routines', 'each step is shown the way JARVIS understands it, and an unknown one is marked ?', /1\. ✓ mute/.test(pv) && /2\. \? do the funky thing/.test(pv), pv);
+    [...panel.querySelectorAll('button')].find(b => b.textContent === 'SAVE').click(); await sleepMs(150);
+    const made = Routines.find('e2e builder');
+    check('Routines', 'SAVE makes the routine and closes the panel', made && made.steps.length === 2 && !document.querySelector('.cam-panel'), made);
+    if (made) Routines.remove(made);
+  }
   {   // JARVIS Code panel: opens its own tab with its own conversation, remembers the folder, closes back to chat
     const JC = window.JarvisCode, log0 = JSON.stringify(store.get('jarvis.codeChat', [])), cfg0 = JSON.stringify(store.get('jarvis.code', {}));
     check('JARVIS Code', 'the panel exists and starts closed', !!JC && JC.state.on === false && !document.querySelector('.controls.coding'));
@@ -638,7 +653,7 @@
   }
   check('Safety', 'no real laptop action escaped the fakes during the whole run', calls.every(c => FAKE[c.endpoint] || !/^\/(sys\/(volume|brightness|theme|radio|displayOff|window|powerPlan)|tool\/(open|close|lock|sleep|shutdown|restart|screenshot|paste|media|showDesktop|writeClipboard|readClipboard|codeAsk|gitClone)|keepalive\/set|mirror\/(setdest|run|config))/.test(c.endpoint)));
   // ---- a second tab of the same JARVIS changes the chat: this tab shows it (server push), and ignores its own writes
-  { await idle(8000);
+  { await idle(8000); await waitUntil(() => !store.pendingKeys().length, 5000);      // a change of this tab's own still on its way would win over the other tab's (last save wins)
     const post = (src, text) => fetch('api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src, set: { 'jarvis.chat': [{ role: 'user', text, source: 'text', t: Date.now() }] } }) });
     const shows = async text => { for (let i = 0; i < 80; i++) { if ([...document.querySelectorAll('#messages .msg')].some(m => m.innerText.includes(text))) return true; await sleepMs(100); } return false; };
     await post('another-tab', 'typed in the other tab');

@@ -118,7 +118,7 @@ Each item says *what is weak now → what to do → how we prove it* (every chan
 
 **Automation**
 - *Multi-step agent:* structured `{status}` results instead of grepping English reply text; server-issued run token for guarded routes; parallel planner calls.
-- *Routines/triggers/scheduler:* run safe-tier routines on the server so no tab is needed; replace the 20-second PowerShell battery poll with a cheaper source.
+- *Routines/triggers/scheduler:* ✅ a routine builder panel (NEW / EDIT, steps checked as you type, optional schedule); run safe-tier routines on the server so no tab is needed; replace the 20-second PowerShell battery poll with a cheaper source.
 - *Qwen NLU assist:* ✅ done — now 26 intents, all with a real handler (risky ones removed; tests/nluq.test.js). Was: about 24 of its 38 intents have no handler — map them to real intents and test, or remove the feature.
 - *Pattern learning:* "YES, make it a routine" should actually create the routine.
 
@@ -134,7 +134,7 @@ Each item says *what is weak now → what to do → how we prove it* (every chan
 
 ## Phase 4 — structure, tests, accessibility, onboarding
 
-1. **Split `script.js`** (6,184 lines; `executeTool` is one ~1,900-line switch with 188 cases) into modules per area, behind a registry; make `Extras.intercept` isolate each module in try/catch (✅ done) so one throwing module can't kill the turn. (L)
+1. ✅ (executeTool's tools now live in tools/<area>.js behind tools/registry.js, with a uniform ok/errorCode) **Split `script.js`** (6,184 lines; `executeTool` is one ~1,900-line switch with 188 cases) into modules per area, behind a registry; make `Extras.intercept` isolate each module in try/catch (✅ done) so one throwing module can't kill the turn. (L)
 2. **Test the untested:** ✅ `codepanel.js` (browser e2e: open, own chat, folder, close), ✅ `nlu-qwen.js`, ✅ `lock-client.js`, ✅ `tts.js`, `hud-overlay.js`, `boot-cinema.js`; make the browser e2e suite stable (the zero-width fake camera flake) and run it in CI; refresh the stale `tests/report.md`. (M)
 3. **Accessibility:** `role="log"`/`aria-live` on the message list, labels on icon buttons, don't rely on colour alone, keyboard path through every card. (M)
 4. **Onboarding:** a short "first 5 minutes" screen instead of a 1,195-line README; fewer default-on switches; a first-run check that tells you Node/Ollama/Edge problems in plain words. (M)

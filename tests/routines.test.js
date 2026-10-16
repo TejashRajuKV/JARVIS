@@ -65,6 +65,24 @@ const tick = () => new Promise(r => setTimeout(r, 10));
   check('run: all three were said, nothing was dropped, and JARVIS is free again', said.filter(m => /^ran (alpha|beta|gamma)/.test(m.text)).length === 3 && ctx.busy === false);
   check('run: a routine id that no longer exists does nothing', (R.runById('nope'), runs.length === 3));
 
+  {
+  // ---- the builder (NEW / EDIT in the Tasks tab): what SAVE does
+  ctx.repeatStart = () => Date.now() + 3600e3; ctx.describeRepeat = () => 'every day at 9am';
+  const pv = R.preview('open vs code\nstart a focus session for 25 minutes\ndo the thing with the stuff');
+  check('builder: one step per line; known steps are marked with what they do, an unknown one is marked ?', pv.steps.length === 3 && pv.rows[0].ok && pv.rows[0].intent === 'OPEN_APPLICATION' && pv.rows[1].ok && !pv.rows[2].ok, pv.rows);
+  undo.length = 0; const n1 = R.list().length;
+  let b = R.saveFromBuilder(null, 'Night Owl', 'mute\nset brightness to 20', '');
+  check('builder: SAVE makes a new routine with its steps, says so, with one undo', b.ok && R.find('night owl') && R.find('night owl').steps.join() === 'mute,set brightness to 20' && R.list().length === n1 + 1 && undo.length === 1 && /Made the routine/.test(b.text), b);
+  check('builder: no name, no steps, or a name that is taken are refused with a reason (nothing saved)', !R.saveFromBuilder(null, '', 'mute', '').ok && !R.saveFromBuilder(null, 'x', '', '').ok && /already a routine/.test(R.saveFromBuilder(null, 'night owl', 'mute', '').text) && R.list().length === n1 + 1);
+  const owl = R.find('night owl');
+  b = R.saveFromBuilder(owl, 'late owl', 'mute\nlock the screen', 'every day at 11pm');
+  check('builder: EDIT renames and changes the steps of the SAME routine, and schedules it', b.ok && owl.name === 'late owl' && owl.steps.join() === 'mute,lock the screen' && R.list().length === n1 + 1 && ctx.reminders.some(x => x.routineId === owl.id && x.repeat), [b, ctx.reminders.filter(x => x.routineId === owl.id)]);
+  check('builder: a schedule that cannot be read is refused and nothing changes', !R.saveFromBuilder(owl, 'late owl', 'mute', 'whenever i feel like it').ok && owl.steps.join() === 'mute,lock the screen');
+  undo[undo.length - 1][1]();
+  check('builder: undo of the edit puts the old name and steps back and removes the new schedule', owl.name === 'night owl' && owl.steps.join() === 'mute,set brightness to 20' && !ctx.reminders.some(x => x.routineId === owl.id), owl);
+  undo[0][1]();
+  check('builder: undo of the new one removes it', !R.find('night owl') && R.list().length === n1);
+  }
   console.log(`routines: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;
 })().catch(e => { console.log('FAIL  crashed — ' + (e && e.stack || e)); process.exitCode = 1; });
