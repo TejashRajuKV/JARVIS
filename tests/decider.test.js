@@ -140,4 +140,33 @@ for (const [t, wantRoute, wantIntent] of [
 // every decision explains itself
 check('Reason', 'every decision has a one-line reason', CASES.every(([t]) => route(t).reason.length > 10));
 check('Reason', 'the reason names the trigger word', /“latest”/.test(route('what is the latest node.js version').reason));
+// Execution policy is explicit: online evidence and local-model requirements
+// are tested independently from the human-readable route label.
+{
+  const web = route('what is the latest node.js version');
+  const local = route('explain binary search simply');
+  const tool = route('open chrome');
+  check('Policy', 'fresh facts require online evidence and the local model',
+    web.policy && web.policy.needsOnline && web.policy.needsModel && web.policy.provider === 'web_evidence_then_local_model',
+    JSON.stringify(web.policy));
+  check('Policy', 'ordinary explanations use the local model without online tools',
+    local.policy && !local.policy.needsOnline && local.policy.needsModel && local.policy.provider === 'local_model',
+    JSON.stringify(local.policy));
+  check('Policy', 'known commands use a direct local tool, not an AI call',
+    tool.policy && !tool.policy.needsOnline && !tool.policy.needsModel && tool.policy.provider === 'local_tool',
+    JSON.stringify(tool.policy));
+  check('Policy', 'each decision exposes the evidence signals and review gate',
+    !!web.decisionSignals && typeof web.needsReview === 'boolean' && web.decisionSignals.needsFreshEvidence,
+    JSON.stringify({ signals: web.decisionSignals, needsReview: web.needsReview }));
+}
+// A known command about your own things never becomes a web search just because
+// it uses a "source" word; a "fresh" word on your own things stays local.
+for (const t of ['search for my notes', 'explain deadlock according to my notes', 'summarize my notes according to the textbook']) {
+  const d = route(t);
+  check('Policy', '“' + t + '” stays a local tool, not the web', d.route === 'TOOL' && !d.policy.needsOnline, d.route);
+}
+{
+  const d = route('check the latest git commit in my project');
+  check('Policy', '“latest” about my project stays local and is flagged for review', d.route === 'LOCAL' && d.needsReview && !d.policy.needsOnline, d.route + ' ' + d.needsReview);
+}
 done();

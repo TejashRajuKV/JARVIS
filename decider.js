@@ -79,8 +79,14 @@ const Decider = (() => {
       return { route: 'MAPS', reason: 'looking for places (' + (pq.category || 'places') + (pq.location !== 'your current location' ? ' near ' + pq.location : '') + ', ' + pq.sort + ') → Google Maps' + (sig.action ? ' — not a generic web page' : ''),
         confidence: conf(0.95), payload: pq, override: !!sig.action };
     }
-    // 3. a command JARVIS knows
-    if (sig.action) return { route: 'TOOL', reason: 'a command I know (' + String(sig.intent).toLowerCase().replace(/_/g, ' ') + ') → run it directly, no AI needed', confidence: conf(sig.ruleConfidence || 0.9), payload: { intent: sig.intent } };
+    // 3. a command JARVIS knows. If the rule match conflicts with an explicit
+    // request for external/current information, do not execute the generic
+    // matched tool just because its intent confidence is high. Let the more
+    // specific local/web decision below resolve the request instead.
+    // Only "fresh" words count here: "search for my notes" / "according to my
+    // notes" use source words but point at your own things, not the web.
+    const actionConflict = sig.action && sig.fresh && (sig.local || sig.machine);
+    if (sig.action && !actionConflict) return { route: 'TOOL', reason: 'a command I know (' + String(sig.intent).toLowerCase().replace(/_/g, ' ') + ') → run it directly, no AI needed', confidence: conf(sig.ruleConfidence || 0.9), payload: { intent: sig.intent } };
     // 4. "update / install my node": JARVIS doesn't install software — the local AI explains how
     if (sig.install) return { route: 'GUIDE', reason: 'installing or updating software — I don’t do that myself, so the local AI explains the steps', confidence: conf(0.85), payload: { topic: text } };
     // 5. "find / show / open the React docs": you want the page itself, not an answer about it
@@ -149,6 +155,35 @@ const Decider = (() => {
       : mapsQuery(raw);
     return { category, location: location || 'your current location', sort: sort || 'relevance', query };
   }
-  return { signals, decide, mapsQuery, placeQuery, stripLead, LABEL, FRESH, SOURCE, LOCAL, PLACE, PLACE_OVERRIDES };
+  // Keep route choice and execution requirements explicit. This is also used
+  // by the decision inspector and tests, so a future route cannot silently
+  // forget whether it needs fresh evidence, the local model, or neither.
+  const POLICY = {
+    TOOL:         { provider: 'local_tool', needsOnline: false, needsModel: false, fallback: 'report the tool error; never claim success' },
+    LOCAL:        { provider: 'local_tools_and_model', needsOnline: false, needsModel: true, fallback: 'ask for missing local context' },
+    LOCAL_AI:     { provider: 'local_model', needsOnline: false, needsModel: true, fallback: 'explain that the local model is unavailable' },
+    GUIDE:        { provider: 'local_model', needsOnline: false, needsModel: true, fallback: 'give a short limitation message' },
+    WEB_AI:       { provider: 'web_evidence_then_local_model', needsOnline: true, needsModel: true, fallback: 'show available sources; do not invent current facts' },
+    OFFER_ONLINE: { provider: 'blocked_until_online_enabled', needsOnline: true, needsModel: false, fallback: 'ask permission to enable Online tools' },
+    WEB_LINKS:    { provider: 'browser_search', needsOnline: false, needsModel: false, fallback: 'report if the browser could not open results' },
+    WEB_OPEN:     { provider: 'browser_open', needsOnline: false, needsModel: false, fallback: 'report if the page could not be opened' },
+    MAPS:         { provider: 'browser_maps', needsOnline: false, needsModel: false, fallback: 'report if Google Maps could not be opened' }
+  };
+  function decideWithPolicy(sig, env) {
+    const d = decide(sig, env);
+    const conflict = !!((sig.local && (sig.fresh || sig.source)) ||
+      (sig.place && sig.action) || (sig.machine && sig.fresh) ||
+      (sig.source && sig.machine));
+    d.policy = POLICY[d.route] || { provider: 'local_model', needsOnline: false, needsModel: true, fallback: 'ask the user to rephrase' };
+    d.needsReview = conflict || d.confidence < 0.8;
+    d.decisionSignals = {
+      explicitBrowserSearch: !!sig.links,
+      needsFreshEvidence: !!(sig.fresh || sig.source),
+      referencesLocalContext: !!(sig.local || sig.machine),
+      hasConflictingSignals: conflict
+    };
+    return d;
+  }
+  return { signals, decide: decideWithPolicy, mapsQuery, placeQuery, stripLead, LABEL, FRESH, SOURCE, LOCAL, PLACE, PLACE_OVERRIDES, POLICY };
 })();
 if (typeof module !== 'undefined') module.exports = Decider;
