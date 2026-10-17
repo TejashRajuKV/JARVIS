@@ -176,6 +176,9 @@ const Decider = (() => {
       (sig.source && sig.machine));
     d.policy = POLICY[d.route] || { provider: 'local_model', needsOnline: false, needsModel: true, fallback: 'ask the user to rephrase' };
     d.needsReview = conflict || d.confidence < 0.8;
+    // a known command worded as a question about your own things ("…the latest … in my project"):
+    // the page asks before running it when the command changes something
+    d.actionConflict = !!(sig.action && sig.fresh && (sig.local || sig.machine));
     d.decisionSignals = {
       explicitBrowserSearch: !!sig.links,
       needsFreshEvidence: !!(sig.fresh || sig.source),

@@ -323,7 +323,7 @@ function traceRows(t) {
   (t.notes || []).forEach(([k, v]) => rows.push([k.charAt(0).toUpperCase() + k.slice(1), v]));
   if (t.context) rows.push(['Context', t.context]);
   if (t.decision && typeof Decider !== 'undefined') {
-    rows.push(['Decision', (Decider.LABEL[t.decision.route] || t.decision.route) + (t.decision.confidence ? '  ·  confidence ' + t.decision.confidence.toFixed(2) : '') + (t.decision.override ? '  ·  took over from the rule match' : '') + ' — ' + t.decision.reason]);
+    rows.push(['Decision', (Decider.LABEL[t.decision.route] || t.decision.route) + (t.decision.confidence ? '  ·  confidence ' + t.decision.confidence.toFixed(2) : '') + (t.decision.override ? '  ·  took over from the rule match' : '') + (t.decision.needsReview ? '  ·  signals disagree' : '') + ' — ' + t.decision.reason]);
     const sg = t.signals; if (sg) rows.push(['Signals', ['fresh', 'source', 'local', 'reasoning', 'question'].map(k => k + ' ' + (sg[k] ? '✓' : '✗')).join(' · ')]);
   }
   rows.push(['Route', t.route || '—']);
@@ -3243,6 +3243,15 @@ async function handleUser(text, source) {
       await deliver({ text: 'There’s nothing to cancel right now.', intent: 'CANCELLED', noPersona: true }, { intent: 'CANCELLED', confidence: 1 }); return;
     }
     const wantsLLM = p.intent === 'CONVERSATION' || p.confidence < 0.85;
+    // The rule matched a command that CHANGES something, but the request reads like a question about your own things
+    // ("… the latest … in my project"): ask first instead of running it. Read-only commands still just run, and the
+    // commands confirmGate already asks about aren't asked twice.
+    if (!wantsLLM && decision.actionConflict && !p.fromPending && !CONFIRM_GATE[p.intent] && Agent.tierFor && Agent.tierFor(p.intent, norm.text)[0] !== 'safe') {
+      ctx.pending = { intent: 'CONFIRM_INTENT', p };
+      traceRoute('the command and the request disagree → asked first');
+      await deliver({ text: 'Just to be sure, ' + Persona.sir() + ': should I **' + p.intent.toLowerCase().replace(/_/g, ' ') + '** for **“' + (p.corrected || norm.text) + '”**? “' + ((sig && sig.words.fresh[0]) || 'latest').trim() + '” about your own things usually means you want to see something, and that command changes something.', suggestions: ['Yes', 'No'], noPersona: true, intent: 'CONFIRM' }, p);
+      return;
+    }
     // Medium confidence on something SPOKEN (the mic may have misheard): ask before acting, instead of guessing or
     // handing it to the AI. Never for questions, and not for "open <something unknown>" (that opens the best web page).
     if (wantsLLM && spoken && p.intent !== 'CONVERSATION' && p.confidence >= CONFIRM_MIN && p.confidence < 0.85 && p.intent !== 'OPEN_APPLICATION'

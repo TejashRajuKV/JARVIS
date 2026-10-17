@@ -19,6 +19,9 @@ const SECRET_LINE = [
   ['Slack token', /\bxox[baprs]-[A-Za-z0-9-]{10,}/],
   ['API key (sk-…)', /\bsk-[A-Za-z0-9_-]{20,}/],
   ['Google API key', /\bAIza[0-9A-Za-z_-]{30,}/],
+  ['Stripe secret key', /\b(?:sk|rk)_live_[0-9A-Za-z]{20,}/],
+  ['npm token', /\bnpm_[A-Za-z0-9]{36}\b/],
+  ['Hugging Face token', /\bhf_[A-Za-z0-9]{30,}\b/],
   ['hard-coded password or token', /\b(?:api[_-]?key|secret|token|passwd|password|auth)["']?\s*[:=]\s*["'][^"'\s${}<>]{12,}["']/i],
 ];
 const MAX_READ = 200 * 1024;

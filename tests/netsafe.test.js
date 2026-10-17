@@ -39,6 +39,18 @@ const rejects = async (href, lookup) => { try { await assertPublicUrl(href, { lo
   check('a redirect loop stops after the hop limit', /too many/.test(err || '') && seen.length === 4, [err, seen.length]);
   seen = []; r = await safeFetch('https://a.example.com/gone', {}, { lookup: pub, fetchImpl: chain({ 'https://a.example.com/gone': resp(302, null) }) });
   check('a redirect with no Location is just returned (the caller sees the status)', r.status === 302);
+  // readText: a size cap that stops the download, and text pages only
+  const { readText } = require('../netsafe');
+  let pulled = 0;
+  const big = new Response(new ReadableStream({ pull(c) { pulled++; c.enqueue(new TextEncoder().encode('x'.repeat(64 * 1024))); } }), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  const txt = await readText(big, 200 * 1024);
+  check('readText stops at the cap instead of downloading the whole page', txt.length === 200 * 1024 && pulled < 10, { len: txt.length, pulled });
+  check('readText reads a normal page whole', (await readText(new Response('<p>héllo</p>', { headers: { 'content-type': 'text/html' } }))) === '<p>héllo</p>');
+  check('readText accepts a page with no content type', (await readText(new Response('plain'))) === 'plain');
+  const refused = async ct => { try { await readText(new Response('%PDF-1.4', { headers: { 'content-type': ct } })); return null; } catch (e) { return e.message; } };
+  check('readText refuses a PDF', /Not a text page \(application\/pdf\)/.test(await refused('application/pdf')));
+  check('readText refuses an image', /Not a text page/.test(await refused('image/png')));
+  check('readText accepts XHTML and JSON', !(await refused('application/xhtml+xml')) && !(await refused('application/json')));
   console.log(`netsafe: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;
 })();

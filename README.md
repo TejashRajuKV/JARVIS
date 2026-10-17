@@ -801,9 +801,11 @@ Every request goes through a small **decision engine** — plain rules, no AI ca
 
 **Traps it avoids:** the noun "binary **search**" isn't a request to search; `node.js` isn't one of your files; "my **latest** file" is local, not news; "I am at the park" isn't a places search.
 
+**Asks before a mismatched change.** When the rule match is a command that *changes* something but the request reads like a question about your own things (*"git commit the latest changes in my project"* — “latest” about your project usually means *show me*), JARVIS asks “Just to be sure…” before running it. Read-only commands still run straight away, and commands that already ask (close an app, run a program…) are not asked twice. Every decision also carries `policy` (what it needs: a direct tool, the local model, web evidence), `needsReview` (signals disagree — shown in the inspector) and `decisionSignals`.
+
 **Online tools off:** JARVIS says so and offers **ENABLE ONLINE TOOLS & SEARCH** or **ANSWER FROM MEMORY** (flagged "may be out of date") — it never answers something that changes from stale memory silently.
 
-- **Debug:** turn on *Show how I understood you*; or `Decider.decide(Decider.signals('…', {}), { online: true })` in the console; in plain Node `const D = require('./decider.js')`. `tests/decider.test.js` (96 checks, ~30 of them conflicts).
+- **Debug:** turn on *Show how I understood you*; or `Decider.decide(Decider.signals('…', {}), { online: true })` in the console; in plain Node `const D = require('./decider.js')`. `tests/decider.test.js` (141 checks, ~30 of them conflicts, plus the execution policy).
 - **Extending:** a new kind of place → add the word to a group in `places.js` (data only). A new route → `decide()` branch + `LABEL` + a branch in `handleUser` + tests.
 
 ### 11.5 Acting on your laptop — execution, permissions, undo
@@ -1035,9 +1037,9 @@ npm run test:live
 
 | Suite | Checks | What it covers |
 |---|---|---|
-| `coverage.test.js` | 377 | Every command JARVIS has (180) is understood from its test phrases; fails if a new command has none |
+| `coverage.test.js` | 389 | Every command JARVIS has (180) is understood from its test phrases; fails if a new command has none |
 | `api.test.js` | 324 | Every server route (205; 163 called, the rest listed with a reason) on a real, isolated server, including the new tools (CSV, project wiki, PDFs, watchdog, AI health, images): files and access zones, projects (including recognising a crash on missing dependencies vs. a code bug, and whether a started server really answers on its port), weather parsing against a fake wttr.in, git, backup, reminders firing, phone codes, security; routes that would act on the laptop are listed with the reason instead |
-| `e2e.test.js` | 333 | The real page in headless Edge/Chrome: ~50 end-to-end flows (to-dos, reminders, focus, weather replies and their web-search fallback, attendance, marks, routines, triggers, multi-step plans, "there" / "open it" / "the second one", "did you mean…?", saving code into a new folder…) plus every command run through the chat, with laptop actions faked. Without Edge/Chrome or on Node < 22 it is shown as **NOT RUN** (never as ✓) |
+| `e2e.test.js` | 440 | The real page in headless Edge/Chrome: ~50 end-to-end flows (to-dos, reminders, focus, weather replies and their web-search fallback, attendance, marks, routines, triggers, multi-step plans, "there" / "open it" / "the second one", "did you mean…?", saving code into a new folder…) plus every command run through the chat, with laptop actions faked. Without Edge/Chrome or on Node < 22 it is shown as **NOT RUN** (never as ✓) |
 | `live.test.js` | 11 | Opt-in (`npm run test:live`) reversible checks on the real laptop |
 | `nlu.test.js` | 281 | Understanding commands (intents, typos, dates, languages) |
 | `agent.test.js` | 74 + 132 | Multi-step routing and safety (validator, refusals), the execution inspector card, undo tagging of plan runs |
@@ -1069,10 +1071,10 @@ npm run test:live
 | `whisper.test.js` · `stt-page.test.js` | 36 · 16 | WAV conversion and checks, finding the program and model, silence skipping, one-at-a-time, with a fake program · the page recorder with a fake microphone: cuts at pauses, ordered pieces, error reporting, release |
 | `diskcare.test.js` | 97 | Real folder trees in a temp folder: classifying and tidying (name clashes, in-progress downloads, links), large files, duplicates (identical edges but different middle is *not* a duplicate), the temp cleaner and its escape attempts, JARVIS's trash, journals and undo, plans that expire, the routes |
 | `reliability.test.js` | 84 | The presentation review: many wordings → one intent (create/count/list folders, frontends, saving code), misheard speech repaired (and ordinary sentences left alone), "did you mean" ranking, the frontend-for-a-project flow |
-| `decider.test.js` | 133 | The decision engine: ~45 requests → each route, ~30 **conflicts** (action + place, local + fresh, this-laptop + version, show vs explain, statements), place reading (category / location / sort), Online-tools-off offers, payloads, confidence, a reason for every decision |
+| `decider.test.js` | 141 | The decision engine: ~45 requests → each route, ~30 **conflicts** (action + place, local + fresh, this-laptop + version, show vs explain, statements), place reading (category / location / sort), Online-tools-off offers, payloads, confidence, a reason for every decision |
 | `jarviscode.test.js` | 20 | JARVIS Code: the AI's answer → files, the plain-code-block fallback, paths that must never leave the project |
 | `backup.test.js` | 44 | Export/import, encryption, hostile files, snapshots |
-| `gitsafe.test.js` · `nodecheck.test.js` · `sw.test.js` · `chatprompt.test.js` | 43 · 23 · 9 · 7 | What “commit all changes” would stage and what looks like a secret (real temp repository) · the Node version check and that package.json, the README and the check agree · the service worker lists only real files and never caches /api/ · what the AI is really sent, against a fake Ollama (the tools section is left out when the page will not run a tool) |
+| `gitsafe.test.js` · `nodecheck.test.js` · `sw.test.js` · `chatprompt.test.js` | 46 · 23 · 9 · 7 | What “commit all changes” would stage and what looks like a secret (real temp repository) · the Node version check and that package.json, the README and the check agree · the service worker lists only real files and never caches /api/ · what the AI is really sent, against a fake Ollama (the tools section is left out when the page will not run a tool) |
 | `phonecmd.test.js` | 19 | Commands from the phone against a fake ntfy server that streams messages to the real server: locked / unlock / 10-minute window / replay refused, **strict mode** (a code with every command, bare code or wrong code runs nothing), the access-token header |
 | `csp.test.js` · `trashkeep.test.js` · `undolog.test.js` | 17 · 19 · 15 | The page policy (no inline scripts, connections only back here) and that every CDN script has a fingerprint · the trash on the item's own drive, finding items again, the 30-day clean-up · the undo log that survives a reload (30 minutes, 40 records, laptop page only) |
 | `nluq.test.js` | 16 | Qwen assist: the server list and the page list match, every command it may name has a real handler, and the risky ones are not offered |
@@ -1103,7 +1105,7 @@ npm run test:live
 | `statemerge.test.js` | 26 | Saving a stale list: another tab’s additions kept, this tab’s deletions honoured, attendance by subject, older pages without a base still replace, through the real route |
 | `statesync.test.js` | 13 | Two tabs against a real server: a saved list is pushed to the other tab (only when it changed), settings are not, the chat still is, an import tells every tab to reload |
 | `tts.test.js` · `lockclient.test.js` | 21 · 21 | The online-voice route against a fake socket (input checks, rate limits, escaping, cache, clean failures) · the page half of the app lock (reload when locked, throttled keep-alive pings, nothing reloads twice) |
-| `netsafe.test.js` | 62 | Private, mapped and odd addresses are refused; names that resolve privately; redirects to this laptop are refused hop by hop; loops stop |
+| `netsafe.test.js` | 68 | Private, mapped and odd addresses are refused; names that resolve privately; redirects to this laptop are refused hop by hop; loops stop; a page download stops at 1 MB and PDFs/images are refused |
 | `websearch.test.js` | 11 | "Open X website" picks the right result (not a look-alike) |
 | `autostart.test.js` | 15 | Start with Windows |
 

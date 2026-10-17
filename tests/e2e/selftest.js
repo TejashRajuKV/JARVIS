@@ -207,6 +207,20 @@
     check('Decider', '"what version of node am I running" → the version on THIS laptop (not a web search)', called('/tool/toolVersion', d => /node/i.test(d.tool || '')) && /You’re running \*?\*?Node\.js/.test(r.text), r.text);
     r = await say('what is the latest file in my project');
     check('Decider', '"the latest file in my project" → newest files, never the web', !called('/tool/research', d => /latest file/i.test(d.q || '')), r.text);
+    // What actually ran (not just what the decider said): the tool calls made after each phrase.
+    const since = n => calls.slice(n).map(c => c.endpoint);
+    let n0 = calls.length;
+    r = await say('check the latest git commit in my project');
+    check('Decider', '"check the latest git commit in my project" → shows the log, never starts a commit', since(n0).includes('/tool/gitLog') && !since(n0).includes('/tool/gitPending') && !/What commit message should I use/.test(r.text), since(n0).join(',') + ' · ' + r.text);
+    n0 = calls.length;
+    r = await say('show the last git commit');
+    check('Decider', '"show the last git commit" → the log', since(n0).includes('/tool/gitLog') && !/What commit message should I use/.test(r.text), since(n0).join(',') + ' · ' + r.text);
+    n0 = calls.length;
+    r = await say('search for my notes');
+    check('Decider', '"search for my notes" → your files, never the web', !since(n0).some(e => /research|webSearch/.test(e)), since(n0).join(',') + ' · ' + r.text);
+    n0 = calls.length;
+    r = await say('git commit the latest changes in my project');
+    check('Decider', 'a command that changes something + "latest … my project" → asks first, runs nothing', /Just to be sure/.test(r.text) && !since(n0).includes('/tool/gitPending') && !since(n0).includes('/tool/gitCommit'), since(n0).join(',') + ' · ' + r.text);
     settings.online = false;
     r = await say('what is the latest node.js version');
     check('Decider', 'Online tools off + fresh facts → asks to turn it on (never stale memory silently)', /Online tools/.test(r.text) && /ENABLE ONLINE TOOLS/.test(r.text) && /ANSWER FROM MEMORY/.test(r.text), r.text);

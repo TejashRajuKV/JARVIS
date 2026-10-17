@@ -61,4 +61,23 @@ async function safeFetch(href, init = {}, { fetchImpl = fetch, lookup, maxHops =
   throw new Error('Page redirected too many times');
 }
 
-module.exports = { isPrivateAddress, assertPublicUrl, safeFetch };
+// A page's text, read at most `maxBytes` (the download stops there, instead of reading everything and cutting it
+// afterwards). Only text pages: a PDF, image or download is refused, so it never reaches the AI as garbage.
+const TEXT_TYPE = /^(?:text\/|application\/(?:xhtml\+xml|xml|json|[\w.+-]+\+(?:xml|json))\b)/i;
+async function readText(r, maxBytes = 1024 * 1024) {
+  const type = (r.headers && r.headers.get && r.headers.get('content-type')) || '';
+  if (type && !TEXT_TYPE.test(type.trim())) throw new Error('Not a text page (' + type.split(';')[0].trim() + ')');
+  if (!r.body || !r.body.getReader) return String(await r.text()).slice(0, maxBytes);
+  const reader = r.body.getReader(), parts = [];
+  let size = 0;
+  try {
+    while (size < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value); size += value.byteLength;
+    }
+  } finally { if (size >= maxBytes) reader.cancel().catch(() => {}); }
+  return Buffer.concat(parts.map(p => Buffer.from(p))).subarray(0, maxBytes).toString('utf8');
+}
+
+module.exports = { isPrivateAddress, assertPublicUrl, safeFetch, readText };

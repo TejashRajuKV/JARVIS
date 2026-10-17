@@ -780,7 +780,9 @@ const NLU = (() => {
 
     // git / dev
     ['GIT_STATUS', /\bgit status\b|\brepo(sitory)? status\b|\bany (uncommitted|unstaged) changes\b/, .96, 'gitStatus'],
-    ['GIT_LOG', /\bgit log\b|\b(recent|last|latest) commits?\b|\bcommit history\b/, .95, 'gitLog'],
+    // "check the latest git commit in my project" / "show the last git commit" are about the log, not making a commit;
+    // anything carrying a commit message ("git commit with message fix the last commit") stays GIT_COMMIT
+    ['GIT_LOG', /^(?!.*(?:\b(?:message|saying)\b|(?:^|\s)-m\b))(?:.*\bgit log\b|.*\b(recent|last|latest|previous|newest|most recent) (git )?commits?\b|.*\bcommit history\b|.*\b(show|check|see|view|display|list|what was|what is|what's)\b.*\bgit commits?\b(?! (my|the|all|everything|it)\b))/, .95, 'gitLog'],
     ['GIT_DIFF', /\bgit diff\b|\bwhat (has )?changed\b/, .93, 'gitDiff'],
     ['GIT_COMMIT', /\bgit commit\b|\bcommit (my |the |all )?(changes|work|code)\b/, .93, 'gitCommit'],
     ['CHECK_PORT', /\bport \d{2,5}\b|\bcheck (the )?port\b|\bis (the )?port\b/, .94, 'checkPort'],

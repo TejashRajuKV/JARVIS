@@ -35,6 +35,8 @@ sh(['init', '-q']); sh(['config', 'commit.gpgsign', 'false']);
   const cases = [
     ['key.txt.js', '-----BEGIN RSA PRIVATE KEY-----\nMIIE', 'private key'], ['aws.js', 'const k = "AKIAIOSFODNN7EXAMPLE";', 'AWS access key'], ['gh.js', 'token: ghp_' + 'a'.repeat(36), 'GitHub token'],
     ['slack.js', 'x = "xoxb-1234567890-abcdefghij"', 'Slack token'], ['openai.js', 'const k = "sk-' + 'A1b2'.repeat(8) + '"', 'API key'], ['google.js', 'key=AIza' + 'x'.repeat(35), 'Google API key'],
+    ['stripe.js', 'const s = "' + 'sk_' + 'live_' + 'Ab12'.repeat(6) + '"', 'Stripe secret key'], ['npmtok.yml', 'token: ' + 'npm_' + 'a1B2c3'.repeat(6), 'npm token'],
+    ['hf.py', 'HF = ' + 'hf_' + 'Zy9'.repeat(11), 'Hugging Face token'],
     ['pw.py', 'password = "correct-horse-battery"', 'hard-coded password'], ['conf.json', '{"api_key": "abcdefghijklmnop1234"}', 'hard-coded password'],
   ];
   for (const [name, text, why] of cases) { const r = G.findSecrets([w(name, text)], tmp); check('content secret found: ' + name, r.length === 1 && r[0].path === name && r[0].why.includes(why), r); }

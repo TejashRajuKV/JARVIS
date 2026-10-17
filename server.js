@@ -1926,7 +1926,7 @@ async function pageText(href, { timeout = 10000, max = 8000 } = {}) {
   // netsafe.js: the host is resolved and every address checked, and redirects are followed one hop at a time with the same check (a public page may not send us to this laptop).
   const r = await NetSafe.safeFetch(url.href, { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html,text/plain', 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(timeout) });
   if (!r.ok) throw new Error(`Page returned HTTP ${r.status}`);
-  const html = (await r.text()).slice(0, 1024 * 1024);
+  const html = await NetSafe.readText(r, 1024 * 1024);   // stops downloading at 1 MB; non-text pages (PDF, images) are refused
   const title = stripTags((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
   const text = decodeEntities(html
     .replace(/<(script|style|noscript|svg|nav|footer|header|form|iframe)[\s\S]*?<\/\1>/gi, ' ')
