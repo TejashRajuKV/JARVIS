@@ -140,7 +140,30 @@ let classes = store.get('jarvis.classes', []);      // [{id,name,day,h,m}]
 let attendance = store.get('jarvis.attendance', {}); // { Subject: {held, attended, log:[{d,s}]} }
 let marks = store.get('jarvis.marks', []);          // [{id,title,gpa,credits,ts}]
 let chatLog = store.get('jarvis.chat', []);         // [{role,text,meta,t}]
+// An assignment's to-dos are linked to its deadline (deadlineId). The deadline shows "2/5 done", and when the last one is ticked JARVIS offers to mark the
+// deadline submitted (asked once per deadline); marking the deadline submitted ticks any to-dos still open for it.
+const linkedTodos = dd => todos.filter(t => t.deadlineId === dd.id);
+function checkLinkedDeadlines() {
+  for (const dd of deadlines) {
+    if (dd.done || dd.allDoneAsked) continue;
+    const ts = linkedTodos(dd);
+    if (!ts.length || ts.some(t => !t.done)) continue;
+    dd.allDoneAsked = true;
+    if (typeof jarvisSay === 'function') jarvisSay({ text: '✓ All ' + ts.length + ' to-dos for **' + dd.title + '** are done. Mark the deadline as submitted?', intent: 'DEADLINE', noPersona: true, noTTS: true,
+      actions: [{ label: 'MARK SUBMITTED', fn: () => { completeDeadline(dd); bumpStat('deadlinesDone'); saveTasks(); toast('Nice — "' + dd.title + '" marked done'); } }] });
+  }
+}
+function finishLinkedTodos(dd) { for (const t of linkedTodos(dd)) if (!t.done) t.done = true; }
+// Marking a deadline submitted: its open to-dos are ticked, and a weekly one adds next week's (the first due date after now, same weekday and time).
+function completeDeadline(dd) {
+  dd.done = true; finishLinkedTodos(dd);
+  if (dd.repeat === 'weekly') {
+    let next = dd.due + 7 * 864e5; while (next < Date.now()) next += 7 * 864e5;
+    if (!deadlines.some(x => !x.done && x.title === dd.title && x.due === next)) deadlines.push({ id: rid(), title: dd.title, due: next, done: false, repeat: 'weekly' });
+  }
+}
 const saveTasks = () => {
+  try { checkLinkedDeadlines(); } catch (e) { /* only a nicety */ }
   store.set('jarvis.todos', todos); store.set('jarvis.reminders', reminders);
   store.set('jarvis.deadlines', deadlines); store.set('jarvis.classes', classes);
   store.set('jarvis.attendance', attendance); store.set('jarvis.marks', marks);
@@ -1403,6 +1426,7 @@ function tasksTick(now) {
       changed = true;
       if (r.repeat) r.at = nextOccurrence(r, now); else r.fired = true;
       if (r.routineId && typeof Routines !== 'undefined') { log('ok', 'scheduled routine: ' + r.text); Routines.runById(r.routineId); continue; }
+      if (r.kind === 'tenders' && typeof Tenders !== 'undefined') { log('ok', 'tender digest'); Tenders.digest(r); continue; }
       sfx.alarm(); toast('⏰ ' + r.text, true); notify('Reminder', r.text);
       log('ok', 'reminder fired: ' + r.text);
       jarvisSay({ text: '⏰ ' + Persona.Sir() + ', you asked me to remind you: **' + r.text + '**.', speak: Persona.Sir() + ', you asked me to remind you: ' + r.text.replace(/\s—\shttps?:\/\/\S+/, ''), intent: 'REMINDER', tool: 'remind' });
@@ -1445,6 +1469,7 @@ if (serverScheduler && 'EventSource' in window) {
     if (r) { r.at = ev.at; r.fired = ev.fired; saveTasks(); }
     if (!ev.lead) return; // only one open tab announces it
     if (ev.digest) { sfx.alarm(); jarvisSay({ text: ev.text, intent: 'WEEK_REPORT', noTTS: true }); return; } // the Sunday weekly summary
+    if (r && r.kind === 'tenders' && typeof Tenders !== 'undefined') { log('ok', 'tender digest'); Tenders.digest(r); return; }   // the daily KPPP digest (tenders-page.js)
     sfx.alarm(); toast('⏰ ' + ev.text, true); notify('Reminder', ev.text);
     log('ok', 'reminder fired: ' + ev.text);
     jarvisSay({ text: '⏰ ' + Persona.Sir() + ', you asked me to remind you: **' + ev.text + '**.', speak: Persona.Sir() + ', you asked me to remind you: ' + ev.text.replace(/\s—\shttps?:\/\/\S+/, ''), intent: 'REMINDER', tool: 'remind' });
@@ -1658,8 +1683,9 @@ function renderTasks() {
   ds.forEach(dd => {
     const d = document.createElement('div'); d.className = 'titem';
     d.innerHTML = '<button class="check" title="Mark submitted"></button><span class="tx"></span><span class="due ' + dueClass(dd.due) + '">' + escHtml(dueLabel(dd.due)) + '</span><button class="x" title="Delete">✕</button>';
-    d.querySelector('.tx').textContent = dd.title;
-    d.querySelector('.check').addEventListener('click', () => { dd.done = true; sfx.ok(); bumpStat('deadlinesDone'); toast('Nice — "' + dd.title + '" marked done'); saveTasks(); });
+    const lt = linkedTodos(dd);
+    d.querySelector('.tx').textContent = dd.title + (dd.repeat === 'weekly' ? ' ↻' : '') + (lt.length ? ' · ' + lt.filter(t => t.done).length + '/' + lt.length + ' done' : '');
+    d.querySelector('.check').addEventListener('click', () => { completeDeadline(dd); sfx.ok(); bumpStat('deadlinesDone'); toast('Nice — "' + dd.title + '" marked done'); saveTasks(); });
     d.querySelector('.x').addEventListener('click', () => { undoRemoved('deleted deadline', () => deadlines, v => { deadlines = v; }, saveTasks, removedFrom(deadlines, x => x !== dd)); deadlines = deadlines.filter(x => x !== dd); saveTasks(); });
     dl.appendChild(d);
   });

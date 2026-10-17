@@ -185,6 +185,38 @@ const Life = (() => {
     const today = J.summarize(list, 'today'), month = J.summarize(list, 'this month');
     return say('✓ Logged **' + J.money(e.amount) + '**' + (e.note ? ' for **' + e.note + '**' : '') + ' (' + e.cat + (Math.abs(e.t - Date.now()) > 6 * 36e5 ? ', ' + dateLabel(e.t) : '') + '). Today **' + J.money(today.total) + '**, this month **' + J.money(month.total) + '**. Say **“undo”** to take it back.' + budgetLine(list, false), { speak: 'Logged ' + Math.round(e.amount) + ' rupees.', suggestions: ['How much did I spend this month?'] });
   }
+  /* ---- your own categories and your currency ---- */
+  const myCats = () => st('jarvis.expenseCats', []);
+  const applyPrefs = () => { if (!J) return; J.setCustomCats(myCats()); J.setCurrency(st('jarvis.currency', '₹')); };
+  function categoryOp(c) {
+    const list = myCats();
+    if (c.op === 'list') {
+      return say(list.length ? '**Your expense categories** (checked before the built-in ones)\n' + list.map(x => '- **' + x.name + '** — ' + x.words.join(', ')).join('\n') + '\n\nThe built-in ones: ' + J.CATS.map(x => x[0]).join(', ') + '.' : 'You have no categories of your own. Say **“make a category subscriptions for netflix, spotify, prime”**. The built-in ones: ' + J.CATS.map(x => x[0]).join(', ') + '.');
+    }
+    if (c.op === 'del') {
+      const hit = list.find(x => x.name.toLowerCase() === c.name.toLowerCase());
+      if (!hit) return say('You have no category called **' + c.name + '**.');
+      put('jarvis.expenseCats', list.filter(x => x !== hit)); applyPrefs();
+      undo('removed a category', () => { put('jarvis.expenseCats', [...myCats(), hit]); applyPrefs(); return 'The category ' + hit.name + ' is back.'; });
+      return say('✓ Removed the category **' + hit.name + '**. Expenses already in it keep it. Say **“undo”** to bring it back.');
+    }
+    const old = list.find(x => x.name.toLowerCase() === c.name.toLowerCase());
+    const next = old ? list.map(x => (x === old ? { name: old.name, words: [...new Set([...old.words, ...c.words])] } : x)) : [...list, { name: c.name, words: c.words }];
+    put('jarvis.expenseCats', next.slice(0, 30)); applyPrefs();
+    // earlier expenses that match move into it too (with the same undo)
+    const exp = expenses(), moved = [];
+    for (const e of exp) { const cat = J.categorize(e.note || ''); if (cat !== e.cat && cat === (old ? old.name : c.name)) { moved.push([e.id, e.cat]); e.cat = cat; } }
+    if (moved.length) saveExpenses(exp);
+    undo((old ? 'changed' : 'made') + ' a category', () => { put('jarvis.expenseCats', list); applyPrefs(); const cur = expenses(), back = new Map(moved); for (const e of cur) if (back.has(e.id)) e.cat = back.get(e.id); saveExpenses(cur); return 'Categories are back as they were.'; });
+    return say('✓ ' + (old ? 'Added to' : 'Made') + ' the category **' + (old ? old.name : c.name) + '** for ' + c.words.join(', ') + '.' + (moved.length ? ' ' + pl(moved.length, 'earlier expense') + (moved.length === 1 ? ' was' : ' were') + ' moved into it.' : '') + ' Say **“undo”** to take it back.');
+  }
+  function currencyOp(c) {
+    if (c.unknown) return say('I can show amounts in ₹, $, € or £. “' + c.unknown + '” is not one of them.');
+    const before = st('jarvis.currency', '₹');
+    put('jarvis.currency', c.sym); applyPrefs();
+    undo('changed the currency', () => { put('jarvis.currency', before); applyPrefs(); return 'Amounts are shown in ' + before + ' again.'; });
+    return say('✓ Amounts are now shown in **' + c.sym + '** (' + J.money(1234.5) + '). Nothing you logged changes — only the symbol. Say **“undo”** to go back.');
+  }
   /* ---- recurring expenses: logged by themselves on their day each month (while JARVIS is open; one catch-up when it opens late) ---- */
   const recurring = () => st('jarvis.recurring', []);
   const saveRecurring = l => put('jarvis.recurring', l.slice(0, 40));
@@ -215,7 +247,7 @@ const Life = (() => {
   }
   // Called from the page's one-minute tick: logs what is due, once per month per item, with one line in the chat.
   function recurTick(now) {
-    try {
+    try { applyPrefs();
       const due = J.dueRecurring(recurring(), now || Date.now());
       if (!due.length) return null;
       const exp = expenses(), list = recurring();
@@ -466,6 +498,9 @@ const Life = (() => {
     if (KA_OFF.test(t)) return keepalive('off', source);
     const bk = matchBackup(t); if (bk) return backup(bk, source);
     const sh = matchShot(t); if (sh) return shots(sh, source);
+    applyPrefs();
+    const cg = J.parseCategory(t); if (cg) return categoryOp(cg);
+    const cu = J.parseCurrency(t); if (cu) return currencyOp(cu);
     const rc = J.parseRecurring(t); if (rc) return recurringOp(rc);
     const bg = J.parseBudget(t); if (bg) return budgetOp(bg);
     if (EXP_EXPORT.test(t)) return exportExpenses();

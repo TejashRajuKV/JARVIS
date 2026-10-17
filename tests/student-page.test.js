@@ -266,6 +266,24 @@ const reset = () => { calls.length = 0; said.length = 0; undo.length = 0; replie
   r = await S('fit my os study plan to my timetable'); check('fit: an unknown plan name is told, with the real names', /no study plan called/.test(r.text) && /DBMS/.test(r.text));
   global.Date = RD; Date.now = realNowF;
 
+  // flashcards → Anki, and spaced-repetition stats
+  for (const x of ['export my flashcards to anki', 'export my dbms flashcards to anki', 'export the os deck to anki', 'save my flash cards as an anki file']) check('wording: Anki export: "' + x + '"', k(x) === 'anki', k(x));
+  check('wording: Anki export reads the deck', Student.match('export my dbms flashcards to anki').deck === 'dbms' && Student.match('export my flashcards to anki').deck === '');
+  for (const x of ['flashcard stats', 'show my flashcards progress', 'how am i doing with my flashcards']) check('wording: flashcard stats: "' + x + '"', k(x) === 'flashstats', k(x));
+  for (const x of ['export my expenses', 'make flashcards on dbms', 'review my flashcards', 'what is anki']) check('wording: not Anki / stats: "' + x + '"', !['anki', 'flashstats'].includes(k(x)), k(x));
+  const txt = Student.ankiText([{ q: 'What is 3NF?', a: 'No transitive\tdependencies\nat all', deck: 'DBMS notes' }]);
+  check('anki: the file starts with the header lines Anki reads, then front TAB back TAB tag, one line per card (tabs and new lines inside cards are made safe)', txt.split('\n')[0] === '#separator:tab' && /#tags column:3/.test(txt) && txt.split('\n')[3] === 'What is 3NF?\tNo transitive dependencies<br>at all\tDBMS_notes', txt);
+  { const now = Date.now();
+    const FC = [{ id: 'f1', deck: 'DBMS', q: 'q1', a: 'a1', box: 1, due: now - 1000 }, { id: 'f2', deck: 'DBMS', q: 'q2', a: 'a2', box: 5, due: now + 864e5 }, { id: 'f3', deck: 'OS', q: 'q3', a: 'a3', box: 2, due: now - 5 }];
+    reset(); flashcards = FC.map(x => ({ ...x })); replies['/tool/writeFile'] = b => ({ success: true, name: b.name });
+    r = await S('export my flashcards to anki'); const w = calls.find(c => c[0] === '/tool/writeFile');
+    check('anki: all cards are written to Notes/anki-<date>.txt, and it says how to import', w && /^Notes\/anki-\d{4}-\d\d-\d\d\.txt$/.test(w[1].name) && w[1].content.trim().split('\n').length === 3 + 3 && /File → Import/.test(r.text) && /3 cards/.test(r.text), [w && w[1].name, r.text]);
+    reset(); flashcards = FC.map(x => ({ ...x })); replies['/tool/writeFile'] = b => ({ success: true, name: b.name }); r = await S('export my dbms flashcards to anki'); const w2 = calls.find(c => c[0] === '/tool/writeFile');
+    check('anki: one deck only, in its own file', w2 && /anki-dbms-/.test(w2[1].name) && w2[1].content.trim().split('\n').length === 3 + 2, w2 && w2[1]);
+    reset(); flashcards = FC.map(x => ({ ...x })); r = await S('export my physics flashcards to anki'); check('anki: an unknown deck lists the real ones, writes nothing', !calls.length && /no deck called/.test(r.text) && /DBMS/.test(r.text) && /OS/.test(r.text), r.text);
+    r = await S('flashcard stats'); check('stats: totals (3 cards, 2 due, 1 known well, 1 new) and one line per deck', /3 cards/.test(r.text) && /2 due now/.test(r.text) && /1 known well/.test(r.text) && /1 still new/.test(r.text) && /\*\*DBMS\*\* — 2 cards · 1 due · 1 known well \(50%\)/.test(r.text), r.text);
+    flashcards = []; r = await S('export my flashcards to anki'); check('anki: no cards → how to make some', /no flashcards yet/.test(r.text));
+    flashcards = []; }
   // date order
   for (const x of ['my college writes dates month first', 'read dates day first', 'use dates as month first', 'dates are mm/dd', 'treat the dates as dd/mm format', 'set dates in month-first order']) check('wording: date order taken: "' + x + '"', k(x) === 'dateorder', k(x));
   for (const x of ['what are the dates', 'add assignment due 10/11/2026', 'dates for exams', 'my college writes dates']) check('wording: not a date-order sentence: "' + x + '"', k(x) !== 'dateorder', k(x));

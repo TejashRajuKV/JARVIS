@@ -68,7 +68,8 @@ ToolHandlers.add('tasks', async function (p, raw, s, a) {
       return { text: 'You have ' + plural(pend.length, 'thing') + ' to do:\n' + todos.map((t, i) => t.done ? null : (i + 1) + '. ' + t.text).filter(Boolean).join('\n'), speak: 'You have ' + plural(pend.length, 'thing') + ' to do. ' + pend.slice(0, 3).map(t => t.text).join('. ') + '.', tool: 'todo' };
     }
     case 'DONE_TODO': {
-      const m = s.match(/(\d+)/);
+      // "mark 2 as done", "tick item #3": a number on its own is a position. A digit inside a word ("q2 segmentation", "lab3") is part of the name.
+      const m = s.match(/(?:^|\s)#?(\d{1,3})(?=\s|$)/);
       let t = m ? todos[+m[1] - 1] : null;
       if (!t) {
         const q = s.replace(/^(mark|tick|check( off)?|complete|finish|finished|done with|cross off|strike)\s+(task |to-?do |item )?/, '').replace(/\s*(as )?(done|complete|completed|off)$/, '');
@@ -138,19 +139,22 @@ ToolHandlers.add('tasks', async function (p, raw, s, a) {
 
     /* ---- deadlines ---- */
     case 'ADD_DEADLINE': {
-      const dueText = a.due || s;
-      const date = NLU.parseDate(dueText);
-      let title = a.title || cap(keepCase(p, NLU.stripWhen(s.replace(/^(add|new|save|note|i have|there'?s|got)( an?| my)?\s+/, '').replace(/\s*\b(is |which is |that is )?due\b.*$/, '')).replace(/\s+(on|by|for)$/, '')));
+      // "add assignment DBMS record due every Monday" / "weekly lab report due Friday": a weekly deadline — when you mark it submitted, next week's is added
+      const WEEKLY = /\s*\b(?:every|each)\s+(?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?\b|\s*\bweekly\b|\s*\bevery\s+week\b/i;
+      const weekly = WEEKLY.test(s);
+      const dueText = (a.due || s).replace(/\b(?:every|each)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?\b/i, '$1').replace(/\s*\bweekly\b|\s*\b(?:every|each)\s+week\b/i, '');
+      const date = NLU.parseDate(dueText) || (weekly && !/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|\d)/i.test(dueText) ? (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d; })() : null);
+      let title = a.title || cap(keepCase(p, NLU.stripWhen(s.replace(WEEKLY, ' ').replace(/^(add|new|save|note|i have|there'?s|got)( an?| my)?\s+/, '').replace(/\s*\b(is |which is |that is )?due\b.*$/, '')).replace(/\s+(on|by|for)$/, '')));
       if (!title) return { text: 'What is the assignment called?' };
       if (!date) { ctx.pending = { intent: 'ADD_DEADLINE', title }; return { text: 'When is **' + title + '** due?', suggestions: ['tomorrow', 'Friday', 'next Monday'] }; }
       const t = NLU.parseTimeOfDay(dueText);
       if (t) date.setHours(t.h, t.m, 0, 0); else date.setHours(23, 59, 0, 0);
-      deadlines.push({ id: rid(), title, due: date.getTime(), done: false }); saveTasks();
+      deadlines.push({ id: rid(), title, due: date.getTime(), done: false, ...(weekly ? { repeat: 'weekly' } : {}) }); saveTasks();
       const today0 = new Date(); today0.setHours(0, 0, 0, 0);
       const due0 = new Date(date); due0.setHours(0, 0, 0, 0);
       const days = Math.round((due0 - today0) / 864e5);
       toolStep('addDeadline → ' + date.toDateString());
-      return { text: 'Saved: **' + title + '** due ' + fmtDay(date) + (t ? ' at ' + fmtTime(date) : '') + ' (' + (days <= 1 ? 'that is soon!' : 'in ' + days + ' days') + ').' + (days <= 2 ? ' Want me to start a focus session?' : ''), tool: 'deadline', suggestions: days <= 2 ? ['Start a focus session'] : null };
+      return { text: 'Saved: **' + title + '** due ' + fmtDay(date) + (t ? ' at ' + fmtTime(date) : '') + (weekly ? ', **every week** (when you mark it submitted, next week’s is added)' : '') + ' (' + (days <= 1 ? 'that is soon!' : 'in ' + days + ' days') + ').' + (days <= 2 ? ' Want me to start a focus session?' : ''), tool: 'deadline', suggestions: days <= 2 ? ['Start a focus session'] : null };
     }
     case 'LIST_DEADLINES': {
       const ds = deadlines.filter(d => !d.done && d.due > Date.now() - 864e5).sort((x, y) => x.due - y.due);

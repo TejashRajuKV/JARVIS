@@ -1942,6 +1942,28 @@ app.post('/api/tool/fetchPage', async (req, res) => {
   catch (e) { res.status(/Invalid|Only public/.test(e.message) ? 400 : 502).json({ error: e.message }); }
 });
 
+/* ---------------- Karnataka tenders: the public total from KPPP ---------------- */
+// KPPP shows its tender LIST only after a CAPTCHA (JARVIS does not get around it: the list comes from what you copy, see tenders-page.js). The one thing it
+// gives out openly is the total of live tenders. This asks for exactly that, from one fixed address (nothing in the request can change where it goes), only
+// when Online tools are on, at most every 10 minutes, and never throws: { available: false, why } when it cannot tell.
+const KPPP_COUNT_URL = 'https://kppp.karnataka.gov.in/supplier-registration-service/v1/api/portal-service/metrics/get-count';
+let kpppCount = null;
+app.post('/api/tenders/count', async (req, res) => {
+  if (!(req.body && req.body.online)) return res.json({ success: true, available: false, why: 'offline' });
+  if (kpppCount && Date.now() - kpppCount.at < 10 * 60000) return res.json({ success: true, available: true, cached: true, live: kpppCount.live, closingToday: kpppCount.closingToday });
+  const testUrl = process.env.JARVIS_TEST && process.env.JARVIS_KPPP_COUNT_URL;          // tests point it at a local fake; never set in normal use
+  try {
+    const opts = { headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) };
+    const r = testUrl ? await fetch(testUrl, opts) : await NetSafe.safeFetch(KPPP_COUNT_URL, opts);
+    if (!r.ok) return res.json({ success: true, available: false, why: 'KPPP answered HTTP ' + r.status });
+    const j = await r.json();
+    const live = Number(j && j.liveTenders), closingToday = Number(j && j.tendersClosingToday);
+    if (!Number.isFinite(live)) return res.json({ success: true, available: false, why: 'KPPP gave no total' });
+    kpppCount = { at: Date.now(), live, closingToday: Number.isFinite(closingToday) ? closingToday : null };
+    res.json({ success: true, available: true, live, closingToday: kpppCount.closingToday });
+  } catch (e) { res.json({ success: true, available: false, why: 'KPPP could not be reached (' + String(e && e.message || e).slice(0, 80) + ')' }); }
+});
+
 /* ---------------- web search (Bing HTML, no API key) ---------------- */
 const searchCache = new Map();
 function bingRealUrl(href) {

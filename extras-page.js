@@ -762,7 +762,7 @@ const Extras = (() => {
     if (HEALTH_CLEAR.test(t)) { const r = await callTool('/ai/health/clear', {}); return say(r.error ? 'Couldn’t clear it: ' + r.error : '✓ Cleared the AI call history.'); }
     if (HEALTH.test(t)) return health(t);
     // camera, watchers and student tools live in their own files (camera-page.js, watch-page.js, student-page.js); each answers only explicit wording
-    for (const mod of [typeof Student !== 'undefined' && Student, typeof Life !== 'undefined' && Life, typeof Dev !== 'undefined' && Dev, typeof Camera !== 'undefined' && Camera, typeof Watch !== 'undefined' && Watch]) {      // Student first: during an exam every message is an answer
+    for (const mod of [typeof Student !== 'undefined' && Student, typeof Life !== 'undefined' && Life, typeof Dev !== 'undefined' && Dev, typeof Tenders !== 'undefined' && Tenders, typeof Camera !== 'undefined' && Camera, typeof Watch !== 'undefined' && Watch]) {      // Student first: during an exam every message is an answer
       if (!mod) continue;
       // One module that throws (a bug, a missing page element) must not take the whole turn down: log it and let the next module and the normal handling answer.
       let r = null;

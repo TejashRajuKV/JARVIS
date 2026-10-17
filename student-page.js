@@ -32,10 +32,15 @@ const Student = (() => {
   const ASSIGN = /^(?:please\s+)?(?:add|read|import|log|capture|take|get)\s+(?:my\s+|an?\s+|the\s+|this\s+|new\s+)?(?:assignment|homework|home\s+work|tutorial\s+sheet|worksheet|lab\s+record)(?:\s+(?:sheet|details|question\s+paper))?\s+(?:from|using|via|off)\s+(?:a\s+|an\s+|the\s+|my\s+)?(photo|picture|image|pic|camera|(?:pdf|file|document)\s+.+|.+\.(?:pdf|txt|md|docx?))\s*[.!]*$/i;
   // "my college writes dates month first" / "read dates day first": how 10/11/2026 in an assignment sheet is read. Day first unless you say otherwise.
   const DATE_ORDER = /^(?:please\s+)?(?:(?:my\s+(?:college|university|school|teacher)\s+)?(?:writes|uses)\s+dates\s+(?:as\s+|in\s+)?|(?:read|use|treat|set)\s+(?:the\s+)?dates?\s+(?:as\s+|in\s+)?|dates\s+(?:are\s+|in\s+))(month[\s-]first|day[\s-]first|mm\/dd(?:\/yy(?:yy)?)?|dd\/mm(?:\/yy(?:yy)?)?)\s*(?:format|order)?\s*[.!]*$/i;
+  // Flashcards → Anki ("export my flashcards to anki", "export my dbms deck to anki") and how the spaced repetition is going ("flashcard stats").
+  const ANKI = /^(?:please\s+)?(?:export|save|send)\s+(?:all\s+)?(?:my\s+|the\s+)?(?:(.+?)\s+)?(?:flash\s?cards?|deck)(?:\s+(?:deck|cards))?\s+(?:to|for|into|as)\s+(?:an?\s+)?anki(?:\s+(?:file|deck|format))?\s*[.!]*$/i;
+  const FLASH_STATS = /^(?:please\s+)?(?:show\s+)?(?:my\s+)?(?:flash\s?cards?|spaced\s+repetition|deck)\s+(?:stats|statistics|progress|report)\s*[?.!]*$|^how\s+(?:am\s+i|is\s+my)\s+(?:doing\s+(?:with|on)\s+)?(?:my\s+)?flash\s?cards?(?:\s+going)?\s*[?.!]*$/i;
   const OFFSTT = /^(?:please\s+)?(?:(turn\s+on|enable|switch\s+on|use)|(turn\s+off|disable|switch\s+off|stop\s+using))\s+(?:the\s+)?offline\s+(?:speech|transcription|whisper|speech[\s-]to[\s-]text)(?:\s+for\s+(?:my\s+)?lectures?)?\s*[.!]*$|^(?:is\s+)?(?:offline\s+(?:speech|whisper|transcription)|whisper)\s+(?:installed|ready|working|available|set\s*up)\s*\??$|^offline\s+(?:speech|whisper)\s+status\s*$/i;
   function match(t) {
     t = String(t || '').trim();
     let m;
+    if ((m = t.match(ANKI))) return { kind: 'anki', deck: (m[1] || '').replace(/^(?:all|my|the)\s+/i, '').trim() };
+    if (FLASH_STATS.test(t)) return { kind: 'flashstats' };
     if ((m = t.match(DATE_ORDER))) return { kind: 'dateorder', order: /^(?:month|mm)/i.test(m[1]) ? 'mdy' : 'dmy' };
     if ((m = t.match(OFFSTT))) return { kind: 'offstt', on: m[1] ? true : m[2] ? false : undefined };
     if ((m = t.match(ASSIGN))) { const s = m[1].trim(); return /^(?:photo|picture|image|pic|camera)$/i.test(s) ? { kind: 'assign', how: 'photo' } : { kind: 'assign', how: 'file', file: s.replace(/^(?:pdf|file|document)\s+/i, '').replace(/^["']|["']$/g, '') }; }
@@ -326,11 +331,42 @@ const Student = (() => {
     if (!a.due && !tasks.length) return say('I read ' + from + ' but could not find a due date or numbered questions.\n\n' + facts + '\n\nYou can add it by hand: **“add deadline ' + title + ' by 15 Oct”**.');
     const go = await ask('I read this from ' + from + ':\n\n' + facts + '\n\n' + (a.due ? 'Add it as a **deadline**' + (tasks.length ? ' and ' + pl(tasks.length, 'to-do') + ' (one per question)' : '') : 'No due date, so I can only add the **' + pl(tasks.length, 'to-do') + '**') + '? *Check the date: handwriting and unusual layouts can be misread.* **“undo”** removes what I add.', 'YES, ADD');
     if (!go) return say('Okay, I did not add anything.');
-    const dl = a.due ? { id: rid(), title, due: a.due, done: false } : null, td = tasks.map(x => ({ id: rid(), text: x, done: false, ts: Date.now() }));
+    const dl = a.due ? { id: rid(), title, due: a.due, done: false } : null, td = tasks.map(x => ({ id: rid(), text: x, done: false, ts: Date.now(), ...(dl ? { deadlineId: dl.id } : {}) }));     // linked: the deadline shows how many are done
     if (dl) deadlines.push(dl); if (td.length) todos.push(...td);
     saveTasks(); if (typeof sfx !== 'undefined') sfx.ok();
     if (typeof Undo !== 'undefined') Undo.push('added the assignment', () => { if (dl) deadlines = deadlines.filter(x => x.id !== dl.id); const ids = new Set(td.map(x => x.id)); todos = todos.filter(x => !ids.has(x.id)); saveTasks(); return 'Removed the assignment' + (td.length ? ' and its ' + pl(td.length, 'to-do') : '') + '.'; });
     return say('✓ Added ' + [dl ? 'the **deadline** (' + dueTxt + ')' : '', td.length ? pl(td.length, 'to-do') : ''].filter(Boolean).join(' and ') + '. Say **“undo”** to remove ' + (dl && td.length ? 'them' : 'it') + '.', { speak: 'I added the assignment.', suggestions: ['What are my deadlines?'] });
+  }
+
+  /* ================= flashcards: Anki export and spaced-repetition stats ================= */
+  const cards = () => (typeof flashcards !== 'undefined' && Array.isArray(flashcards) ? flashcards : []);
+  // Anki's plain-text import: one card per line, front TAB back TAB tags, with header lines that tell Anki the format (File → Import → this file).
+  function ankiText(list) {
+    const clean = x => String(x == null ? '' : x).replace(/\t/g, ' ').replace(/\r?\n/g, '<br>').trim();
+    return ['#separator:tab', '#html:true', '#tags column:3', ...list.map(c => clean(c.q) + '\t' + clean(c.a) + '\t' + clean(c.deck || 'jarvis').replace(/\s+/g, '_'))].join('\n') + '\n';
+  }
+  async function ankiExport(deckName) {
+    const all = cards();
+    if (!all.length) return say('You have no flashcards yet. Say **“make flashcards on normalization”** first.');
+    const want = String(deckName || '').toLowerCase();
+    const list = want ? all.filter(c => String(c.deck || '').toLowerCase().includes(want)) : all;
+    if (!list.length) return say('I have no deck called **' + deckName + '**. Your decks: ' + [...new Set(all.map(c => c.deck))].join(', ') + '.');
+    const day = typeof Study !== 'undefined' ? Study.ymd(Date.now()) : new Date().toISOString().slice(0, 10);
+    const name = 'Notes/anki-' + (want ? want.replace(/[^a-z0-9]+/g, '-') + '-' : '') + day + '.txt';
+    const r = await callTool('/tool/writeFile', { name, content: ankiText(list), overwrite: true });
+    if (r.error) return say('I could not save the file: ' + r.error);
+    return say('✓ Saved **' + pl(list.length, 'card') + '** for Anki to `' + (r.name || name) + '`.\n\nIn Anki: **File → Import**, pick that file — the fields are already set (front, back, and the deck name as a tag).', { actions: [{ label: 'OPEN FOLDER', fn: () => callTool('/tool/openFolder', { name: 'Notes' }) }] });
+  }
+  // Leitner boxes 1-5 (box 5 = known well); "due" = due now or earlier.
+  function flashStats() {
+    const all = cards();
+    if (!all.length) return say('You have no flashcards yet. Say **“make flashcards on normalization”**.');
+    const now = Date.now(), byDeck = new Map();
+    for (const c of all) { const d = c.deck || 'cards'; if (!byDeck.has(d)) byDeck.set(d, []); byDeck.get(d).push(c); }
+    const row = list => { const due = list.filter(c => !c.due || c.due <= now).length, known = list.filter(c => (c.box || 1) >= 5).length, newish = list.filter(c => (c.box || 1) <= 1).length; return { due, known, newish, n: list.length }; };
+    const tot = row(all);
+    const lines = [...byDeck].sort((a, b) => b[1].length - a[1].length).slice(0, 8).map(([d, l]) => { const x = row(l); return '- **' + d + '** — ' + x.n + ' cards · ' + x.due + ' due · ' + x.known + ' known well (' + Math.round(100 * x.known / x.n) + '%)'; });
+    return say('**Flashcards** — ' + pl(tot.n, 'card') + ', **' + tot.due + ' due now**, ' + tot.known + ' known well, ' + tot.newish + ' still new.\n\n' + lines.join('\n') + (tot.due ? '\n\nSay **“review my flashcards”** to do the due ones.' : '\n\nNothing is due — come back tomorrow.'), { speak: tot.due + ' flashcards are due.' });
   }
 
   /* ================= what do I need in the end-sem? ================= */
@@ -585,6 +621,8 @@ const Student = (() => {
       case 'assign': return assignment(m, source);
       case 'endsem': return endSem(m);
       case 'gradecuts': return gradeCutsSet(m.cuts);
+      case 'anki': return ankiExport(m.deck);
+      case 'flashstats': return flashStats();
       case 'dateorder': {
         if (typeof settings === 'undefined') return say('I could not save that here.');
         const before = settings.dateOrder || 'dmy'; settings.dateOrder = m.order; if (typeof saveSettings === 'function') saveSettings();
@@ -604,6 +642,6 @@ const Student = (() => {
     }
     return null;
   }
-  return { intercept, match, attendanceTick, markAttendance, cancelAttendance, fitStudy, endSem, assignment, active: () => !!E, lectureActive: () => !!L, get _E() { return E; }, get _L() { return L; }, importEntries, bunk, examHistory, lectureStatus, subjectName };
+  return { intercept, match, ankiText, attendanceTick, markAttendance, cancelAttendance, fitStudy, endSem, assignment, active: () => !!E, lectureActive: () => !!L, get _E() { return E; }, get _L() { return L; }, importEntries, bunk, examHistory, lectureStatus, subjectName };
 })();
 if (typeof module !== 'undefined') module.exports = Student;

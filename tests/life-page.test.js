@@ -133,6 +133,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     undo[0][1](); check('recurring: undo brings it back', store.d['jarvis.recurring'].some(x => x.note === 'netflix'));
     r = await S('stop recurring zzzz'); check('recurring: an unknown name is said plainly', /no recurring expense called/.test(r.text));
     for (const k in store.d) delete store.d[k]; Object.assign(store.d, JSON.parse(keepD)); undo.length = 0; }
+  { const keepD = JSON.stringify(store.d); store.d['jarvis.expenses'] = []; delete store.d['jarvis.expenseCats']; delete store.d['jarvis.currency']; undo.length = 0;
+    await S('paid 199 for netflix'); check('categories: before, netflix is Fun', store.d['jarvis.expenses'][0].cat === 'Fun');
+    undo.length = 0; r = await S('make a category subscriptions for netflix, spotify and prime');
+    check('categories: made, saved, and the earlier netflix expense moved into it, with one undo', store.d['jarvis.expenseCats'].length === 1 && store.d['jarvis.expenses'][0].cat === 'Subscriptions' && /1 earlier expense was moved/.test(r.text) && undo.length === 1, [store.d['jarvis.expenses'], r.text]);
+    r = await S('spent 99 on spotify'); check('categories: a new expense goes into it', /Subscriptions/.test(r.text) && store.d['jarvis.expenses'][1].cat === 'Subscriptions', r.text);
+    r = await S('show my expense categories'); check('categories: listed, with the built-in ones', /Subscriptions/.test(r.text) && /netflix, spotify, prime/.test(r.text) && /Food/.test(r.text), r.text);
+    undo[0][1](); check('categories: undo removes it and moves the expense back', !store.d['jarvis.expenseCats'].length && store.d['jarvis.expenses'][0].cat === 'Fun');
+    undo.length = 0; r = await S('set my currency to dollars'); check('currency: saved, shown with an example, one undo', store.d['jarvis.currency'] === '$' && /\$1,234\.5/.test(r.text) && undo.length === 1, r.text);
+    r = await S('how much did I spend this month'); check('currency: the summary uses it', /\$/.test(r.text) && !/₹/.test(r.text.split('Latest')[0]), r.text);
+    undo[0][1](); check('currency: undo goes back to ₹', store.d['jarvis.currency'] === '₹');
+    r = await S('set my currency to yen'); check('currency: an unknown one is named, nothing changes', /not one of them/.test(r.text) && store.d['jarvis.currency'] === '₹');
+    for (const k in store.d) delete store.d[k]; Object.assign(store.d, JSON.parse(keepD)); undo.length = 0; Life.intercept('x');
+  }
   r = await S('how much did I spend last month'); check('summary: nothing in the window', /Nothing logged/.test(r.text));
   replies['/tool/writeFile'] = body => ({ success: true, name: body.name });
   r = await S('export my expenses');

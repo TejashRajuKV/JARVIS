@@ -11,7 +11,7 @@ const LifeParse = (() => {
   const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
   /* ---------- money ---------- */
-  const AMT = '(?:(?:rs\\.?|inr|₹)\\s*)?(\\d{1,3}(?:,\\d{2,3})+(?:\\.\\d{1,2})?|\\d+(?:\\.\\d{1,2})?)\\s*(k\\b)?\\s*(?:rs\\.?|rupees?|inr|₹|/-)?';
+  const AMT = '(?:(?:rs\\.?|inr|₹|\\$|usd|€|eur|£|gbp)\\s*)?(\\d{1,3}(?:,\\d{2,3})+(?:\\.\\d{1,2})?|\\d+(?:\\.\\d{1,2})?)\\s*(k\\b)?\\s*(?:rs\\.?|rupees?|inr|₹|/-|dollars?|usd|euros?|eur|pounds?|gbp)?';
   const toNumber = (n, k) => { const v = parseFloat(String(n).replace(/,/g, '')) * (k ? 1000 : 1); return Number.isFinite(v) ? Math.round(v * 100) / 100 : NaN; };
   const CATS = [
     ['Food', /\b(lunch|dinner|breakfast|snacks?|tea|chai|coffee|biryani|dosa|idli|meals?|food|canteen|mess|pizza|burger|juice|samosa|maggi|restaurant|cafe|café|swiggy|zomato|ice ?cream|groceries|grocery|milk|fruits?|vegetables?|water bottle)\b/i],
@@ -23,7 +23,36 @@ const LifeParse = (() => {
     ['Health', /\b(medicine|medicines|doctor|pharmacy|hospital|tablet|clinic|gym|checkup)\b/i],
     ['Rent & bills', /\b(rent|electricity|bill|hostel|deposit)\b/i],
   ];
-  const categorize = note => { for (const [c, re] of CATS) if (re.test(note)) return c; return 'Other'; };
+  // Your own categories ("make a category subscriptions for netflix, spotify, prime") are checked first; set by the page with setCustomCats.
+  let customCats = [];
+  const wordRe = w => new RegExp('\\b' + String(w).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+') + 's?\\b', 'i');
+  function setCustomCats(list) { customCats = (Array.isArray(list) ? list : []).filter(c => c && c.name && Array.isArray(c.words)).map(c => ({ name: c.name, res: c.words.filter(Boolean).map(wordRe) })); }
+  const categorize = note => { for (const c of customCats) if (c.res.some(re => re.test(note))) return c.name; for (const [c, re] of CATS) if (re.test(note)) return c; return 'Other'; };
+  // "make a category subscriptions for netflix, spotify and prime" · "add an expense category gym for gym, protein" · "remove the category gym" · "my expense categories"
+  const CAT_ADD = /^(?:please\s+)?(?:make|create|add|new|set\s+up)\s+(?:an?\s+|my\s+)?(?:new\s+)?(?:expense\s+|spending\s+)?category\s+(?:called\s+|named\s+)?["']?(.+?)["']?\s+for\s+(.+?)\s*[.!]*$/i;
+  const CAT_DEL = /^(?:please\s+)?(?:remove|delete|drop|forget)\s+(?:the\s+|my\s+)?(?:expense\s+|spending\s+)?category\s+["']?(.+?)["']?\s*[.!]*$/i;
+  const CAT_LIST = /^(?:please\s+)?(?:show|list|what\s+are)?\s*(?:me\s+)?(?:my\s+)?(?:expense|spending)\s+categories\s*[?.!]*$/i;
+  function parseCategory(text) {
+    const t = String(text || '').trim(); let m;
+    if ((m = t.match(CAT_ADD))) {
+      const name = m[1].trim().replace(/\s+/g, ' ').slice(0, 24), words = m[2].split(/\s*(?:,|\band\b|&|\/)\s*/i).map(w => w.trim().toLowerCase().replace(/^(?:my|the)\s+/, '')).filter(w => w.length >= 2).slice(0, 20);
+      return name && words.length ? { op: 'add', name: name.charAt(0).toUpperCase() + name.slice(1), words } : null;
+    }
+    if ((m = t.match(CAT_DEL))) return { op: 'del', name: m[1].trim() };
+    if (CAT_LIST.test(t)) return { op: 'list' };
+    return null;
+  }
+  // The currency symbol for amounts ("set my currency to dollars"); amounts are just numbers, the symbol is how they are shown.
+  const CURRENCIES = { '₹': ['₹', 'rupee', 'rupees', 'inr', 'rs'], '$': ['$', 'dollar', 'dollars', 'usd'], '€': ['€', 'euro', 'euros', 'eur'], '£': ['£', 'pound', 'pounds', 'gbp'] };
+  let currency = '₹';
+  const setCurrency = sym => { currency = CURRENCIES[sym] ? sym : '₹'; };
+  function parseCurrency(text) {
+    const m = String(text || '').trim().match(/^(?:please\s+)?(?:set|change|switch|use)\s+(?:my\s+|the\s+)?(?:currency|money)\s+(?:to|as)\s+([^\s.!]+)\s*[.!]*$|^(?:please\s+)?use\s+(\S+?)\s+for\s+(?:my\s+)?(?:expenses|money|spending)\s*[.!]*$/i);
+    if (!m) return null;
+    const w = String(m[1] || m[2]).toLowerCase();
+    for (const [sym, names] of Object.entries(CURRENCIES)) if (names.includes(w)) return { sym };
+    return { unknown: w };
+  }
 
   // When was it? "yesterday", "today", "2 days ago", "on monday". → ms (noon of that day), default now.
   function whenOf(text, now) {
@@ -89,7 +118,7 @@ const LifeParse = (() => {
     const days = Math.max(1, Math.round((Math.min(r.to, startOfDay(now) + DAY) - r.from) / DAY));
     return { range: r, total: Math.round(total * 100) / 100, count: items.length, byCat: [...by.entries()].map(([c, v]) => [c, Math.round(v * 100) / 100]).sort((a, b) => b[1] - a[1]), items, perDay: Math.round(total / days), days };
   }
-  const money = n => '₹' + (Math.round(n * 100) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  const money = n => currency + (Math.round(n * 100) / 100).toLocaleString(currency === '₹' ? 'en-IN' : 'en-US', { maximumFractionDigits: 2 });
   const csv = expenses => 'date,amount,category,note\n' + [...expenses].sort((a, b) => a.t - b.t).map(e => [ymd(e.t), e.amount, e.cat, '"' + String(e.note || '').replace(/"/g, '""') + '"'].join(',')).join('\n') + '\n';
 
   /* ---------- recurring expenses (rent, subscriptions, the gym) ---------- */
@@ -193,6 +222,6 @@ const LifeParse = (() => {
   function parseCapture(text) { const m = String(text || '').trim().match(CAP); const t = m ? m[1].trim().slice(0, 1000) : ''; return t ? { text: t } : null; }
   function parseCaptureShow(text) { const m = String(text || '').trim().match(CAP_SHOW); return m ? { day: /yesterday/i.test(text) ? -1 : 0 } : null; }
 
-  return { parseRecurring, dueRecurring, parseBudget, budgetStatus, parseExpense, parseExpenseQuery, summarize, windowRange, categorize, money, csv, toNumber, matchHabit, habitName, streakOf, weekGrid, parseCapture, parseCaptureShow, ymd, CATS };
+  return { parseCategory, setCustomCats, parseCurrency, setCurrency, get currency() { return currency; }, parseRecurring, dueRecurring, parseBudget, budgetStatus, parseExpense, parseExpenseQuery, summarize, windowRange, categorize, money, csv, toNumber, matchHabit, habitName, streakOf, weekGrid, parseCapture, parseCaptureShow, ymd, CATS };
 })();
 if (typeof module !== 'undefined') module.exports = LifeParse;

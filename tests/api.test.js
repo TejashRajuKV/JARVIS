@@ -174,6 +174,7 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     check('State', 'state comes back to the page (state.js)', /revise dbms/.test(st.text) && /window\.JARVIS_STATE/.test(st.text));
     check('State', 'keys outside jarvis.* are refused', (await post('/api/state', { set: { 'evil': 1 } })).status === 400);
     r = await post('/api/claim', { key: 'api-test-alert', ttlSec: 30 }); const r2 = await post('/api/claim', { key: 'api-test-alert', ttlSec: 30 });
+    check('Tenders', 'the KPPP total is not fetched while Online tools are off (tests/tendercount.test.js covers the rest)', (await post('/api/tenders/count', {})).json.why === 'offline');
     check('State', 'the first tab to claim an alert wins it and the second is told no (only one tab says it)', r.json.won === true && r2.json.won === false && (await post('/api/claim', {})).status === 400);
     check('State', 'a malformed body is refused', (await post('/api/state', { set: [1] })).status === 400);
 

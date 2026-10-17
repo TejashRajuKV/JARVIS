@@ -390,6 +390,49 @@
     check('Routines', 'SAVE makes the routine and closes the panel', made && made.steps.length === 2 && !document.querySelector('.cam-panel'), made);
     if (made) Routines.remove(made);
   }
+  {   // an assignment's to-dos are linked to its deadline: progress on the deadline, an offer to mark it submitted when they are all done
+    const td0 = JSON.stringify(todos), dl0 = JSON.stringify(deadlines);
+    const dd = { id: 'e2e-dl', title: 'E2E lab report', due: Date.now() + 3 * 864e5, done: false };
+    deadlines.push(dd); todos.push({ id: 'e2e-q1', text: 'E2E lab Q1 paging', done: false, ts: Date.now(), deadlineId: dd.id }, { id: 'e2e-q2', text: 'E2E lab Q2 segmentation', done: false, ts: Date.now(), deadlineId: dd.id }); saveTasks();
+    check('Deadlines', 'the deadline shows how many of its to-dos are done', /E2E lab report · 0\/2 done/.test(document.querySelector('#deadlineList').innerText), document.querySelector('#deadlineList').innerText.slice(0, 200));
+    r = await say('mark e2e lab q1 paging as done');
+    check('Deadlines', 'ticking one updates the count (1/2)', todos.find(x => x.id === 'e2e-q1').done && /E2E lab report · 1\/2 done/.test(document.querySelector('#deadlineList').innerText), r.text);
+    r = await say('mark e2e lab q2 segmentation as done');
+    await waitUntil(() => [...document.querySelectorAll('#messages .msg')].some(m => /All 2 to-dos for/.test(m.innerText)), 5000);
+    const offer = [...document.querySelectorAll('#messages .msg')].reverse().find(m => /All 2 to-dos for/.test(m.innerText));
+    check('Deadlines', 'ticking the last one offers to mark the deadline submitted (once)', !!offer && /MARK SUBMITTED/.test(offer.innerText), { asked: dd.allDoneAsked, done: todos.filter(x => x.deadlineId === dd.id).map(x => x.done), same: deadlines.includes(dd), r: r.text, last: [...document.querySelectorAll('#messages .msg')].slice(-2).map(m => m.innerText.slice(-120)) });
+    const btn = offer && [...offer.querySelectorAll('button')].find(b => /MARK SUBMITTED/.test(b.textContent)); if (btn) btn.click(); await sleepMs(150);
+    check('Deadlines', 'pressing it marks the deadline done', dd.done === true);
+    r = await say('add assignment e2e lab record due every monday');
+    const wk = deadlines.find(x => /e2e lab record/i.test(x.title) && !x.done);
+    check('Deadlines', '"due every monday" makes a weekly deadline on a Monday, and says so', wk && wk.repeat === 'weekly' && new Date(wk.due).getDay() === 1 && /every week/.test(r.text) && !/every/i.test(wk.title), [wk, r.text]);
+    renderTasks(); const row = [...document.querySelectorAll('#deadlineList .titem')].find(el => /e2e lab record/i.test(el.innerText));
+    check('Deadlines', 'it is marked ↻ in the list', row && /↻/.test(row.innerText));
+    if (row) row.querySelector('.check').click(); await sleepMs(100);
+    const nextWk = wk && deadlines.find(x => x !== wk && /e2e lab record/i.test(x.title) && !x.done);
+    check('Deadlines', 'marking it submitted adds next week\u2019s (same weekday, a week later, still weekly)', wk && wk.done && nextWk && nextWk.repeat === 'weekly' && nextWk.due - wk.due === 7 * 864e5, nextWk);
+    todos.length = 0; todos.push(...JSON.parse(td0)); deadlines.length = 0; deadlines.push(...JSON.parse(dl0)); saveTasks();
+  }
+  {   // Karnataka tenders: read a copied KPPP table, list building tenders in Mysore, the 6 PM digest
+    const keepT = store.get('jarvis.tenders', null), keepK = store.get('jarvis.tendersKnown', {}), remKeep = JSON.stringify(reminders);
+    const day = d => { const x = new Date(Date.now() + d * 864e5); return String(x.getDate()).padStart(2, '0') + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + x.getFullYear(); };
+    const H = ['S.No', 'Location', 'Tender Number', 'Tender Name', 'Type', 'Procuring Entity', 'Category', 'Sub Category', 'Estimated Value', 'NIT Published Date', 'Last Date & Time for Bid Closure', 'Actions'].join('\t');
+    const row = (n, pl, no, name, sub, val, closes) => [n, pl, no, name, 'Open', 'Dept ' + pl, 'Works', sub, val, day(-3), closes, 'View Tender Details'].join('\t');
+    const table = [H, row(1, 'Mysuru', 'E2E/BLD/1', 'Construction of hostel building', 'Buildings', '1,25,00,000', day(5) + ' 17:30'), row(2, 'Mysore', 'E2E/BLD/2', 'Repairs to school building', 'Buildings', '6,00,000', day(2) + ' 15:00'), row(3, 'Bengaluru Urban', 'E2E/RD/3', 'Asphalting of road', 'Roads', '45,00,000', day(3) + ' 15:00')].join('\n');
+    const realClip = FAKE['/tool/readClipboard']; FAKE['/tool/readClipboard'] = () => ({ success: true, content: table });
+    r = await say('read these tenders');
+    check('Tenders', '"read these tenders" reads the copied KPPP table (3 tenders, 2 building)', /Read 3 tenders/.test(r.text) && /2 building/.test(r.text) && store.get('jarvis.tenders', {}).rows.length === 3, r.text);
+    r = await say('hey jarvis list me buildings tenders in mysore');
+    check('Tenders', '"list me buildings tenders in mysore": the two Mysuru building tenders, soonest deadline first, with deadlines and the list age', /2 open building tenders in Mysuru/.test(r.text) && r.text.indexOf('E2E/BLD/2') < r.text.indexOf('E2E/BLD/1') && /closes/.test(r.text) && /copied just now/.test(r.text) && !/E2E\/RD\/3/.test(r.text), r.text);
+    check('Tenders', 'it was answered by the tender module, not the AI or a search', /TENDERS/.test(jarvisMsgs().slice(-1)[0].innerText));
+    r = await say('send me building tenders in mysore every day at 6pm');
+    const dg = reminders.find(x => x.kind === 'tenders');
+    check('Tenders', 'the 6 PM digest is one daily reminder at 18:00 with the filters', !!dg && dg.repeat && new Date(dg.at).getHours() === 18 && dg.tenderQuery.place === 'Mysuru', dg);
+    const n0 = jarvisMsgs().length; Tenders.digest(dg); await sleepMs(400);
+    check('Tenders', 'when the digest fires it lists the building tenders (from the copied list, with its age)', jarvisMsgs().length > n0 && /tender digest/i.test(jarvisMsgs().slice(-1)[0].innerText + jarvisMsgs().slice(-2)[0].innerText));
+    FAKE['/tool/readClipboard'] = realClip; reminders.length = 0; reminders.push(...JSON.parse(remKeep)); saveTasks();
+    store.set('jarvis.tenders', keepT); store.set('jarvis.tendersKnown', keepK);
+  }
   {   // JARVIS Code panel: opens its own tab with its own conversation, remembers the folder, closes back to chat
     const JC = window.JarvisCode, log0 = JSON.stringify(store.get('jarvis.codeChat', [])), cfg0 = JSON.stringify(store.get('jarvis.code', {}));
     check('JARVIS Code', 'the panel exists and starts closed', !!JC && JC.state.on === false && !document.querySelector('.controls.coding'));

@@ -102,10 +102,10 @@ Each item says *what is weak now → what to do → how we prove it* (every chan
 **Study**
 - *Attendance:* ✅ per-college threshold setting; ✅ subject aliases ("DBMS" = "Database Management Systems", ~25 common subjects); ✅ a CANCELLED button; server-queued prompts for missed classes.
 - *Timetable import:* ✅ clash detection (overlaps flagged before you confirm); room/batch filter.
-- *Assignments:* ✅ month-first dates option; recurring/weekly assignments; link the to-dos to the deadline.
+- *Assignments:* ✅ month-first dates option; ✅ weekly assignments; ✅ the to-dos are linked to the deadline.
 - *Study plan fitting:* choose morning/evening preference; ✅ avoid clashing with existing reminders; re-fit when a class is added.
 - *End-sem calculator:* ✅ the college's grade scale is stored once ("my grade cutoffs are O 85, A+ 75 …").
-- *Exam/viva/flashcards:* 2.3, 2.5; spaced-repetition stats; export to Anki.
+- *Exam/viva/flashcards:* 2.3, 2.5; ✅ spaced-repetition stats; ✅ export to Anki.
 - *Notes/RAG:* ✅ the index is persisted (JSON cache keyed by size+mtime); ✅ per-root quotas so notes beat project folders; ✅ Unicode tokenizer for Telugu/Kannada; ✅ asking before sending excerpts to a cloud model was already done (confirmCloud 'files').
 
 **Coding**

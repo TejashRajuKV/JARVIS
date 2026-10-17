@@ -78,6 +78,21 @@ for (const [t, d] of [['show my inbox', 0], ['inbox', 0], ['my inbox', 0], ['sho
 check('capture show: not taken', L.parseCaptureShow('inbox zero tips') === null && L.parseCaptureShow('check my email inbox') === null);
 check('capture: long text is cut to 1000 characters', L.parseCapture('jot down ' + 'x'.repeat(5000)).text.length === 1000);
 
+// your own categories and your currency
+{ const C = L.parseCategory;
+  check('category: "make a category subscriptions for netflix, spotify and prime"', JSON.stringify(C('make a category subscriptions for netflix, spotify and prime')) === JSON.stringify({ op: 'add', name: 'Subscriptions', words: ['netflix', 'spotify', 'prime'] }), C('make a category subscriptions for netflix, spotify and prime'));
+  check('category: "add an expense category gym for gym, protein" / remove / list', C('add an expense category gym for gym, protein').name === 'Gym' && C('remove the category gym').op === 'del' && C('show my expense categories').op === 'list');
+  for (const x of ['make a folder for dsa', 'add milk to my list', 'category theory notes', 'remove the folder gym']) check('category: not taken: "' + x + '"', C(x) === null, C(x));
+  L.setCustomCats([{ name: 'Subscriptions', words: ['netflix', 'spotify', 'prime'] }]);
+  check('category: your own category wins over the built-in one (netflix was "Fun")', L.parseExpense('paid 199 for netflix').cat === 'Subscriptions' && L.parseExpense('paid 199 for netflix subscriptions').cat === 'Subscriptions');
+  check('category: other notes keep the built-in categories; a word inside another word does not count', L.parseExpense('spent 120 on lunch').cat === 'Food' && L.parseExpense('spent 50 on primer paint').cat !== 'Subscriptions');
+  L.setCustomCats([]); check('category: with none set, netflix is Fun again', L.parseExpense('paid 199 for netflix').cat === 'Fun');
+  check('currency: dollars, euros, pounds, rupees are understood; others are named', L.parseCurrency('set my currency to dollars').sym === '$' && L.parseCurrency('use euros for expenses').sym === '€' && L.parseCurrency('change currency to gbp').sym === '£' && L.parseCurrency('set my currency to rupees').sym === '₹' && L.parseCurrency('set currency to yen').unknown === 'yen' && L.parseCurrency('set a timer') === null);
+  L.setCurrency('$'); check('currency: amounts show the symbol, grouped the usual way for it', L.money(1234.5) === '$1,234.5', L.money(1234.5));
+  check('currency: "$20" and "20 dollars" are read as amounts', L.parseExpense('spent $20 on lunch').amount === 20 && L.parseExpense('spent 20 dollars on lunch').amount === 20);
+  L.setCurrency('₹'); check('currency: back to rupees with Indian grouping', L.money(123456) === '₹1,23,456', L.money(123456));
+}
+
 // recurring expenses
 { const now = new Date(2026, 9, 14, 10).getTime(), P = x => L.parseRecurring(x, now);
   const eq = (x, want) => JSON.stringify(P(x)) === JSON.stringify(want);
