@@ -12,8 +12,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
-        # package.json requires Node >=20.3; test supported LTS/current majors only.
-        node: [20, 22, 24]
+        # package.json and unpdf require Node >=22; test supported LTS/current majors only.
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
