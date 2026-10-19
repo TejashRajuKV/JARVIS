@@ -144,7 +144,7 @@ Everything below works today. The phrases are examples you can type or say; the 
 | Needed | Why |
 |---|---|
 | **Windows 10 or 11** | Most laptop controls (apps, volume, screen OCR, notifications, hotkey) use Windows features. The chat, study tools and AI also run elsewhere, but Windows is the supported platform. |
-| **Node.js 20.3 or newer** (22+ for the online neural voices) | Runs the JARVIS server. The launcher offers to install it for you. (Developed and tested on Node 24.) |
+| **Node.js 22 or newer** | Runs the JARVIS server. The launcher offers to install it for you. (Developed and tested on Node 24.) |
 | **Google Chrome or Microsoft Edge** | Voice input uses the browser's Web Speech API. Edge has the best built-in "JARVIS" voice. |
 | **An AI brain** (pick one) | **Ollama** (free, private, offline) with a model such as `qwen3.5:4b`, **or** any API key (Gemini has a free tier), **or** a local OpenAI-compatible server (LM Studio). JARVIS still works for direct commands with no AI. |
 
