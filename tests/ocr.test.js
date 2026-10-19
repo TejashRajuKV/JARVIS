@@ -38,10 +38,8 @@ const { check, done } = suite('ocr');
       // is available on the test machine. The important thing is the route didn't crash.
     }
     {
-      // NOTE: express.json has a 3MB body limit (server.js:41), so images larger
-      // than that get rejected by the body parser before reaching our route.
-      // We test the validation path with a smaller payload instead — see below.
-      // The 10MB cap in ocr.js is a defensive backstop.
+      // The server JSON limit is deliberately above the OCR route's 10MB base64 cap,
+      // so normal OCR-sized requests reach the route instead of being rejected at 3MB.
       const r = await server.post('/api/ocr/image', { image: 'AAAA' }); // tiny but not valid image
       check('Validation', 'POST with tiny invalid image returns 4xx or 5xx (not 200)', r.status >= 400, r.status);
     }
