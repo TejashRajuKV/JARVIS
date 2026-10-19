@@ -152,11 +152,18 @@ $lines = @($res.Lines | ForEach-Object { $_.Text })
       }
     }
 
-    // Fallback: Tesseract.js (cross-platform, pure JS, lazy-loaded)
-    const r = await ocrWithTesseract(imgPath);
-    fs.unlink(imgPath, () => {});
-    if (r.error) return res.status(501).json({ error: r.error, ms: Date.now() - t0 });
-    res.json({ success: true, text: String(r.text || '').slice(0, 20000), lines: r.lines, engine: r.engine, ms: Date.now() - t0 });
+    // Fallback: Tesseract.js (cross-platform, pure JS, lazy-loaded). Always remove
+    // the temporary image, including when worker initialization or recognition throws.
+    try {
+      const r = await ocrWithTesseract(imgPath);
+      fs.unlink(imgPath, () => {});
+      if (r.error) return res.status(501).json({ error: r.error, ms: Date.now() - t0 });
+      return res.json({ success: true, text: String(r.text || '').slice(0, 20000), lines: r.lines, engine: r.engine, ms: Date.now() - t0 });
+    } catch (e) {
+      fs.unlink(imgPath, () => {});
+      console.warn('[ocr] Recognition failed:', e && e.message ? e.message : e);
+      return res.status(500).json({ error: 'OCR could not process this image. Try another image or format.', ms: Date.now() - t0 });
+    }
   });
 
   /* ---- word boxes: the same Windows OCR, but also where each word is (x, y, width, height in image pixels) ----
