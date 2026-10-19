@@ -121,6 +121,27 @@ const pdfWords = buf => [...inflated(buf).matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)].ma
     check('Snapshot', 'the newest one just saved is among them', left.some(x => !x.startsWith('watch-2020')), left.slice(-3));
     check('Snapshot', 'a request from another site is refused', (await raw('POST', '/api/room/snapshot', jpg, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status >= 400);
 
+    // The output directory itself must not be redirected outside the sandbox by a junction.
+    {
+      const watch = path.join(S.sandbox, 'Watch'), saved = path.join(S.sandbox, 'Watch.test-backup');
+      let linked = false;
+      try {
+        fs.renameSync(watch, saved);
+        fs.symlinkSync(S.home, watch, 'junction');
+        linked = true;
+        const before = fs.readdirSync(S.home).filter(x => /\.jpg$/i.test(x));
+        const r = await raw('POST', '/api/room/snapshot', jpg);
+        const after = fs.readdirSync(S.home).filter(x => /\.jpg$/i.test(x));
+        check('Security', 'room snapshots refuse a Watch junction outside the sandbox', r.status === 400 && after.length === before.length, [r.status, before, after]);
+      } catch (e) {
+        if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(e.code)) throw e;
+        console.log('SKIP Watch junction test: this environment does not permit creating junctions');
+      } finally {
+        if (linked) { try { fs.rmSync(watch, { recursive: true, force: true }); } catch {} }
+        if (fs.existsSync(saved)) fs.renameSync(saved, watch);
+      }
+    }
+
     /* ---- phone alert ---- */
     const noPhone = await S.post('/api/phone/alert', { text: 'Movement seen' });
     check('Phone alert', 'with phone alerts off it says so (nothing is sent)', noPhone.status === 400 && /off/i.test(noPhone.json.error), noPhone.text);
