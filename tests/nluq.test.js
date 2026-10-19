@@ -67,6 +67,12 @@ const ask = async (intent, args, conf) => { reply = { success: true, intent, con
   // guard rails that already existed keep working
   check('an intent outside the list (e.g. SHUTDOWN) is ignored, so the rule result stands', (await ask('SHUTDOWN')) === null);
   check('low confidence (0.5) is ignored', (await ask('BATTERY', {}, 0.5)) === null);
+  reply = { success: true, intent: 'BATTERY', confidence: '0.99', args: {} };
+  check('string confidence is rejected instead of coercing model output', (await NLUQ.parse({ text: 'please do the thing' }, {}, { intent: 'CONVERSATION', confidence: 0.3 })) === null && NLUQ.describe().last.reason === 'invalid_response');
+  reply = { success: true, intent: 'BATTERY', confidence: 0.99, args: ['unexpected'] };
+  check('array arguments are rejected as malformed model output', (await NLUQ.parse({ text: 'please do the thing' }, {}, { intent: 'CONVERSATION', confidence: 0.3 })) === null && NLUQ.describe().last.reason === 'invalid_response');
+  reply = { success: true, intent: 'BATTERY', confidence: 1.5, args: {} };
+  check('confidence above 1 is rejected', (await NLUQ.parse({ text: 'please do the thing' }, {}, { intent: 'CONVERSATION', confidence: 0.3 })) === null && NLUQ.describe().last.reason === 'invalid_response');
   check('CONVERSATION is ignored', (await ask('CONVERSATION')) === null);
   win.settings.qwenNlu = false;
   check('with the setting off, the model is never asked', (await ask('BATTERY')) === null);
