@@ -92,19 +92,29 @@ module.exports = function setupOCR(app, { IS_WIN, IS_MAC }) {
   // Body: { image: 'base64...', format?: 'png'|'jpeg'|'webp' }
   // Returns: { success, text, lines, engine, ms }
   app.post('/api/ocr/image', async (req, res) => {
-    const b64 = String((req.body && req.body.image) || '').replace(/^data:image\/\w+;base64,/, '');
+    const b64 = String((req.body && req.body.image) || '').replace(/^data:image\/(?:png|jpe?g|webp|gif);base64,/i, '');
     if (!b64) return res.status(400).json({ error: 'image (base64) required' });
-    if (b64.length > 10 * 1024 * 1024) return res.status(413).json({ error: 'image too large (max 10MB)' });
-    // NOTE: express.json has a 3MB limit (server.js:41), so in practice images are
-    // capped there first. This check is a defensive backstop if the limit is raised.
+    // Reject malformed base64 instead of letting Buffer.from silently ignore invalid characters.
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b64) || b64.length % 4 !== 0) {
+      return res.status(400).json({ error: 'image must be valid base64 data' });
+    }
+    // Check the decoded bytes, not the encoded string: base64 expands data by roughly one third.
+    if (b64.length > Math.ceil(10 * 1024 * 1024 / 3) * 4) {
+      return res.status(413).json({ error: 'image too large (max 10MB)' });
+    }
+    const imageBuffer = Buffer.from(b64, 'base64');
+    if (!imageBuffer.length) return res.status(400).json({ error: 'image data is empty' });
+    if (imageBuffer.length > 10 * 1024 * 1024) {
+      return res.status(413).json({ error: 'image too large (max 10MB)' });
+    }
 
     const format = String((req.body && req.body.format) || 'png').toLowerCase();
     const ext = { png: 'png', jpeg: 'jpg', jpg: 'jpg', webp: 'webp', gif: 'gif' }[format] || 'png';
-    const stem = path.join(os.tmpdir(), `jarvis_ocrimg_${process.pid}_${Date.now()}`);
+    const stem = path.join(os.tmpdir(), `jarvis_ocrimg_${process.pid}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`);
     const imgPath = stem + '.' + ext;
     const t0 = Date.now();
     try {
-      fs.writeFileSync(imgPath, Buffer.from(b64, 'base64'));
+      fs.writeFileSync(imgPath, imageBuffer);
     } catch (e) {
       return res.status(500).json({ error: 'Could not write image: ' + e.message });
     }
