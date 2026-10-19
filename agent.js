@@ -316,7 +316,22 @@ const Agent = (() => {
   }
   // Steps left in a not-done state (failed, or skipped after a cancel/stop) — safe to retry without touching
   // anything that already succeeded.
-  const retryableSteps = run => run.steps.filter(s => s.status === 'failed' || s.status === 'notrun');
+  function retryableSteps(run) {
+    // A declined/blocked prerequisite must remain a hard stop during retry. Otherwise its dependent
+    // steps become runnable when retryRun builds a smaller plan that no longer contains that prerequisite.
+    const blocked = new Set(run.steps.filter(s => s.status === 'declined' || s.status === 'blocked').map(s => s.id));
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const s of run.steps) {
+        if (s.status === 'notrun' && !blocked.has(s.id) && (s.needs || []).some(id => blocked.has(id))) {
+          blocked.add(s.id);
+          changed = true;
+        }
+      }
+    }
+    return run.steps.filter(s => s.status === 'failed' || (s.status === 'notrun' && !blocked.has(s.id)));
+  }
   async function retryRun(run) {
     const steps = retryableSteps(run);
     if (!steps.length) return { text: 'Nothing to retry.', intent: 'AGENT_RUN', noPersona: true };
@@ -1135,7 +1150,7 @@ const Agent = (() => {
   }
 
   registry();
-  return { route, parts, optimize, splitGoal, annotate, DISTRACTORS, isAction, wantsAction, isQuestion, execute, handleMulti, plan, chatTool, runUnattended, watchSingle, preSingle, history, formatRun, inspect, registry, tierFor, lastRuns, envGoal, prepareEnvironment,
+  return { route, parts, optimize, splitGoal, annotate, DISTRACTORS, isAction, wantsAction, isQuestion, execute, handleMulti, plan, chatTool, runUnattended, watchSingle, preSingle, history, formatRun, inspect, registry, tierFor, lastRuns, envGoal, prepareEnvironment, retryableSteps,
     learnedMatch, learnSave, runLearned, learnedSummary, forgetAllLearned, learnedCount, recordMiss, missList, forgetMiss, aliasMatch, teach, learnGoal, learnLanguage,
     createProjectGoal, createProject, explainLastAction, LEARN_LANG_MAP,
     designPromptGoal, buildTcreiPrompt, DESIGN_PROMPT_QUESTIONS, DESIGN_PROMPT_STEPS,
