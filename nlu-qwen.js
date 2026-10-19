@@ -119,6 +119,19 @@ window.NLUQ = (function () {
       return null;
     }
 
+    // Treat the local model response as untrusted input. JSON parsing alone does
+    // not guarantee a usable schema: confidence may be a string/NaN/out of range,
+    // and args may be an array or primitive. Never let malformed output override
+    // the deterministic rule result.
+    if (typeof qwen.intent !== 'string' ||
+        typeof qwen.confidence !== 'number' ||
+        !Number.isFinite(qwen.confidence) || qwen.confidence < 0 || qwen.confidence > 1 ||
+        (qwen.args != null && (typeof qwen.args !== 'object' || Array.isArray(qwen.args)))) {
+      failCount++;
+      lastResult = { ok: false, reason: 'invalid_response', ms: lastLatencyMs };
+      return null;
+    }
+
     // Threshold: Qwen must be at least 0.7 confident AND beat the rule engine's confidence.
     // Otherwise the rule result stands (and CONVERSATION routes to the local AI as usual).
     if (qwen.confidence < 0.7) {
