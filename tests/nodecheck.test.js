@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path');
 const N = require(path.join(__dirname, '..', 'nodecheck.js'));
 let fail = 0, total = 0;
 const check = (n, ok, x) => { total++; if (!ok) { fail++; console.log('FAIL  ' + n + (x !== undefined ? ' — ' + JSON.stringify(x) : '')); } };
-for (const v of ['16.20.2', '18.19.0', '18.20.4', '20.0.0', '20.2.9', '20.3.0', '20.9.1', '21.7.3', 'v19.9.0']) { const r = N.check(v); check('too old: ' + v, !r.ok && /needs Node\\.js 22\\.0 or newer/.test(r.fatal) && r.fatal.includes(v.replace(/^v/, '')) && /nodejs\.org/.test(r.fatal), r); }
+for (const v of ['16.20.2', '18.19.0', '18.20.4', '20.0.0', '20.2.9', '20.3.0', '20.9.1', '21.7.3', 'v19.9.0']) { const r = N.check(v); check('too old: ' + v, !r.ok && /needs Node\.js 22\.0 or newer/.test(r.fatal) && r.fatal.includes(v.replace(/^v/, '')) && /nodejs\.org/.test(r.fatal), r); }
 for (const v of ['22.0.0', '22.12.0', '24.1.0', 'v24.16.0', '30.0.0']) { const r = N.check(v); check('fine: ' + v, r.ok && r.fatal === null && r.warn === null, r); }
 for (const v of ['', null, 'banana', 'v']) { const r = N.check(v); check('unreadable version is a clear refusal: ' + String(v), !r.ok && /could not tell/.test(r.fatal)); }
 check('the running Node passes (the tests need it)', N.check().ok);
