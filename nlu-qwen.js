@@ -75,7 +75,7 @@ window.NLUQ = (function () {
   // string argument primitive, bounded, and free of control characters.
   function safeText(v, max = 160) {
     if (typeof v !== 'string' && typeof v !== 'number') return '';
-    return String(v).replace(/[\\u0000-\\u001f\\u007f]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, max);
+    return String(v).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
   }
   function pickText(a, keys, max = 160) {
     for (const key of keys) { const value = safeText(a && a[key], max); if (value) return value; }
