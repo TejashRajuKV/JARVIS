@@ -26,7 +26,8 @@ function isPrivateAddress(raw) {
   if (/^(::|::1|0:0:0:0:0:0:0:[01])$/.test(ip)) return true;
   // IPv4-compatible/translatable IPv6 forms and transition tunnels can disguise
   // a private IPv4 destination from the ordinary IPv4-mapped-address check.
-  if (/^::(?:[0-9a-f]{1,4}:){0,1}(?:\d+\.\d+\.\d+\.\d+)$/.test(ip)) return true;
+  if (/^::(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4}$/.test(ip) ||
+      /^::(?:[0-9a-f]{1,4}:){0,1}(?:\d+\.\d+\.\d+\.\d+)$/.test(ip)) return true;
   if (/^::ffff:0:/.test(ip) || /^2002:/.test(ip)) return true;                         // translated IPv4 / 6to4
   if (/^f[cd]/.test(ip) || /^fe[89ab]/.test(ip) || /^ff/.test(ip)) return true;       // unique-local, link-local, multicast
   if (/^64:ff9b:/.test(ip)) return true;                                                // NAT64 maps to IPv4: not worth resolving
