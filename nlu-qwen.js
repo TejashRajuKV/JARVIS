@@ -44,7 +44,7 @@ window.NLUQ = (function () {
   // SHUTDOWN, RESTART, SLEEP, LOCK, TASK_DELETE, TASK_DONE, REMINDER, CREATE_FILE, READ_SCREEN, MAPS, CONVERT (the rules and the planner handle those, with their checks).
   const TOOL_BY_INTENT = {
     OPEN_APPLICATION:  { tool: 'openApplication',  args: a => ({ app: pickText(a, ['app', 'name'], 100) }) },
-    CLOSE_APPLICATION: { tool: 'closeApplication', args: a => ({ app: a.app || a.name || '' }) },       // JARVIS still asks YES first (confirmGate)
+    CLOSE_APPLICATION: { tool: 'closeApplication', args: a => ({ app: pickText(a, ['app', 'name'], 100) }) },       // JARVIS still asks YES first (confirmGate)
     OPEN_WEB:          { tool: 'openWeb',           args: a => ({ query: pickText(a, ['query', 'target'], 240) }) },
     WEB_SEARCH:        { tool: 'webSearch',         args: a => ({ query: pickText(a, ['query', 'target'], 240) }) },
     SITE_SEARCH:       { tool: 'openWeb',           args: a => ({ query: pickText(a, ['query', 'target'], 240) }) },
