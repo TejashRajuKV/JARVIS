@@ -228,11 +228,15 @@ const inSandbox = p => rootOf(p) === SANDBOX;
 // ~/jarvis/shortcut/secret.txt can point outside the sandbox, including into a blocked credential folder.
 function physicalPath(p) {
   let cur = path.resolve(p), tail = [];
-  while (!fs.existsSync(cur)) {
-    const parent = path.dirname(cur);
-    if (parent === cur) return null;
-    tail.unshift(path.basename(cur));
-    cur = parent;
+  // lstat (not existsSync) also detects dangling symlinks. Refuse to guess where a dangling link would write.
+  while (true) {
+    try { fs.lstatSync(cur); break; }
+    catch {
+      const parent = path.dirname(cur);
+      if (parent === cur) return null;
+      tail.unshift(path.basename(cur));
+      cur = parent;
+    }
   }
   try { return path.resolve(fs.realpathSync(cur), ...tail); } catch { return null; }
 }
