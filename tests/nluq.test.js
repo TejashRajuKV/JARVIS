@@ -76,7 +76,7 @@ const ask = async (intent, args, conf) => { reply = { success: true, intent, con
   // Untrusted target arguments are bounded and must be usable before the rule is overridden.
   o = await ask('OPEN_APPLICATION', { app: { nested: 'chrome' } });
   check('object-shaped app arguments are rejected instead of reaching the tool', o === null && NLUQ.describe().last.reason === 'missing_argument');
-  o = await ask('OPEN_APPLICATION', { app: '  chrome\\n\\tstable  ' });
+  o = await ask('OPEN_APPLICATION', { app: '  chrome\n\tstable  ' });
   check('string arguments are trimmed and control characters are normalized', o.args.app === 'chrome stable', o);
   o = await ask('WEB_SEARCH', { query: 'x'.repeat(500) });
   check('model-provided query strings are bounded before tool execution', o.args.query.length === 240, o && o.args.query.length);
