@@ -7,7 +7,10 @@ let failed = 0;
 const skipped = [];
 for (const f of files) {
   // The browser end-to-end suite drives every feature through the real page, so it gets longer.
-  const r = spawnSync(process.execPath, [path.join(__dirname, f)], { encoding: 'utf8', timeout: f === 'e2e.test.js' ? 600000 : f === 'api.test.js' ? 300000 : 120000 });   // the API suite starts a real server and takes ~1 min, longer on a busy computer
+  const timeoutMs = f === 'e2e.test.js' ? 600000 : f === 'api.test.js' ? 300000 : 120000;
+  const startedAt = Date.now();
+  const r = spawnSync(process.execPath, [path.join(__dirname, f)], { encoding: 'utf8', timeout: timeoutMs });
+  const elapsedMs = Date.now() - startedAt;
   const lines = String(r.stdout || '').split(/\r?\n/).filter(l => l.trim() && !/^\[/.test(l));
   const ok = r.status === 0;
   // A suite that exits cleanly because it could not run here ("e2e: skipped — no Edge or Chrome found") ran no
@@ -16,7 +19,19 @@ for (const f of files) {
   if (!ok) failed++;
   if (skip) skipped.push(f + ' (' + skip.replace(/^[\w-]+: skipped\W*/, '') + ')');
   console.log((!ok ? '✗ ' : skip ? '– ' : '✓ ') + f.padEnd(22) + (skip || lines.filter(l => /\d+\/\d+/.test(l)).join(' · ') || lines.slice(-1)[0] || ''));
-  if (!ok) lines.filter(l => /^FAIL/.test(l)).slice(0, 10).forEach(l => console.log('    ' + l));
+  if (!ok) {
+    if (r.error) console.log('    runner error: ' + r.error.message);
+    if (r.error && (r.error.code === 'ETIMEDOUT' || /timed out/i.test(r.error.message))) {
+      console.log('    timed out after ' + Math.round(elapsedMs / 1000) + 's (limit ' + Math.round(timeoutMs / 1000) + 's)');
+    } else if (r.signal) {
+      console.log('    child process ended by signal: ' + r.signal);
+    } else if (r.status !== null) {
+      console.log('    exit code: ' + r.status);
+    }
+    const diagnostics = [...lines.filter(l => /^(FAIL|Error:|AssertionError|TypeError:|ReferenceError:|\s+at )/.test(l)),
+      ...String(r.stderr || '').split(/\r?\n/).filter(l => l.trim())];
+    [...new Set(diagnostics)].slice(0, 12).forEach(l => console.log('    ' + l));
+  }
 }
 const ran = files.length - skipped.length;
 console.log(failed ? `\n${failed} suite(s) failed` : skipped.length ? `\n${ran} suites passed · ${skipped.length} NOT RUN: ${skipped.join('; ')}` : `\nAll ${files.length} suites passed`);
