@@ -233,8 +233,15 @@ const saveFocusCtx = () => { clearTimeout(focusSaveT); focusSaveT = setTimeout((
   try {
     const f = store.get('jarvis.focusCtx', null), now = Date.now();
     if (!f || typeof f !== 'object') return;
-    for (const k of Object.keys(f)) if (f[k] && typeof f[k] === 'object' && !Array.isArray(f[k]) && f[k].path && now - f[k].t < FOCUS_MS) ctx.focus[k] = f[k];
-    if (Array.isArray(f.results) && f.resultsT && now - f.resultsT < FOCUS_MS) { ctx.focus.results = f.results.slice(0, 30); ctx.focus.resultsT = f.resultsT; }
+    for (const k of Object.keys(f)) if (f[k] && typeof f[k] === 'object' && !Array.isArray(f[k]) && f[k].path && Number.isFinite(f[k].t) && now >= f[k].t && now - f[k].t < FOCUS_MS) ctx.focus[k] = f[k];
+    // lastAction intentionally has no path, so the generic path-only restore above skipped it.
+    // Restore a validated, recent action too; otherwise contextual follow-ups lose their topic after reload.
+    const a = f.lastAction;
+    if (a && typeof a === 'object' && typeof a.intent === 'string' && typeof a.summary === 'string'
+      && Number.isFinite(a.t) && now >= a.t && now - a.t < FOCUS_MS) {
+      ctx.focus.lastAction = { intent: a.intent.slice(0, 80), summary: a.summary.slice(0, 160), t: a.t };
+    }
+    if (Array.isArray(f.results) && Number.isFinite(f.resultsT) && now >= f.resultsT && now - f.resultsT < FOCUS_MS) { ctx.focus.results = f.results.slice(0, 30); ctx.focus.resultsT = f.resultsT; }
   } catch (e) { /* start fresh */ }
 })();
 const CONFIRM_MIN = 0.6;   // medium-confidence band for spoken commands: [CONFIRM_MIN, 0.85) → "did you mean …?"
