@@ -224,6 +224,19 @@ function rootOf(p) {
 const inTrash = p => norm(p) === norm(TRASH) || norm(p).startsWith(norm(TRASH) + path.sep);
 const inSandbox = p => rootOf(p) === SANDBOX;
 
+// Resolve existing symlinked ancestors before applying access rules. Lexical containment alone is not enough:
+// ~/jarvis/shortcut/secret.txt can point outside the sandbox, including into a blocked credential folder.
+function physicalPath(p) {
+  let cur = path.resolve(p), tail = [];
+  while (!fs.existsSync(cur)) {
+    const parent = path.dirname(cur);
+    if (parent === cur) return null;
+    tail.unshift(path.basename(cur));
+    cur = parent;
+  }
+  try { return path.resolve(fs.realpathSync(cur), ...tail); } catch { return null; }
+}
+
 // Resolves a user-supplied name/path to a location inside an allowed root (or null).
 // Accepts: absolute paths inside a root, "<rootFolderName>/sub/file", or paths relative to the sandbox.
 function safePath(name) {
@@ -238,6 +251,9 @@ function safePath(name) {
     p = root ? path.resolve(root, s.split(/[/\\]/).slice(1).join(path.sep)) : path.resolve(SANDBOX, s);
   }
   if (!rootOf(p) || inTrash(p) || isInternal(p)) return null;
+  const physical = physicalPath(p), physicalRoot = physical && rootOf(physical);
+  // A symlink/junction may not use an allowed folder as a doorway to an unapproved path.
+  if (!physical || !physicalRoot || inTrash(physical) || isInternal(physical)) return null;
   return p;
 }
 // JARVIS's own data files (API keys, authenticator secret, Hello key, shared state) are never reachable through the
@@ -268,12 +284,19 @@ const BLOCKED_HOME_FILES = new Set(['.git-credentials', '.netrc', '_netrc', '.np
 const BLOCKED_NAMES = /^(\$recycle\.bin|system volume information|recovery|\$windows\.~bt|\$windows\.~ws)$/i;
 const under = (p, dir) => { const a = norm(path.resolve(p)), b = norm(dir); return a === b || a.startsWith(b + path.sep); };
 function blockedPath(p, { forWrite } = {}) {
-  const r = path.resolve(p);
-  if (BLOCKED_DIRS.some(d => under(r, d))) return true;
-  if (BLOCKED_HOME_FILES.has(norm(path.join(path.dirname(r), path.basename(r).replace(/:.*$/, '').replace(/[. ]+$/, ''))))) return true;
-  if (r.split(path.sep).some(seg => BLOCKED_NAMES.test(seg))) return true;
-  if (isInternal(r) || (rootOf(r) === SANDBOX && inTrash(r))) return true;
-  if (forWrite && under(r, __dirname)) return true;   // JARVIS never rewrites its own program files
+  const r = path.resolve(p), physical = physicalPath(r);
+  // Check both spellings and the resolved destination. This catches symlinks/junctions into OS and credential paths.
+  const candidates = physical ? [r, physical] : [r];
+  for (const candidate of candidates) {
+    if (BLOCKED_DIRS.some(d => under(candidate, d))) return true;
+    if (BLOCKED_HOME_FILES.has(norm(path.join(path.dirname(candidate), path.basename(candidate).replace(/:.*$/, '').replace(/[. ]+$/, ''))))) return true;
+    if (candidate.split(path.sep).some(seg => BLOCKED_NAMES.test(seg))) return true;
+    if (isInternal(candidate) || (rootOf(candidate) === SANDBOX && inTrash(candidate))) return true;
+    if (forWrite && under(candidate, __dirname)) return true;   // JARVIS never rewrites its own program files
+  }
+  // A sandbox/project path that resolves outside all configured roots is not an allowed path.
+  const lexicalRoot = rootOf(r), physicalRoot = physical && rootOf(physical);
+  if (lexicalRoot && !physicalRoot) return true;
   return false;
 }
 const zoneOf = p => blockedPath(p) ? 'blocked' : (under(p, SANDBOX) ? 'home' : 'laptop');
