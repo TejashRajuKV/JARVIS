@@ -24,9 +24,13 @@ function isPrivateAddress(raw) {
   const hex = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
   if (hex) { const n = (parseInt(hex[1], 16) << 16) | parseInt(hex[2], 16); return privateV4([n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.')); }
   if (/^(::|::1|0:0:0:0:0:0:0:[01])$/.test(ip)) return true;
+  // IPv4-compatible/translatable IPv6 forms and transition tunnels can disguise
+  // a private IPv4 destination from the ordinary IPv4-mapped-address check.
+  if (/^::(?:[0-9a-f]{1,4}:){0,1}(?:\d+\.\d+\.\d+\.\d+)$/.test(ip)) return true;
+  if (/^::ffff:0:/.test(ip) || /^2002:/.test(ip)) return true;                         // translated IPv4 / 6to4
   if (/^f[cd]/.test(ip) || /^fe[89ab]/.test(ip) || /^ff/.test(ip)) return true;       // unique-local, link-local, multicast
   if (/^64:ff9b:/.test(ip)) return true;                                                // NAT64 maps to IPv4: not worth resolving
-  if (/^2001:db8/.test(ip)) return true;                                                // documentation range
+  if (/^2001:db8/.test(ip) || /^2001:0:/.test(ip)) return true;                       // documentation / Teredo
   return false;
 }
 const BAD_NAME = /(^|\.)(localhost|local|localdomain|internal|intranet|lan|home|corp|private|home\.arpa)$/i;
