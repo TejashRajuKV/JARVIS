@@ -352,6 +352,27 @@ for (const t of ['create a project', 'create a new folder called notes', 'what i
     SAFETY.push(['a compile failure is reported as a failed step, not "not checked"', result, r => /✗ Run X\/main\.cpp/.test(r.text) && !/not checked/.test(r.text)]);
   }
 
+  // Retry must never run steps whose prerequisite the user explicitly declined or that was blocked.
+  {
+    const declined = { steps: [
+      { id: 'a', status: 'declined', needs: [] },
+      { id: 'b', status: 'notrun', needs: ['a'] },
+      { id: 'c', status: 'notrun', needs: ['b'] },
+      { id: 'd', status: 'failed', needs: [] },
+      { id: 'e', status: 'notrun', needs: ['d'] },
+      { id: 'f', status: 'notrun', needs: [] },
+    ] };
+    const ids = Agent.retryableSteps(declined).map(s => s.id);
+    SAFETY.push(['retryableSteps excludes direct/transitive dependents of a declined step', { ids }, x => !x.ids.includes('b') && !x.ids.includes('c')]);
+    SAFETY.push(['retryableSteps retains failed steps and safe independent/notrun dependents', { ids }, x => ['d', 'e', 'f'].every(id => x.ids.includes(id))]);
+    const blocked = { steps: [
+      { id: 'a', status: 'blocked', needs: [] },
+      { id: 'b', status: 'notrun', needs: ['a'] },
+      { id: 'c', status: 'notrun', needs: [] },
+    ] };
+    const blockedIds = Agent.retryableSteps(blocked).map(s => s.id);
+    SAFETY.push(['retryableSteps excludes dependents of a blocked step but keeps independent steps', { ids: blockedIds }, x => !x.ids.includes('b') && x.ids.includes('c')]);
+  }
   let sfail = 0;
   for (const [d, r, ok] of SAFETY) if (!ok(r)) { sfail++; console.log('SAFETY FAIL  ' + d + ' → ' + JSON.stringify(r)); }
   console.log(`safety: ${SAFETY.length - sfail}/${SAFETY.length}`);
