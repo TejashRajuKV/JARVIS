@@ -8,8 +8,10 @@ const check = (n, ok, x) => { total++; if (!ok) { fail++; console.log('FAIL  ' +
 let reply = null;                                    // what the fake /nlu/parse answers
 const win = { settings: { qwenNlu: true }, API: '/api', llmReady: () => true, llm: { model: '' } };
 const doc = { readyState: 'complete', getElementById: () => null, addEventListener() {} };
+let timerDelay = 0, timerCleared = false, lastFetchOptions = null;
 const ctx = vm.createContext({ window: win, document: doc, settings: win.settings, llmReady: win.llmReady, llm: win.llm, performance: { now: () => 0 }, console,
-  fetch: async () => ({ ok: true, json: async () => reply }) });
+  AbortController, setTimeout: (fn, ms) => { timerDelay = ms; return 17; }, clearTimeout: id => { timerCleared = id === 17; },
+  fetch: async (url, options) => { lastFetchOptions = options; return { ok: true, json: async () => reply }; } });
 vm.runInContext(fs.readFileSync(root('nlu-qwen.js'), 'utf8'), ctx);
 const NLUQ = win.NLUQ;
 
@@ -32,6 +34,9 @@ const ask = async (intent, args, conf) => { reply = { success: true, intent, con
   check('every intent the model may name becomes an intent that script.js really has a handler for (none are dead)', bad.length === 0, bad);
   check('the intents that can power off, lock, restart, delete or send are NOT offered to the model', ['SHUTDOWN', 'RESTART', 'SLEEP', 'LOCK', 'TASK_DELETE', 'TASK_DONE', 'REMINDER', 'CREATE_FILE'].every(k => !mine.includes(k)), mine);
 
+  await ask('BATTERY');
+  check('Qwen requests have an 8-second abort timeout', timerDelay === 8000 && !!lastFetchOptions.signal, { timerDelay, hasSignal: !!lastFetchOptions.signal });
+  check('the timeout is cleared after a successful response', timerCleared);
   let o = await ask('VOLUME', { level: 140 });
   check('"volume" is VOLUME_SET with the level clamped to 0-100', o.intent === 'VOLUME_SET' && o.args.level === 100, o);
   o = await ask('VOLUME', { level: 0 });
