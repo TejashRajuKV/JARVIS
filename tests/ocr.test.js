@@ -54,6 +54,18 @@ const { check, done } = suite('ocr');
       check('Validation', 'format mismatch receives a clear message', /format does not match/i.test(r.json.error), r.json.error);
     }
 
+    // ---- /api/ocr/words validates payloads before platform-specific OCR ----
+    {
+      const r = await server.post('/api/ocr/words', { image: 'not-valid-base64!!!' });
+      check('Words validation', 'malformed base64 returns 400', r.status === 400, r.status);
+      check('Words validation', 'malformed base64 error is clear', /valid base64/i.test(r.json.error), r.json.error);
+    }
+    {
+      const r = await server.post('/api/ocr/words', { image: 'AAAA' });
+      check('Words validation', 'valid base64 containing non-image bytes returns 400', r.status === 400, r.status);
+      check('Words validation', 'non-image error is clear', /not a JPEG or PNG/i.test(r.json.error), r.json.error);
+    }
+
     // ---- /api/ocr/screen on non-Windows returns 501 ----
     {
       const r = await server.post('/api/ocr/screen', { source: 'screen', monitor: 1 });
