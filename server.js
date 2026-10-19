@@ -51,7 +51,8 @@ app.use((req, res, next) => {
 });
 { let last = Date.now(); const iv = setInterval(() => { const now = Date.now(), lag = now - last - 500; last = now; if (lag > 1500) console.log('[lag] the server was busy and could not answer for ' + Math.round(lag / 100) / 10 + ' s'); }, 500); if (iv.unref) iv.unref(); }
 // OCR accepts up to 10 MB of base64 image data; leave headroom for JSON framing.
-app.use(express.json({ limit: '12mb' }));
+// 10 MiB decoded image payload needs about 13.34 MiB as base64, plus JSON overhead.
+app.use(express.json({ limit: '14mb' }));
 // App lock (applock.js): while it is on and not unlocked, every /api request is refused and the page is replaced by a
 // standalone lock page. Mounted before the static files so even index.html is held back. Needs a Windows Hello key.
 let helloApi = null;
