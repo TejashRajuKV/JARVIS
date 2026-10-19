@@ -1239,6 +1239,8 @@ app.post('/api/tool/upload', express.raw({ type: 'application/octet-stream', lim
   if (!name || !UPLOAD_EXT.test(name)) return res.status(400).json({ error: 'I can take PDFs, text, Markdown and code files' });
   if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'The file was empty' });
   const dir = path.join(SANDBOX, 'Documents'); fs.mkdirSync(dir, { recursive: true });
+  const actualDir = physicalPath(dir);
+  if (!actualDir || rootOf(actualDir) !== SANDBOX || isInternal(actualDir)) return res.status(400).json({ error: 'The JARVIS Documents folder must stay inside its sandbox' });
   let dest = path.join(dir, name), n = 1;
   const ext = path.extname(name), base = name.slice(0, -ext.length);
   while (fs.existsSync(dest)) dest = path.join(dir, base + ' (' + (++n) + ')' + ext);
