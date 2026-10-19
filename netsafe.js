@@ -11,7 +11,9 @@ const v4 = ip => ip.split('.').map(Number);
 function privateV4(ip) {
   const [a, b] = v4(ip);
   return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
+    (a === 192 && (b === 0 || b === 168 || (b === 88 && v4(ip)[2] === 99))) ||
+    (a === 198 && (b === 18 || b === 19 || b === 51 && v4(ip)[2] === 100)) ||
+    (a === 203 && b === 0 && v4(ip)[2] === 113) || a >= 224;
 }
 // true when the address is not a normal public one (loopback, private, link-local, multicast, "this network", carrier-grade NAT, mapped forms of those)
 function isPrivateAddress(raw) {
