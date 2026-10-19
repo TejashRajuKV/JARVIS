@@ -78,13 +78,13 @@
     }
   };
   // Runs one phrase; returns { text (new replies + their button labels), n (reply count), ms, ok (finished in time), errors }.
-  async function say(phrase, { confirm = 'no', limit = 15000 } = {}) {
+  async function say(phrase, { confirm = 'no', limit = 15000, source = 'text' } = {}) {
     await idle(limit);
     ctx.pending = null; ctx.answerOnly = false;
     jarvisMsgs().forEach(m => { m.dataset.seen = '1'; });
     const e0 = T.errors.length, t0 = Date.now();
     let finished = false;
-    Promise.resolve(handleUser(phrase, 'text')).then(() => { finished = true; });
+    Promise.resolve(handleUser(phrase, source)).then(() => { finished = true; });
     while (Date.now() - t0 < limit) {
       answerCards(confirm);
       if (finished && !busy && !pumping && !replyQ.length) break;
@@ -268,6 +268,15 @@
   r = await say('close discord', { confirm: 'yes' });
   check('Laptop', 'close an app after permission', called('/tool/closeApplication', d => d.app === 'discord'), r.text);
   { const c0 = calls.length; await writeProbe(); r = await say('run hello.js'); check('Code', 'a single typed "run hello.js" asks first; CANCEL runs nothing', !calls.slice(c0).some(c => c.endpoint === '/tool/runFile') && has(r, /run a program/), r.text); }
+  // Spoken commands (mic button or after the wake word) go through the same confirmation as typed ones.
+  for (const source of ['voice', 'wake']) {
+    { const c0 = calls.length; r = await say('close discord', { source });
+      check('Voice parity', 'a spoken (' + source + ') "close discord" asks first like a typed one; CANCEL closes nothing', !calls.slice(c0).some(c => c.endpoint === '/tool/closeApplication') && has(r, /close an app/), r.text); }
+    { const c0 = calls.length; r = await say('run hello.js', { source });
+      check('Voice parity', 'a spoken (' + source + ') "run hello.js" asks first like a typed one; CANCEL runs nothing', !calls.slice(c0).some(c => c.endpoint === '/tool/runFile') && has(r, /run a program/), r.text); }
+  }
+  { const c0 = calls.length; r = await say('close discord', { source: 'voice', confirm: 'yes' });
+    check('Voice parity', 'a spoken "close discord" runs the same tool as a typed one after YES', calls.slice(c0).some(c => c.endpoint === '/tool/closeApplication' && c.data.app === 'discord'), r.text); }
   {   // private content only goes to an online model after a yes (one yes per kind until reload); a local model never asks
     const m0 = llm.model; cloudAllowed.clear();
     llm.model = 'qwen3.5:4b'; const localOk = await confirmCloud('clipboard');
@@ -523,6 +532,8 @@
   const before = calls.length;
   r = await say('shut down');
   check('Safety', 'shutdown asks first — declined means it never runs', has(r, /YES — SHUT DOWN/) && has(r, /cancelled/i) && !calls.slice(before).some(c => c.endpoint === '/tool/shutdownSystem'), r.text);
+  { const c0 = calls.length; r = await say('shut down', { source: 'wake' });
+    check('Voice parity', 'a spoken "shut down" after the wake word asks first too — declined means it never runs', has(r, /YES — SHUT DOWN/) && !calls.slice(c0).some(c => c.endpoint === '/tool/shutdownSystem'), r.text); }
   r = await say('delete all my files');
   check('Safety', '"delete all my files" is refused', !called('/tool/deleteItem') && !called('/tool/clearSandbox'), r.text);
   // ---- theme / persona / panic
