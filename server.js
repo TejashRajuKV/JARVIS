@@ -374,8 +374,8 @@ function laptopSearch(name, { kind, max = 6, contains = false } = {}) {
     let items; try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const it of items) {
       scanned++;
-      if (it.isSymbolicLink() || it.name.startsWith('.') || it.name.startsWith('
-      if (isDir && blockedPath(full)) continue;
+      if (it.isSymbolicLink() || it.name.startsWith('.') || it.name.startsWith('$') || SKIP_DIRS.has(it.name) || BLOCKED_NAMES.test(it.name)) continue;
+      const full = path.join(dir, it.name), isDir = it.isDirectory();
       if ((!kind || (kind === 'folder') === isDir) && matches(it.name, isDir)) {
         if (!seen.has(norm(full))) { seen.add(norm(full)); found.push(full); }
         if (found.length >= max) return;
