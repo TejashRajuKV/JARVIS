@@ -305,6 +305,8 @@ const BLOCKED_NAMES = /^(\$recycle\.bin|system volume information|recovery|\$win
 const under = (p, dir) => { const a = norm(path.resolve(p)), b = norm(dir); return a === b || a.startsWith(b + path.sep); };
 function blockedPath(p, { forWrite } = {}) {
   const r = path.resolve(p), physical = physicalPath(r);
+  // physicalPath is null for a dangling link: a write would land wherever the link points, which was never checked.
+  if (forWrite && !physical) return true;
   // Check both spellings and the resolved destination. This catches symlinks/junctions into OS and credential paths.
   const lexicalRoot = rootOf(r);
   if (lexicalRoot && hasLinkedComponent(r, lexicalRoot)) return true;

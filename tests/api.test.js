@@ -837,6 +837,19 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
       check('Access', 'refuses to write into AppData even when approved', z.status >= 400 && !fs.existsSync(path.join(S.home, 'AppData', 'Roaming', 'evil.txt')), z.json);
       z = await post('/api/tool/writeFile', { name: path.join(ROOT, 'zz-evil.js'), content: 'x', approved: true });
       check('Access', 'refuses to write into the JARVIS program folder', z.status >= 400 && !fs.existsSync(path.join(ROOT, 'zz-evil.js')), z.json);
+      {
+        const dangle = path.join(desk, 'zone-dangle.md'), planted = path.join(S.home, 'AppData', 'Roaming', 'planted.md');
+        let made = false;
+        try {
+          fs.symlinkSync(planted, dangle, 'file'); made = true;
+          z = await post('/api/tool/writeFile', { name: dangle, content: 'x' });
+          if (z.status === 409 && z.json.approvalToken) z = await post('/api/tool/writeFile', { name: dangle, content: 'x', approved: true, approvalToken: z.json.approvalToken });
+          check('Access', 'a dangling Desktop link into AppData is off-limits, even after approval (nothing is written through it)', (z.status === 400 || z.status === 403) && !fs.existsSync(planted), [z.status, z.json]);
+        } catch (e) {
+          if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(e.code)) throw e;
+          console.log('SKIP dangling Desktop link test: this environment does not permit creating symlinks');
+        } finally { if (made) { try { fs.unlinkSync(dangle); } catch {} } try { fs.unlinkSync(planted); } catch {} }
+      }
 
       // Changes outside ~/jarvis: 409 needsApproval, nothing changed; with approved:true it happens.
       z = await post('/api/tool/renameFile', { oldName: deskFile, newName: 'zone-renamed.txt' });
