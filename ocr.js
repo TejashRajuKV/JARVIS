@@ -234,6 +234,7 @@ foreach ($l in $res.Lines) {
     const imageBuffer = Buffer.from(b64, 'base64');
     if (!imageBuffer.length) return res.status(400).json({ error: 'image data is empty' });
     if (imageBuffer.length > 3 * 1024 * 1024) return res.status(413).json({ error: 'That picture is too large to read; use a smaller one.' });
+    if (!isImage(imageBuffer)) return res.status(400).json({ error: 'That is not a JPEG or PNG picture.' });
     const t0 = Date.now();
     const r = await ocrWords(imageBuffer);
     if (r.error) return res.status(/not a JPEG/.test(r.error) ? 400 : /needs Windows/.test(r.error) ? 501 : 500).json({ error: r.error });
