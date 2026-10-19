@@ -41,8 +41,17 @@ const { check, done } = suite('ocr');
     {
       // The server JSON limit is deliberately above the OCR route's 10MB base64 cap,
       // so normal OCR-sized requests reach the route instead of being rejected at 3MB.
-      const r = await server.post('/api/ocr/image', { image: 'AAAA' }); // tiny but not valid image
-      check('Validation', 'POST with tiny invalid image returns 4xx or 5xx (not 200)', r.status >= 400, r.status);
+      const r = await server.post('/api/ocr/image', { image: 'AAAA' }); // valid base64, but not an image
+      check('Validation', 'POST with non-image bytes returns 400', r.status === 400, r.status);
+      check('Validation', 'non-image bytes receive a clear format error', /not a supported .*image/i.test(r.json.error), r.json.error);
+    }
+    {
+      // A real PNG signature with an explicit conflicting format must be rejected
+      // before invoking either platform OCR engine.
+      const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/Sx8AAAAASUVORK5CYII=';
+      const r = await server.post('/api/ocr/image', { image: png, format: 'jpeg' });
+      check('Validation', 'image format mismatch returns 400', r.status === 400, r.status);
+      check('Validation', 'format mismatch receives a clear message', /format does not match/i.test(r.json.error), r.json.error);
     }
 
     // ---- /api/ocr/screen on non-Windows returns 501 ----
