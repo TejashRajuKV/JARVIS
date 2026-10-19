@@ -254,6 +254,24 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     const uj = await upl.json();
     check('Files', 'upload a document (drag & drop / 📎)', uj.success && fs.existsSync(path.join(SB, 'Documents', 'lecture.txt')), uj);
     check('Files', 'upload refuses other file types', (await fetch(S.base + '/api/tool/upload?name=virus.exe', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Origin: S.base }, body: 'MZ' })).status === 400);
+    // Upload uses a fixed folder, so it must also reject a folder replaced by a junction/symlink.
+    {
+      const docs = path.join(SB, 'Documents'), saved = path.join(SB, 'Documents.test-backup');
+      let symlinkMade = false;
+      try {
+        fs.renameSync(docs, saved);
+        fs.symlinkSync(S.home, docs, 'junction');
+        symlinkMade = true;
+        const r = await fetch(S.base + '/api/tool/upload?name=escape.txt', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Origin: S.base }, body: 'must stay in sandbox' });
+        check('Security', 'uploads refuse a Documents junction pointing outside the sandbox', r.status === 400 && !fs.existsSync(path.join(S.home, 'escape.txt')), [r.status, await r.text()]);
+      } catch (e) {
+        if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(e.code)) throw e;
+        console.log('SKIP upload junction test: this environment does not permit creating junctions');
+      } finally {
+        if (symlinkMade) { try { fs.rmSync(docs, { recursive: true, force: true }); } catch {} }
+        if (fs.existsSync(saved)) fs.renameSync(saved, docs);
+      }
+    }
 
     /* ---------- notes & PDFs (search) ---------- */
     r = await post('/api/rag/reindex', {});
