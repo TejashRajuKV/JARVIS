@@ -1,0 +1,20 @@
+{
+  "name": "JARVIS — Local AI Assistant",
+  "short_name": "JARVIS",
+  "description": "Talk or type. JARVIS opens your apps, plans your study, reads your notes and PDFs, fixes your code and automates your day — locally and privately.",
+  "id": "/",
+  "start_url": "/?skipboot",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#02070c",
+  "theme_color": "#02070c",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23041019' stroke='%233fd9ff' stroke-width='2'/><circle cx='16' cy='16' r='5' fill='%233fd9ff'/></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

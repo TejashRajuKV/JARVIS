@@ -1,0 +1,290 @@
+/* ===========================================================================
+ *  hud-overlay.css — Holographic HUD overlay panels
+ *  ---------------------------------------------------------------------------
+ *  Pure additive styling. Activates only when <body class="hud-on"> is set
+ *  by hud-overlay.js. The default <body> (without the class) is unchanged.
+ *
+ *  Panels:
+ *    - .hud-panel        base translucent floating panel
+ *    - #hudClockTopLeft  time + date + tiny weather
+ *    - #hudStatsTopRight CPU/RAM/Disk mini-bars
+ *    - #hudLogBottomLeft last 3 activity events
+ *    - #hudQuickBottomRt quick command palette (chips)
+ *    - #hudHudToggle     the HUD on/off button in the header
+ *
+ *  All panels respect the existing theme variables (--cyan, --rgb, --ink,
+ *  --dim, --faint, --line, --line-hi, --mono, --disp, --bg0, --bg1) so they
+ *  automatically match arc / gold / crimson / violet.
+ * =========================================================================== */
+
+/* ===== HUD on/off button in the header ===== */
+#hudHudToggle {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 5px 12px 5px 10px;
+  background: rgba(9, 26, 40, 0.55);
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  margin-left: 8px;
+}
+#hudHudToggle::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dim);
+  box-shadow: 0 0 6px var(--dim);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+#hudHudToggle:hover { color: var(--cyan-hi); border-color: var(--line-hi); }
+body.hud-on #hudHudToggle {
+  color: var(--cyan-hi);
+  border-color: rgba(var(--rgb), 0.55);
+  background: rgba(var(--rgb), 0.08);
+}
+body.hud-on #hudHudToggle::before {
+  background: var(--cyan);
+  box-shadow: 0 0 8px var(--cyan);
+  animation: blink 1.5s infinite;
+}
+
+/* ===== Panel base ===== */
+.hud-panel {
+  position: fixed;
+  z-index: 70;
+  min-width: 200px;
+  max-width: 280px;
+  padding: 12px 14px 14px;
+  background: linear-gradient(180deg, rgba(6, 18, 30, 0.78), rgba(2, 8, 14, 0.85));
+  border: 1px solid var(--line-hi);
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 1px rgba(var(--rgb), 0.06) inset,
+    0 0 28px rgba(var(--rgb), 0.18),
+    0 8px 24px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-family: var(--mono);
+  color: var(--ink);
+  pointer-events: auto;
+  user-select: none;
+  opacity: 0;
+  transform: translateY(8px) scale(0.985);
+  transition: opacity 0.35s ease-out, transform 0.35s ease-out;
+}
+body.hud-on .hud-panel { opacity: 1; transform: none; }
+
+/* corner brackets — purely decorative, give the "tech HUD" feel */
+.hud-panel::before,
+.hud-panel::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--cyan);
+  opacity: 0.85;
+  pointer-events: none;
+}
+.hud-panel::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+.hud-panel::after  { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+/* Drag affordance: a header strip at the top of each panel */
+.hud-panel .hud-grip {
+  position: absolute;
+  top: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 36px; height: 4px;
+  background: rgba(var(--rgb), 0.35);
+  border-radius: 0 0 4px 4px;
+  cursor: grab;
+}
+.hud-panel .hud-grip:active { cursor: grabbing; background: var(--cyan); }
+
+/* Title bar inside each panel */
+.hud-panel .hud-title {
+  font-family: var(--disp);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  color: var(--cyan-hi);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  text-shadow: 0 0 10px rgba(var(--rgb), 0.6);
+}
+.hud-panel .hud-title .hud-aux {
+  float: right;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--faint);
+  text-shadow: none;
+  font-weight: 400;
+}
+
+/* ===== Top-left: clock + date + weather ===== */
+#hudClockTopLeft { top: 76px; left: 18px; }
+#hudClockTopLeft .hud-time {
+  font-family: var(--disp);
+  font-weight: 800;
+  font-size: 36px;
+  letter-spacing: 0.08em;
+  color: var(--cyan-hi);
+  line-height: 1;
+  text-shadow: 0 0 18px rgba(var(--rgb), 0.65);
+}
+#hudClockTopLeft .hud-date {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--dim);
+  margin-top: 6px;
+  text-transform: uppercase;
+}
+#hudClockTopLeft .hud-weather {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+#hudClockTopLeft .hud-weather b { color: var(--cyan); font-weight: 600; }
+
+/* ===== Top-right: system stats ===== */
+#hudStatsTopRight { top: 76px; right: 18px; min-width: 220px; }
+.hud-stat-row {
+  display: grid;
+  grid-template-columns: 56px 1fr 50px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+.hud-stat-row label { color: var(--faint); text-transform: uppercase; }
+.hud-stat-row output { color: var(--cyan-hi); text-align: right; font-variant-numeric: tabular-nums; }
+.hud-stat-bar {
+  height: 6px;
+  background: rgba(var(--rgb), 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+.hud-stat-bar i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--cyan-lo), var(--cyan));
+  box-shadow: 0 0 8px var(--cyan);
+  transition: width 0.5s ease-out;
+}
+.hud-stat-bar.warn i { background: linear-gradient(90deg, #b56300, var(--amber)); box-shadow: 0 0 8px var(--amber); }
+.hud-stat-bar.crit i { background: linear-gradient(90deg, #8d1f2a, var(--red)); box-shadow: 0 0 8px var(--red); }
+
+/* ===== Bottom-left: activity log ===== */
+#hudLogBottomLeft { bottom: 70px; left: 18px; min-width: 240px; max-height: 180px; }
+.hud-log-list { font-size: 10px; line-height: 1.7; color: var(--dim); max-height: 110px; overflow: hidden; }
+.hud-log-list .hud-log-row { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px dashed rgba(var(--rgb), 0.08); }
+.hud-log-list .hud-log-row:last-child { border-bottom: none; }
+.hud-log-list .hud-log-row .hud-ts { color: var(--faint); font-size: 9px; flex: none; }
+.hud-log-list .hud-log-row .hud-msg { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud-log-list .hud-log-row.ok .hud-msg { color: var(--green); }
+.hud-log-list .hud-log-row.warn .hud-msg { color: var(--amber); }
+.hud-log-list .hud-log-row.err .hud-msg { color: var(--red); }
+.hud-log-list .hud-log-row.ai .hud-msg { color: var(--violet); }
+
+/* ===== Bottom-right: quick commands ===== */
+#hudQuickBottomRt { bottom: 70px; right: 18px; min-width: 200px; }
+.hud-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.hud-chip {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--cyan-hi);
+  border: 1px solid var(--line-hi);
+  border-radius: 14px;
+  padding: 5px 11px;
+  background: rgba(var(--rgb), 0.06);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.hud-chip:hover {
+  background: rgba(var(--rgb), 0.18);
+  border-color: var(--cyan);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(var(--rgb), 0.4);
+}
+
+/* ===== Center: reticle markers (subtle bracket framing the orb) ===== */
+body.hud-on .hud-reticle {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 460px; height: 460px;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0.4;
+  animation: spinSlow 90s linear infinite;
+}
+body.hud-on .hud-reticle::before,
+body.hud-on .hud-reticle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px dashed rgba(var(--rgb), 0.25);
+  border-radius: 50%;
+}
+body.hud-on .hud-reticle::after {
+  inset: -40px;
+  border-style: dotted;
+  border-color: rgba(var(--rgb), 0.15);
+  animation: spinSlow 180s linear infinite reverse;
+}
+
+/* ===== Hidden state ===== */
+body:not(.hud-on) .hud-panel,
+body:not(.hud-on) .hud-reticle { display: none; }
+
+/* ===== ESC hint ===== */
+#hudEscHint {
+  position: fixed;
+  bottom: 18px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 71;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--faint);
+  background: rgba(6, 18, 30, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 4px 12px;
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+body.hud-on #hudEscHint { opacity: 0.7; }
+
+/* ===== Responsive: hide panels on small screens (don't crowd mobile) ===== */
+@media (max-width: 768px) {
+  body.hud-on .hud-panel { display: none; }
+  body.hud-on #hudClockTopLeft,
+  body.hud-on #hudStatsTopRight { display: block; min-width: 140px; max-width: 160px; font-size: 9px; }
+  body.hud-on #hudClockTopLeft .hud-time { font-size: 22px; }
+  body.hud-on #hudLogBottomLeft,
+  body.hud-on #hudQuickBottomRt { display: none; }
+}
+
+/* ===== Reduced motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  .hud-panel { transition: none; }
+  body.hud-on .hud-reticle,
+  body.hud-on .hud-reticle::after { animation: none; }
+}
