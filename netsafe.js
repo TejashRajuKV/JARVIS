@@ -61,7 +61,9 @@ async function safeFetch(href, init = {}, { fetchImpl = fetch, lookup, maxHops =
   let url = String(href);
   for (let hop = 0; hop <= maxHops; hop++) {
     const u = await assertPublicUrl(url, lookup ? { lookup } : {});
-    const r = await fetchImpl(u.href, { ...init, redirect: 'manual' });
+    // A slow public endpoint must not leave a local JARVIS request hanging indefinitely.
+    const signal = init.signal || AbortSignal.timeout(15000);
+    const r = await fetchImpl(u.href, { ...init, signal, redirect: 'manual' });
     if (r.status >= 300 && r.status < 400 && r.headers && r.headers.get && r.headers.get('location')) {
       try { url = new URL(r.headers.get('location'), u.href).href; } catch { throw new Error('Page redirected to a bad address'); }
       continue;
