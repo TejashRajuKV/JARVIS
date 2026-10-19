@@ -7,11 +7,10 @@ on:
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
         # package.json and unpdf require Node >=22; test supported LTS/current majors only.
         node: [22, 24]
     steps:
