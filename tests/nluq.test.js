@@ -39,8 +39,8 @@ const ask = async (intent, args, conf) => { reply = { success: true, intent, con
   check('the timeout is cleared after a successful response', timerCleared);
   timerCleared = false;
   triggerTimeout = true;
-  o = await ask('BATTERY');
-  check('an aborted Qwen request falls back to the existing rule result', o === null && NLUQ.describe().last.reason === 'timeout', { result: o, last: NLUQ.describe().last });
+  const timedOut = await ask('BATTERY');
+  check('an aborted Qwen request falls back to the existing rule result', timedOut === null && NLUQ.describe().last.reason === 'timeout', { result: timedOut, last: NLUQ.describe().last });
   check('the timeout timer is also cleared after an abort', timerCleared);
   triggerTimeout = false;
   let o = await ask('VOLUME', { level: 140 });
