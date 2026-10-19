@@ -33,7 +33,8 @@ const { check, done } = suite('ocr');
       // Tiny invalid base64 — should write the file and try WinRT/Tesseract, both of
       // which will fail. We expect a 501 with a clear error message, NOT a 500 crash.
       const r = await server.post('/api/ocr/image', { image: 'invalid-base64-data!!!' });
-      check('Validation', 'POST with invalid base64 returns 4xx or 5xx (not 200)', r.status >= 400, r.status);
+      check('Validation', 'POST with invalid base64 returns 400', r.status === 400, r.status);
+      check('Validation', 'invalid base64 receives a clear validation message', /valid base64/i.test(r.json.error), r.json.error);
       // We don't assert the exact error text — it depends on whether WinRT or Tesseract
       // is available on the test machine. The important thing is the route didn't crash.
     }
