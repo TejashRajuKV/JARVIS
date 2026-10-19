@@ -36,9 +36,11 @@ assert.strictEqual(malformed.lastAction, undefined, 'malformed action context sh
 // The action must be saved at the point it is recorded, not only after a later folder/file focus change.
 const actionWrite = source.indexOf('ctx.focus.lastAction = { intent: String(p.intent)');
 assert(actionWrite >= 0, 'successful turns should record a bounded lastAction');
-const saveAfterAction = source.indexOf('saveFocusCtx();', actionWrite);
+const saveAfterAction = source.indexOf('saveFocusCtx(true);', actionWrite);
 const nextBlock = source.indexOf('\n    }', actionWrite);
 assert(saveAfterAction >= 0 && (nextBlock < 0 || saveAfterAction < nextBlock),
-  'recording lastAction should immediately schedule focus-context persistence');
+  'recording lastAction should immediately flush focus-context persistence');
+assert(source.includes('if (immediate) { focusSaveT = null; save(); return; }'),
+  'saveFocusCtx(true) should bypass the debounce so an immediate reload cannot drop the action');
 
-console.log('focus-context: 5/5 checks passed');
+console.log('focus-context: 6/6 checks passed');

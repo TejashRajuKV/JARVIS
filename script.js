@@ -228,7 +228,12 @@ const FOCUS_MS = 15 * 60 * 1000;
 // The focus survives a reload (a page refresh in the middle of "open it" / "create a folder there" used to forget what "it" was): kept in the store,
 // picked up again on load for whatever is still inside the 15 minutes.
 let focusSaveT = null;
-const saveFocusCtx = () => { clearTimeout(focusSaveT); focusSaveT = setTimeout(() => { try { store.set('jarvis.focusCtx', ctx.focus); } catch (e) { /* only a convenience */ } }, 300); };
+const saveFocusCtx = (immediate = false) => {
+  clearTimeout(focusSaveT);
+  const save = () => { try { store.set('jarvis.focusCtx', ctx.focus); } catch (e) { /* only a convenience */ } };
+  if (immediate) { focusSaveT = null; save(); return; }
+  focusSaveT = setTimeout(save, 300);
+};
 (function restoreFocusCtx() {
   try {
     const f = store.get('jarvis.focusCtx', null), now = Date.now();
@@ -2914,7 +2919,7 @@ async function deliver(result, p) {
     // what happened, for "same project" / follow-ups
     if (p && p.intent && !/^(CANCELLED|CONVERSATION|CONFIRM)$/.test(p.intent)) {
       ctx.focus.lastAction = { intent: String(p.intent).slice(0, 80), summary: String(items[0].text || '').split('\n')[0].slice(0, 160), t: Date.now() };
-      saveFocusCtx(); // Persist this action too; otherwise it is only saved if another focus change happens later.
+      saveFocusCtx(true); // Persist immediately: a reload must not beat the debounce timer.
     }
   }
   for (const it of items) {

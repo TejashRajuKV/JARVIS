@@ -73,6 +73,16 @@ const ask = async (intent, args, conf) => { reply = { success: true, intent, con
   check('array arguments are rejected as malformed model output', (await NLUQ.parse({ text: 'please do the thing' }, {}, { intent: 'CONVERSATION', confidence: 0.3 })) === null && NLUQ.describe().last.reason === 'invalid_response');
   reply = { success: true, intent: 'BATTERY', confidence: 1.5, args: {} };
   check('confidence above 1 is rejected', (await NLUQ.parse({ text: 'please do the thing' }, {}, { intent: 'CONVERSATION', confidence: 0.3 })) === null && NLUQ.describe().last.reason === 'invalid_response');
+  // Untrusted target arguments are bounded and must be usable before the rule is overridden.
+  o = await ask('OPEN_APPLICATION', { app: { nested: 'chrome' } });
+  check('object-shaped app arguments are rejected instead of reaching the tool', o === null && NLUQ.describe().last.reason === 'missing_argument');
+  o = await ask('OPEN_APPLICATION', { app: '  chrome\n\tstable  ' });
+  check('string arguments are trimmed and control characters are normalized', o.args.app === 'chrome stable', o);
+  o = await ask('WEB_SEARCH', { query: 'x'.repeat(500) });
+  check('model-provided query strings are bounded before tool execution', o.args.query.length === 240, o && o.args.query.length);
+  o = await ask('TASK_ADD', { task: { title: 'buy milk' } });
+  check('object-shaped task text is rejected instead of becoming [object Object]', o === null && NLUQ.describe().last.reason === 'missing_argument');
+
   check('CONVERSATION is ignored', (await ask('CONVERSATION')) === null);
   win.settings.qwenNlu = false;
   check('with the setting off, the model is never asked', (await ask('BATTERY')) === null);
