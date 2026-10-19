@@ -1241,10 +1241,25 @@ app.post('/api/tool/upload', express.raw({ type: 'application/octet-stream', lim
   const dir = path.join(SANDBOX, 'Documents'); fs.mkdirSync(dir, { recursive: true });
   const actualDir = physicalPath(dir);
   if (!actualDir || rootOf(actualDir) !== SANDBOX || isInternal(actualDir)) return res.status(400).json({ error: 'The JARVIS Documents folder must stay inside its sandbox' });
-  let dest = path.join(dir, name), n = 1;
+  // Create with O_EXCL so an existing (including dangling) symlink cannot redirect an upload outside Documents.
+  // A check-then-write using existsSync has a race and treats dangling symlinks as missing files.
   const ext = path.extname(name), base = name.slice(0, -ext.length);
-  while (fs.existsSync(dest)) dest = path.join(dir, base + ' (' + (++n) + ')' + ext);
-  fs.writeFileSync(dest, req.body);
+  let dest = null;
+  for (let n = 1; n <= 1000; n++) {
+    const candidate = path.join(dir, n === 1 ? name : base + ' (' + n + ')' + ext);
+    let fd;
+    try {
+      fd = fs.openSync(candidate, 'wx', 0o600);
+      try { fs.writeFileSync(fd, req.body); } finally { fs.closeSync(fd); }
+      dest = candidate;
+      break;
+    } catch (e) {
+      if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
+      if (e.code === 'EEXIST') continue;
+      return res.status(500).json({ error: 'Could not save the uploaded file' });
+    }
+  }
+  if (!dest) return res.status(409).json({ error: 'Too many files with that name already exist' });
   let pages = null, scanned = false;
   if (/\.pdf$/i.test(dest)) {
     try { const r = await pdf.pdfPages(dest); pages = r.total; scanned = r.scanned; }
