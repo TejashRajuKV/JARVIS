@@ -2912,7 +2912,10 @@ async function deliver(result, p) {
     turnTrace.done = true; traceRoute(p && p.viaAI ? 'AI' : 'rules → ' + ((items[0] && items[0].tool) || (p && p.intent) || ''));
     turnTrace.ms = Math.round(performance.now() - turnTrace.t0); items[0].trace = turnTrace; lastTrace = turnTrace;
     // what happened, for "same project" / follow-ups
-    if (p && p.intent && !/^(CANCELLED|CONVERSATION|CONFIRM)$/.test(p.intent)) ctx.focus.lastAction = { intent: p.intent, summary: String(items[0].text || '').split('\n')[0].slice(0, 160), t: Date.now() };
+    if (p && p.intent && !/^(CANCELLED|CONVERSATION|CONFIRM)$/.test(p.intent)) {
+      ctx.focus.lastAction = { intent: String(p.intent).slice(0, 80), summary: String(items[0].text || '').split('\n')[0].slice(0, 160), t: Date.now() };
+      saveFocusCtx(); // Persist this action too; otherwise it is only saved if another focus change happens later.
+    }
   }
   for (const it of items) {
     if (!it.meta) { it.intent = it.intent || p.intent; it.tool = it.tool || null; it.meta = it.intent + (it.tool ? ' · ' + it.tool + '()' : '') + (p.viaAI ? ' · via AI' : ' · ' + (p.confidence || 1).toFixed(2)); }
