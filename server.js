@@ -240,6 +240,21 @@ function physicalPath(p) {
   }
   try { return path.resolve(fs.realpathSync(cur), ...tail); } catch { return null; }
 }
+// Reject links within an allowed root explicitly, instead of relying only on realpath behavior across Windows junctions.
+function hasLinkedComponent(p, root) {
+  const rel = path.relative(root, path.resolve(p));
+  if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return true;
+  let cur = root;
+  try {
+    if (fs.lstatSync(cur).isSymbolicLink()) return true;
+    for (const part of rel.split(path.sep).filter(Boolean)) {
+      cur = path.join(cur, part);
+      try { if (fs.lstatSync(cur).isSymbolicLink()) return true; }
+      catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') break; throw e; }
+    }
+  } catch { return true; }
+  return false;
+}
 
 // Resolves a user-supplied name/path to a location inside an allowed root (or null).
 // Accepts: absolute paths inside a root, "<rootFolderName>/sub/file", or paths relative to the sandbox.
@@ -254,7 +269,8 @@ function safePath(name) {
     const root = config.roots.find(r => path.basename(r).toLowerCase() === first);
     p = root ? path.resolve(root, s.split(/[/\\]/).slice(1).join(path.sep)) : path.resolve(SANDBOX, s);
   }
-  if (!rootOf(p) || inTrash(p) || isInternal(p)) return null;
+  const lexicalRoot = rootOf(p);
+  if (!lexicalRoot || inTrash(p) || isInternal(p) || hasLinkedComponent(p, lexicalRoot)) return null;
   const physical = physicalPath(p), physicalRoot = physical && rootOf(physical);
   // A symlink/junction may not use an allowed folder as a doorway to an unapproved path.
   if (!physical || !physicalRoot || inTrash(physical) || isInternal(physical)) return null;
@@ -290,6 +306,8 @@ const under = (p, dir) => { const a = norm(path.resolve(p)), b = norm(dir); retu
 function blockedPath(p, { forWrite } = {}) {
   const r = path.resolve(p), physical = physicalPath(r);
   // Check both spellings and the resolved destination. This catches symlinks/junctions into OS and credential paths.
+  const lexicalRoot = rootOf(r);
+  if (lexicalRoot && hasLinkedComponent(r, lexicalRoot)) return true;
   const candidates = physical ? [r, physical] : [r];
   for (const candidate of candidates) {
     if (BLOCKED_DIRS.some(d => under(candidate, d))) return true;
@@ -299,7 +317,7 @@ function blockedPath(p, { forWrite } = {}) {
     if (forWrite && under(candidate, __dirname)) return true;   // JARVIS never rewrites its own program files
   }
   // A sandbox/project path that resolves outside all configured roots is not an allowed path.
-  const lexicalRoot = rootOf(r), physicalRoot = physical && rootOf(physical);
+  const physicalRoot = physical && rootOf(physical);
   if (lexicalRoot && !physicalRoot) return true;
   return false;
 }
