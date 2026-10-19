@@ -220,6 +220,17 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
         if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(e.code)) throw e;
         console.log('SKIP symlink security test: this environment does not permit creating symlinks');
       } finally { try { fs.unlinkSync(link); } catch {} }
+      // Name-only lookup scans Desktop/Downloads as well as ~/jarvis; it must not return linked files.
+      const desktop = path.join(home, 'Desktop'), laptopLink = path.join(desktop, 'credential-shortcut.txt');
+      fs.mkdirSync(desktop, { recursive: true });
+      try {
+        fs.symlinkSync(path.join(home, '.claude', 'creds.json'), laptopLink, 'file');
+        const lr = await post('/api/tool/readFile', { name: 'credential-shortcut.txt' });
+        check('Security', 'laptop name search skips symlinks to credential files', [403, 404].includes(lr.status), [lr.status, lr.text.slice(0, 120)]);
+      } catch (e) {
+        if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(e.code)) throw e;
+        console.log('SKIP laptop-search symlink test: this environment does not permit creating symlinks');
+      } finally { try { fs.unlinkSync(laptopLink); } catch {} }
       fs.writeFileSync(path.join(home, 'notes-outside.txt'), 'plain'); check('Security', 'a normal file elsewhere in the home folder still reads', (await post('/api/tool/readFile', { name: path.join(home, 'notes-outside.txt') })).json.content === 'plain');
       for (const f of ['.zz-secret.json', 'Code/.zz-secret.json', 'Code/.zz-new.json']) fs.rmSync(path.join(SB, f), { force: true }); fs.rmSync(path.join(SB, '.zz-archive'), { recursive: true, force: true }); for (const f of ['.git-credentials', '.npmrc', '.netrc']) fs.rmSync(path.join(home, f), { force: true });
     }
