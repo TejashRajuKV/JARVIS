@@ -233,8 +233,15 @@ const saveFocusCtx = () => { clearTimeout(focusSaveT); focusSaveT = setTimeout((
   try {
     const f = store.get('jarvis.focusCtx', null), now = Date.now();
     if (!f || typeof f !== 'object') return;
-    for (const k of Object.keys(f)) if (f[k] && typeof f[k] === 'object' && !Array.isArray(f[k]) && f[k].path && now - f[k].t < FOCUS_MS) ctx.focus[k] = f[k];
-    if (Array.isArray(f.results) && f.resultsT && now - f.resultsT < FOCUS_MS) { ctx.focus.results = f.results.slice(0, 30); ctx.focus.resultsT = f.resultsT; }
+    for (const k of Object.keys(f)) if (f[k] && typeof f[k] === 'object' && !Array.isArray(f[k]) && f[k].path && Number.isFinite(f[k].t) && now >= f[k].t && now - f[k].t < FOCUS_MS) ctx.focus[k] = f[k];
+    // lastAction intentionally has no path, so the generic path-only restore above skipped it.
+    // Restore a validated, recent action too; otherwise contextual follow-ups lose their topic after reload.
+    const a = f.lastAction;
+    if (a && typeof a === 'object' && typeof a.intent === 'string' && typeof a.summary === 'string'
+      && Number.isFinite(a.t) && now >= a.t && now - a.t < FOCUS_MS) {
+      ctx.focus.lastAction = { intent: a.intent.slice(0, 80), summary: a.summary.slice(0, 160), t: a.t };
+    }
+    if (Array.isArray(f.results) && Number.isFinite(f.resultsT) && now >= f.resultsT && now - f.resultsT < FOCUS_MS) { ctx.focus.results = f.results.slice(0, 30); ctx.focus.resultsT = f.resultsT; }
   } catch (e) { /* start fresh */ }
 })();
 const CONFIRM_MIN = 0.6;   // medium-confidence band for spoken commands: [CONFIRM_MIN, 0.85) → "did you mean …?"
@@ -2905,7 +2912,10 @@ async function deliver(result, p) {
     turnTrace.done = true; traceRoute(p && p.viaAI ? 'AI' : 'rules → ' + ((items[0] && items[0].tool) || (p && p.intent) || ''));
     turnTrace.ms = Math.round(performance.now() - turnTrace.t0); items[0].trace = turnTrace; lastTrace = turnTrace;
     // what happened, for "same project" / follow-ups
-    if (p && p.intent && !/^(CANCELLED|CONVERSATION|CONFIRM)$/.test(p.intent)) ctx.focus.lastAction = { intent: p.intent, summary: String(items[0].text || '').split('\n')[0].slice(0, 160), t: Date.now() };
+    if (p && p.intent && !/^(CANCELLED|CONVERSATION|CONFIRM)$/.test(p.intent)) {
+      ctx.focus.lastAction = { intent: String(p.intent).slice(0, 80), summary: String(items[0].text || '').split('\n')[0].slice(0, 160), t: Date.now() };
+      saveFocusCtx(); // Persist this action too; otherwise it is only saved if another focus change happens later.
+    }
   }
   for (const it of items) {
     if (!it.meta) { it.intent = it.intent || p.intent; it.tool = it.tool || null; it.meta = it.intent + (it.tool ? ' · ' + it.tool + '()' : '') + (p.viaAI ? ' · via AI' : ' · ' + (p.confidence || 1).toFixed(2)); }
