@@ -90,18 +90,25 @@ window.NLUQ = (function () {
 
     const t0 = performance.now();
     let qwen = null;
+    // A stalled local model must not freeze the user's command pipeline indefinitely.
+    // Abort the request after 8 seconds; the rule engine/planner can then continue.
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), 8000) : null;
     try {
       const r = await fetch((window.API || '') + '/nlu/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, model: (window.llm && llm.model) || '' }),
+        ...(controller ? { signal: controller.signal } : {}),
       });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       qwen = await r.json();
     } catch (e) {
       failCount++; lastLatencyMs = Math.round(performance.now() - t0);
-      lastResult = { ok: false, reason: 'fetch_error', error: e.message, ms: lastLatencyMs };
+      lastResult = { ok: false, reason: controller && controller.signal.aborted ? 'timeout' : 'fetch_error', error: e.message, ms: lastLatencyMs };
       return null;
+    } finally {
+      if (timeoutId !== null) clearTimeout(timeoutId);
     }
     lastLatencyMs = Math.round(performance.now() - t0);
     callCount++;
