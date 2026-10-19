@@ -239,9 +239,16 @@ foreach ($l in $res.Lines) {
     if (imageBuffer.length > 3 * 1024 * 1024) return res.status(413).json({ error: 'That picture is too large to read; use a smaller one.' });
     if (!isImage(imageBuffer)) return res.status(400).json({ error: 'That is not a JPEG or PNG picture.' });
     const t0 = Date.now();
-    const r = await ocrWords(imageBuffer);
-    if (r.error) return res.status(/not a JPEG/.test(r.error) ? 400 : /needs Windows/.test(r.error) ? 501 : 500).json({ error: r.error });
-    res.json({ success: true, ...r, ms: Date.now() - t0 });
+    try {
+      const r = await ocrWords(imageBuffer);
+      if (r.error) return res.status(/not a JPEG/.test(r.error) ? 400 : /needs Windows/.test(r.error) ? 501 : 500).json({ error: r.error });
+      return res.json({ success: true, ...r, ms: Date.now() - t0 });
+    } catch (e) {
+      // Express 4 does not automatically forward rejected async route handlers.
+      // Keep PowerShell/OCR failures from becoming unhandled rejections or leaking internals.
+      console.warn('[ocr] Word extraction failed:', e && e.message ? e.message : e);
+      return res.status(500).json({ error: 'OCR could not read word positions from this image. Try another image.' });
+    }
   });
 
   // ---- /api/ocr/screen — like /api/sys/screenRead but with monitor targeting ----
