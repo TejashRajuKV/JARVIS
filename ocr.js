@@ -207,7 +207,10 @@ foreach ($l in $res.Lines) {
 }
 [Console]::Out.WriteLine((@{ width = $sb.PixelWidth; height = $sb.PixelHeight; words = @($words); lines = @($res.Lines | ForEach-Object { $_.Text }) } | ConvertTo-Json -Compress -Depth 4))`;
 
-  const isImage = b => Buffer.isBuffer(b) && b.length > 12 && ((b[0] === 0xFF && b[1] === 0xD8) || (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47));
+  const isImage = b => Buffer.isBuffer(b) && b.length > 12 && (
+    (b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) ||
+    b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+  );
   // buf: a JPEG or PNG. → { width, height, words:[{t,x,y,w,h,l}], lines:[text], text } or { error }
   async function ocrWords(buf) {
     if (!IS_WIN) return { error: 'Reading word positions needs Windows OCR, which this computer does not have.' };
