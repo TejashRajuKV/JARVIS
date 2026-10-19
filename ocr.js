@@ -129,9 +129,10 @@ module.exports = function setupOCR(app, { IS_WIN, IS_MAC }) {
     const imgPath = stem + '.' + ext;
     const t0 = Date.now();
     try {
-      fs.writeFileSync(imgPath, imageBuffer);
+      // Exclusive creation prevents a pre-created temp-file/symlink from being overwritten.
+      fs.writeFileSync(imgPath, imageBuffer, { flag: 'wx', mode: 0o600 });
     } catch (e) {
-      return res.status(500).json({ error: 'Could not write image: ' + e.message });
+      return res.status(500).json({ error: 'Could not create temporary OCR image' });
     }
 
     // On Windows, try WinRT first (faster, more accurate for screen captures).
