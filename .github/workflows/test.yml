@@ -1,6 +1,12 @@
 # Runs the JARVIS test suite on every push and pull request.
 name: tests
 
+# A new push supersedes the previous test run for the same branch. This keeps rapid
+# fix-and-test iterations from consuming multiple Windows runners for stale commits.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
   pull_request:
