@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { writeUnique } = require('./safewrite');
 const express = require('express');
 
 const MAX_PAGES = 20, MAX_PAGE_BYTES = 15 * 1024 * 1024, MAX_SESSION_BYTES = 80 * 1024 * 1024, SESSION_TTL = 30 * 60 * 1000;
@@ -26,22 +27,7 @@ const stamp = (d = new Date()) => {
   const p = n => String(n).padStart(2, '0');
   return { day: d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()), time: p(d.getHours()) + p(d.getMinutes()), full: d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) };
 };
-function writeUniqueFile(dir, base, ext, data) {
-  for (let n = 1; n <= 1000; n++) {
-    const file = path.join(dir, (n === 1 ? base : base + '-' + n) + ext);
-    let fd;
-    try {
-      fd = fs.openSync(file, 'wx', 0o600);
-      try { fs.writeFileSync(fd, data); } finally { fs.closeSync(fd); }
-      return file;
-    } catch (e) {
-      if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
-      if (e.code === 'EEXIST') continue;
-      throw e;
-    }
-  }
-  throw new Error('Too many files with that name already exist');
-}
+const writeUniqueFile = (dir, base, ext, data) => writeUnique(dir, n => (n === 1 ? base : base + '-' + n) + ext, data);
 function safeOutputDir(dir, sandbox) {
   try {
     const root = fs.realpathSync(sandbox), actual = fs.realpathSync(dir);

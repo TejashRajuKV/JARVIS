@@ -1248,6 +1248,7 @@ app.post('/api/tool/folderStats', (req, res) => {
 });
 
 const pdf = require('./pdftext');
+const { writeUnique } = require('./safewrite');
 const cap1 = s => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 // Drag a file into JARVIS (or 📎): saved to ~/jarvis/Documents so you can ask about it, summarise it or make flashcards.
 const UPLOAD_EXT = /\.(pdf|txt|md|markdown|csv|json|py|js|ts|c|cpp|h|java|cs|go|rs|html|css|sql|ipynb|docx|pptx|xlsx)$/i;
@@ -1258,25 +1259,14 @@ app.post('/api/tool/upload', express.raw({ type: 'application/octet-stream', lim
   const dir = path.join(SANDBOX, 'Documents'); fs.mkdirSync(dir, { recursive: true });
   const actualDir = physicalPath(dir);
   if (!actualDir || rootOf(actualDir) !== SANDBOX || isInternal(actualDir)) return res.status(400).json({ error: 'The JARVIS Documents folder must stay inside its sandbox' });
-  // Create with O_EXCL so an existing (including dangling) symlink cannot redirect an upload outside Documents.
-  // A check-then-write using existsSync has a race and treats dangling symlinks as missing files.
+  // writeUnique never follows an existing or dangling link (plain 'wx' does on Windows), so nothing lands outside Documents.
   const ext = path.extname(name), base = name.slice(0, -ext.length);
   let dest = null;
-  for (let n = 1; n <= 1000; n++) {
-    const candidate = path.join(dir, n === 1 ? name : base + ' (' + n + ')' + ext);
-    let fd;
-    try {
-      fd = fs.openSync(candidate, 'wx', 0o600);
-      try { fs.writeFileSync(fd, req.body); } finally { fs.closeSync(fd); }
-      dest = candidate;
-      break;
-    } catch (e) {
-      if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
-      if (e.code === 'EEXIST') continue;
-      return res.status(500).json({ error: 'Could not save the uploaded file' });
-    }
+  try { dest = writeUnique(dir, n => n === 1 ? name : base + ' (' + n + ')' + ext, req.body); }
+  catch (e) {
+    if (e.code === 'ETOOMANY') return res.status(409).json({ error: 'Too many files with that name already exist' });
+    return res.status(500).json({ error: 'Could not save the uploaded file' });
   }
-  if (!dest) return res.status(409).json({ error: 'Too many files with that name already exist' });
   let pages = null, scanned = false;
   if (/\.pdf$/i.test(dest)) {
     try { const r = await pdf.pdfPages(dest); pages = r.total; scanned = r.scanned; }

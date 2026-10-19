@@ -301,6 +301,35 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
       } finally { if (made) { try { fs.unlinkSync(link); } catch {} } }
     }
 
+    // A symlink to an existing file outside the sandbox: the upload goes to "(2)" and the outside file is untouched.
+    {
+      const docs = path.join(SB, 'Documents'), link = path.join(docs, 'live-link.txt'), target = path.join(S.home, 'outside-secret.txt');
+      fs.writeFileSync(target, 'keep me');
+      let made = false;
+      try {
+        fs.symlinkSync(target, link, 'file');
+        made = true;
+        const r = await fetch(S.base + '/api/tool/upload?name=live-link.txt', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Origin: S.base }, body: 'overwrite attempt' });
+        const j = await r.json();
+        check('Security', 'upload does not overwrite a file through an existing symlink', j.success && j.file === 'live-link (2).txt' && fs.readFileSync(target, 'utf8') === 'keep me', [r.status, j]);
+        try { fs.unlinkSync(path.join(docs, 'live-link (2).txt')); } catch {}
+      } catch (e) {
+        if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(e.code)) throw e;
+        console.log('SKIP live upload symlink test: this environment does not permit creating symlinks');
+      } finally { if (made) { try { fs.unlinkSync(link); } catch {} } try { fs.unlinkSync(target); } catch {} }
+    }
+    {
+      const docs = path.join(SB, 'Documents');
+      const r = await fetch(S.base + '/api/tool/upload?name=' + encodeURIComponent(process.platform === 'win32' ? '..\\..\\../traversal.txt' : '../../../traversal.txt'), { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Origin: S.base }, body: 'x' });
+      const j = await r.json();
+      check('Security', 'an upload name with ..\\ or ../ stays a plain file name in Documents', j.success && !/[\\/]/.test(j.file) && fs.existsSync(path.join(docs, j.file)) && !fs.existsSync(path.join(S.home, 'traversal.txt')), [r.status, j]);
+      try { fs.unlinkSync(path.join(docs, j.file)); } catch {}
+      const many = await Promise.all(Array.from({ length: 8 }, (_, i) => fetch(S.base + '/api/tool/upload?name=burst.txt', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Origin: S.base }, body: 'copy ' + i }).then(x => x.json())));
+      const names = new Set(many.map(m => m.file)), bodies = new Set(many.map(m => { try { return fs.readFileSync(path.join(docs, m.file), 'utf8'); } catch { return null; } }));
+      check('Files', '8 uploads of the same name at once give 8 separate files, none overwritten', many.every(m => m.success) && names.size === 8 && bodies.size === 8 && !bodies.has(null), many);
+      for (const m of many) { try { fs.unlinkSync(path.join(docs, m.file)); } catch {} }
+    }
+
     /* ---------- notes & PDFs (search) ---------- */
     r = await post('/api/rag/reindex', {});
     check('Notes search', 'reindex your files', r.json.success && r.json.files >= 2, r.json);
