@@ -24,10 +24,11 @@ const rejects = async (href, lookup) => { try { await assertPublicUrl(href, { lo
   // safeFetch: redirects are followed by hand and each hop is checked
   const resp = (status, location, body) => ({ status, ok: status < 300, headers: { get: k => (k.toLowerCase() === 'location' ? location : null) }, text: async () => body || '' });
   let seen;
-  const chain = map => async (url, init) => { (seen = seen || []).push([url, init.redirect]); return map[url] || resp(404); };
+  const chain = map => async (url, init) => { (seen = seen || []).push([url, init.redirect, !!init.signal]); return map[url] || resp(404); };
   seen = []; let r = await safeFetch('https://a.example.com/start', {}, { lookup: pub, fetchImpl: chain({ 'https://a.example.com/start': resp(302, '/next'), 'https://a.example.com/next': resp(200, null, 'hello') }) });
   check('a normal redirect is followed (relative addresses too) and the final address is reported', r.status === 200 && r.finalUrl === 'https://a.example.com/next' && seen.length === 2, seen);
   check('every request is made with redirect:"manual" (the browser/runtime never follows on its own)', seen.every(s => s[1] === 'manual'), seen);
+  check('public web requests receive an abort signal so stalled servers time out', seen.every(s => s[2] === true), seen);
   seen = []; let err = null;
   try { await safeFetch('https://a.example.com/start', {}, { lookup: pub, fetchImpl: chain({ 'https://a.example.com/start': resp(302, 'http://127.0.0.1:3000/api/state.js') }) }); } catch (e) { err = e.message; }
   check('a public page redirecting to this laptop is refused, and the laptop address is never requested', /Only public/.test(err || '') && seen.length === 1 && !seen.some(s => /127\.0\.0\.1/.test(s[0])), [err, seen]);
