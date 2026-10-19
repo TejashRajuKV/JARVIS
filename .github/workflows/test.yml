@@ -1,4 +1,4 @@
-# Runs the JARVIS test suite (npm test) on every push and pull request.
+# Runs the JARVIS test suite on every push and pull request.
 name: tests
 
 on:
@@ -12,11 +12,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
-        node: [18, 20, 24]
+        # package.json and unpdf require Node >=22; test supported LTS/current majors only.
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: npm install
+          cache: npm
+      - run: npm ci
       - run: npm test
