@@ -34,6 +34,10 @@ function isPrivateAddress(raw) {
   if (/^f[cd]/.test(ip) || /^fe[89ab]/.test(ip) || /^ff/.test(ip)) return true;       // unique-local, link-local, multicast
   if (/^64:ff9b:/.test(ip)) return true;                                                // NAT64 maps to IPv4: not worth resolving
   if (/^2001:db8/.test(ip) || /^2001:0:/.test(ip)) return true;                       // documentation / Teredo
+  // Only IPv6 global-unicast space (2000::/3) is a normal public destination. This also
+  // rejects reserved/special-purpose blocks not individually enumerated above.
+  const firstHextet = parseInt(ip.split(':')[0] || '0', 16);
+  if (!Number.isFinite(firstHextet) || firstHextet < 0x2000 || firstHextet > 0x3fff) return true;
   return false;
 }
 const BAD_NAME = /(^|\.)(localhost|local|localdomain|internal|intranet|lan|home|corp|private|home\.arpa)$/i;
