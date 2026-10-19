@@ -273,6 +273,23 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
       }
     }
 
+    // A dangling file symlink reports existsSync=false on Windows; upload must still not follow it.
+    {
+      const docs = path.join(SB, 'Documents'), link = path.join(docs, 'escape.txt'), target = path.join(S.home, 'upload-target.txt');
+      let made = false;
+      try {
+        fs.symlinkSync(target, link, 'file');
+        made = true;
+        const r = await fetch(S.base + '/api/tool/upload?name=escape.txt', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Origin: S.base }, body: 'upload stays local' });
+        const j = await r.json();
+        check('Security', 'upload does not follow a dangling file symlink', j.success && !fs.existsSync(target) && fs.existsSync(path.join(docs, 'escape (2).txt')), [r.status, j, fs.existsSync(target)]);
+        try { fs.unlinkSync(path.join(docs, 'escape (2).txt')); } catch {}
+      } catch (e) {
+        if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(e.code)) throw e;
+        console.log('SKIP dangling upload symlink test: this environment does not permit creating symlinks');
+      } finally { if (made) { try { fs.unlinkSync(link); } catch {} } }
+    }
+
     /* ---------- notes & PDFs (search) ---------- */
     r = await post('/api/rag/reindex', {});
     check('Notes search', 'reindex your files', r.json.success && r.json.files >= 2, r.json);
