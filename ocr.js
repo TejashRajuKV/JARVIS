@@ -217,7 +217,8 @@ foreach ($l in $res.Lines) {
     if (!IS_WIN) return { error: 'Reading word positions needs Windows OCR, which this computer does not have.' };
     if (!isImage(buf)) return { error: 'That is not a JPEG or PNG picture.' };
     const imgPath = path.join(os.tmpdir(), `jarvis_ocrw_${process.pid}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}.${buf[0] === 0xFF ? 'jpg' : 'png'}`);
-    try { fs.writeFileSync(imgPath, buf); } catch (e) { return { error: 'Could not write the picture: ' + e.message }; }
+    try { fs.writeFileSync(imgPath, buf, { flag: 'wx', mode: 0o600 }); }
+    catch { return { error: 'Could not create temporary OCR image' }; }
     try {
       const r = await ps(WORDS_SCRIPT, { JARVIS_OCR_PNG: imgPath }, 45000);
       if (r.error) return { error: r.error === 'no OCR language installed' ? 'Windows has no OCR language installed, so I cannot read text from pictures.' : 'Reading the picture failed: ' + r.error };
