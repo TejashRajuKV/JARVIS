@@ -34,6 +34,10 @@ const ask = async (intent, args, conf) => { reply = { success: true, intent, con
 
   let o = await ask('VOLUME', { level: 140 });
   check('"volume" is VOLUME_SET with the level clamped to 0-100', o.intent === 'VOLUME_SET' && o.args.level === 100, o);
+  o = await ask('VOLUME', { level: 0 });
+  check('"volume 0" preserves zero instead of treating it as a missing value', o.intent === 'VOLUME_SET' && o.args.level === 0, o);
+  o = await ask('BRIGHTNESS', { level: 0 });
+  check('"brightness 0" preserves zero instead of treating it as a missing value', o.intent === 'BRIGHTNESS' && o.args.level === 0, o);
   o = await ask('TIMER', { minutes: 2 });
   check('a timer in minutes becomes SET_TIMER in seconds', o.intent === 'SET_TIMER' && o.args.seconds === 120, o);
   o = await ask('TIMER', { minutes: 'soon' });
