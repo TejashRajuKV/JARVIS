@@ -26,10 +26,28 @@ const stamp = (d = new Date()) => {
   const p = n => String(n).padStart(2, '0');
   return { day: d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()), time: p(d.getHours()) + p(d.getMinutes()), full: d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) };
 };
-function uniquePath(dir, base, ext) {
-  let p = path.join(dir, base + ext), n = 1;
-  while (fs.existsSync(p)) p = path.join(dir, base + '-' + (++n) + ext);
-  return p;
+function writeUniqueFile(dir, base, ext, data) {
+  for (let n = 1; n <= 1000; n++) {
+    const file = path.join(dir, (n === 1 ? base : base + '-' + n) + ext);
+    let fd;
+    try {
+      fd = fs.openSync(file, 'wx', 0o600);
+      try { fs.writeFileSync(fd, data); } finally { fs.closeSync(fd); }
+      return file;
+    } catch (e) {
+      if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
+      if (e.code === 'EEXIST') continue;
+      throw e;
+    }
+  }
+  throw new Error('Too many files with that name already exist');
+}
+function safeOutputDir(dir, sandbox) {
+  try {
+    const root = fs.realpathSync(sandbox), actual = fs.realpathSync(dir);
+    const rel = path.relative(root, actual);
+    return rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel);
+  } catch { return false; }
 }
 
 /* ---------- the searchable PDF ---------- */
@@ -136,13 +154,18 @@ module.exports = function setupScan(app, { SANDBOX, llm, DEFAULT_MODEL, rel, ope
     try { built = await buildSearchablePdf(pages, req.body && req.body.name); }
     catch (e) { return res.status(422).json({ error: 'I could not build the PDF (' + String(e.message).slice(0, 80) + ').' }); }
     const dir = path.join(SANDBOX, 'Scans'); fs.mkdirSync(dir, { recursive: true });
+    if (!safeOutputDir(dir, SANDBOX)) return res.status(400).json({ error: 'The Scans folder must stay inside the JARVIS sandbox' });
     const st = stamp();
     const base = slug(req.body && req.body.name) || 'scan-' + st.day + '-' + st.time;
-    const out = uniquePath(dir, base, '.pdf');
-    fs.writeFileSync(out, built.pdf);
+    let out;
+    try { out = writeUniqueFile(dir, base, '.pdf', built.pdf); }
+    catch { return res.status(500).json({ error: 'Could not save the scanned PDF' }); }
     const text = texts.join('\n\n').trim();
     let textFile = null;
-    if (text) { textFile = out.replace(/\.pdf$/i, '.txt'); fs.writeFileSync(textFile, text + '\n'); }
+    if (text) {
+      try { textFile = writeUniqueFile(dir, path.basename(out, '.pdf'), '.txt', text + '\n'); }
+      catch { /* the PDF is still useful if its optional text sidecar cannot be saved */ }
+    }
     sessions.delete(id);
     if (req.body && req.body.open && openPath) { try { openPath(out); } catch {} }
     res.json({ success: true, file: rel(out), name: path.basename(out), pages: pages.length, words: built.words, skipped: built.skipped,
@@ -182,8 +205,10 @@ module.exports = function setupScan(app, { SANDBOX, llm, DEFAULT_MODEL, rel, ope
     if (!laptopOnly(req, res)) return;
     if (!isJpeg(req.body)) return res.status(400).json({ error: 'That is not a JPEG picture.' });
     const dir = path.join(SANDBOX, 'Watch'); fs.mkdirSync(dir, { recursive: true });
-    const out = uniquePath(dir, 'watch-' + stamp().full, '.jpg');
-    fs.writeFileSync(out, req.body);
+    if (!safeOutputDir(dir, SANDBOX)) return res.status(400).json({ error: 'The Watch folder must stay inside the JARVIS sandbox' });
+    let out;
+    try { out = writeUniqueFile(dir, 'watch-' + stamp().full, '.jpg', req.body); }
+    catch { return res.status(500).json({ error: 'Could not save the room snapshot' }); }
     pruneSnapshots(dir);
     res.json({ success: true, file: rel(out) });
   });
