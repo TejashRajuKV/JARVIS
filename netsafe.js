@@ -33,7 +33,7 @@ function isPrivateAddress(raw) {
   if (/^::ffff:0:/.test(ip) || /^2002:/.test(ip)) return true;                         // translated IPv4 / 6to4
   if (/^f[cd]/.test(ip) || /^fe[89ab]/.test(ip) || /^ff/.test(ip)) return true;       // unique-local, link-local, multicast
   if (/^64:ff9b:/.test(ip)) return true;                                                // NAT64 maps to IPv4: not worth resolving
-  if (/^2001:db8/.test(ip) || /^2001:0:/.test(ip)) return true;                       // documentation / Teredo
+  if (/^2001:db8/.test(ip) || /^2001:0:/.test(ip) || /^2001:2:/.test(ip) || /^2001:20:/.test(ip)) return true; // documentation, Teredo, benchmarking, ORCHIDv2
   // Only IPv6 global-unicast space (2000::/3) is a normal public destination. This also
   // rejects reserved/special-purpose blocks not individually enumerated above.
   const firstHextet = parseInt(ip.split(':')[0] || '0', 16);
