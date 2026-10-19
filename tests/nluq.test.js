@@ -8,10 +8,10 @@ const check = (n, ok, x) => { total++; if (!ok) { fail++; console.log('FAIL  ' +
 let reply = null;                                    // what the fake /nlu/parse answers
 const win = { settings: { qwenNlu: true }, API: '/api', llmReady: () => true, llm: { model: '' } };
 const doc = { readyState: 'complete', getElementById: () => null, addEventListener() {} };
-let timerDelay = 0, timerCleared = false, lastFetchOptions = null;
+let timerDelay = 0, timerCleared = false, lastFetchOptions = null, triggerTimeout = false;
 const ctx = vm.createContext({ window: win, document: doc, settings: win.settings, llmReady: win.llmReady, llm: win.llm, performance: { now: () => 0 }, console,
-  AbortController, setTimeout: (fn, ms) => { timerDelay = ms; return 17; }, clearTimeout: id => { timerCleared = id === 17; },
-  fetch: async (url, options) => { lastFetchOptions = options; return { ok: true, json: async () => reply }; } });
+  AbortController, setTimeout: (fn, ms) => { timerDelay = ms; if (triggerTimeout) fn(); return 17; }, clearTimeout: id => { timerCleared = id === 17; },
+  fetch: async (url, options) => { lastFetchOptions = options; if (options.signal && options.signal.aborted) throw new Error('The operation was aborted'); return { ok: true, json: async () => reply }; } });
 vm.runInContext(fs.readFileSync(root('nlu-qwen.js'), 'utf8'), ctx);
 const NLUQ = win.NLUQ;
 
@@ -37,6 +37,12 @@ const ask = async (intent, args, conf) => { reply = { success: true, intent, con
   await ask('BATTERY');
   check('Qwen requests have an 8-second abort timeout', timerDelay === 8000 && !!lastFetchOptions.signal, { timerDelay, hasSignal: !!lastFetchOptions.signal });
   check('the timeout is cleared after a successful response', timerCleared);
+  timerCleared = false;
+  triggerTimeout = true;
+  o = await ask('BATTERY');
+  check('an aborted Qwen request falls back to the existing rule result', o === null && NLUQ.describe().last.reason === 'timeout', { result: o, last: NLUQ.describe().last });
+  check('the timeout timer is also cleared after an abort', timerCleared);
+  triggerTimeout = false;
   let o = await ask('VOLUME', { level: 140 });
   check('"volume" is VOLUME_SET with the level clamped to 0-100', o.intent === 'VOLUME_SET' && o.args.level === 100, o);
   o = await ask('VOLUME', { level: 0 });
