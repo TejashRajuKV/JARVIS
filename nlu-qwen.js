@@ -43,34 +43,44 @@ window.NLUQ = (function () {
   // model sent into what that handler reads. Left out on purpose — a model's guess must never power the laptop off, lock it, delete or send anything, or make a reminder:
   // SHUTDOWN, RESTART, SLEEP, LOCK, TASK_DELETE, TASK_DONE, REMINDER, CREATE_FILE, READ_SCREEN, MAPS, CONVERT (the rules and the planner handle those, with their checks).
   const TOOL_BY_INTENT = {
-    OPEN_APPLICATION:  { tool: 'openApplication',  args: a => ({ app: a.app || a.name || '' }) },
+    OPEN_APPLICATION:  { tool: 'openApplication',  args: a => ({ app: pickText(a, ['app', 'name'], 100) }) },
     CLOSE_APPLICATION: { tool: 'closeApplication', args: a => ({ app: a.app || a.name || '' }) },       // JARVIS still asks YES first (confirmGate)
-    OPEN_WEB:          { tool: 'openWeb',           args: a => ({ query: a.query || a.target || '' }) },
+    OPEN_WEB:          { tool: 'openWeb',           args: a => ({ query: pickText(a, ['query', 'target'], 240) }) },
     WEB_SEARCH:        { tool: 'webSearch',         args: a => ({ query: a.query || a.target || '' }) },
     SITE_SEARCH:       { tool: 'openWeb',           args: a => ({ query: a.query || a.target || '' }) },
     BRIGHTNESS:        { tool: 'brightness',        args: a => ({ level: clampLvl(a.level ?? a.value) }) },
     DARK_MODE:         { tool: 'darkMode',          args: () => ({}) },
-    WEATHER:           { tool: 'weather',           args: a => ({ city: a.city || '' }) },
-    READ_FILE:         { tool: 'readFile',          args: a => ({ name: a.name || a.file || '' }) },
+    WEATHER:           { tool: 'weather',           args: a => ({ city: pickText(a, ['city'], 100) }) },
+    READ_FILE:         { tool: 'readFile',          args: a => ({ name: pickText(a, ['name', 'file'], 240) }) },
     LIST_FILES:        { tool: 'listFiles',         args: () => ({}) },
-    SEARCH_FILES:      { tool: 'searchFiles',       args: a => ({ query: a.query || a.name || '' }) },
-    CREATE_FOLDER:     { tool: 'createFolder',      args: a => ({ name: a.name || a.folder || 'New Folder' }) },
+    SEARCH_FILES:      { tool: 'searchFiles',       args: a => ({ query: pickText(a, ['query', 'name'], 240) }) },
+    CREATE_FOLDER:     { tool: 'createFolder',      args: a => ({ name: pickText(a, ['name', 'folder'], 100) }) },
     SCREENSHOT:        { tool: 'screenshot',        args: () => ({}) },
-    CALCULATE:         { tool: 'calc',              args: a => ({ expression: a.expression || a.expr || a.equation || '' }) },
+    CALCULATE:         { tool: 'calc',              args: a => ({ expression: pickText(a, ['expression', 'expr', 'equation'], 240) }) },
     VOLUME:            { tool: 'volume',     intent: 'VOLUME_SET',  args: a => ({ level: clampLvl(a.level ?? a.value) }) },
     MUTE:              { tool: 'mute',       intent: 'VOLUME_MUTE', args: () => ({}) },
     BATTERY:           { tool: 'battery',    intent: 'SYS_BATTERY', args: () => ({}) },
     TIME:              { tool: 'time',       intent: 'GET_TIME',    args: () => ({}) },
     DATE:              { tool: 'date',       intent: 'GET_DATE',    args: () => ({}) },
     TIMER:             { tool: 'timer',      intent: 'SET_TIMER',   args: a => { const m = Number(a.minutes || a.mins || a.duration || 5); return { seconds: Math.max(1, Math.min(86400, Math.round((isFinite(m) ? m : 5) * 60))) }; } },
-    TASK_ADD:          { tool: 'addTask',    intent: 'ADD_TODO',    args: a => ({ text: String(a.text || a.task || a.title || '').slice(0, 140) }) },
+    TASK_ADD:          { tool: 'addTask',    intent: 'ADD_TODO',    args: a => ({ text: pickText(a, ['text', 'task', 'title'], 140) }) },
     TASK_LIST:         { tool: 'listTasks',  intent: 'LIST_TODOS',  args: () => ({}) },
-    PLAY_MUSIC:        { tool: 'playMusic',  intent: 'YOUTUBE_PLAY', args: a => ({ query: a.query || a.song || a.artist || '' }) },
+    PLAY_MUSIC:        { tool: 'playMusic',  intent: 'YOUTUBE_PLAY', args: a => ({ query: pickText(a, ['query', 'song', 'artist'], 200) }) },
     PAUSE:             { tool: 'pause',      intent: 'MEDIA_PLAY',  args: () => ({}) },
     NEXT_TRACK:        { tool: 'nextTrack',  intent: 'MEDIA_NEXT',  args: () => ({}) },
     PREV_TRACK:        { tool: 'prevTrack',  intent: 'MEDIA_PREV',  args: () => ({}) },
   };
 
+  // Model output is untrusted even when its intent is whitelisted. Keep every
+  // string argument primitive, bounded, and free of control characters.
+  function safeText(v, max = 160) {
+    if (typeof v !== 'string' && typeof v !== 'number') return '';
+    return String(v).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+  }
+  function pickText(a, keys, max = 160) {
+    for (const key of keys) { const value = safeText(a && a[key], max); if (value) return value; }
+    return '';
+  }
   function clampLvl(v) { const n = Number(v); if (!isFinite(n)) return undefined; return Math.max(0, Math.min(100, Math.round(n))); }
 
   // ---- main entry: parse(text, ctx, ruleResult) ----
@@ -154,11 +164,25 @@ window.NLUQ = (function () {
       return null;
     }
 
+    const mappedArgs = mapper.args(qwen.args || {});
+    // Never execute an intent whose target-bearing arguments were missing or
+    // malformed. Let the normal rule/planner path ask the user instead.
+    const requiredText = {
+      OPEN_APPLICATION: 'app', CLOSE_APPLICATION: 'app', OPEN_WEB: 'query',
+      WEB_SEARCH: 'query', SITE_SEARCH: 'query', READ_FILE: 'name',
+      SEARCH_FILES: 'query', CREATE_FOLDER: 'name', CALCULATE: 'expression',
+      TASK_ADD: 'text', PLAY_MUSIC: 'query',
+    };
+    const required = requiredText[qwen.intent];
+    if (required && !safeText(mappedArgs[required])) {
+      lastResult = { ok: false, reason: 'missing_argument', qwen, field: required, ms: lastLatencyMs };
+      return null;
+    }
     const out = {
       intent: mapper.intent || qwen.intent,
       confidence: qwen.confidence,
       tool: mapper.tool,
-      args: mapper.args(qwen.args || {}),
+      args: mappedArgs,
       text: text,
       original: (norm && norm.original) || text,
       source: 'qwen',
