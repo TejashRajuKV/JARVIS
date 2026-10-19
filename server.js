@@ -598,7 +598,7 @@ function findAllowed(name, { kind, exact } = {}) {
     let items;
     try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const item of items) {
-      if (item.name.startsWith('.') || SKIP_DIRS.has(item.name)) continue;
+      if (item.name.startsWith('.') || SKIP_DIRS.has(item.name) || item.isSymbolicLink()) continue;
       const full = path.join(dir, item.name);
       const isDir = item.isDirectory();
       if ((!kind || (kind === 'folder') === isDir) && (loose ? want && looseMatch(item.name, isDir) : variants.includes(item.name.toLowerCase()))) { hit = full; return; }
