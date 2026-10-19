@@ -80,6 +80,8 @@ const ask = async (intent, args, conf) => { reply = { success: true, intent, con
   check('string arguments are trimmed and control characters are normalized', o.args.app === 'chrome stable', o);
   o = await ask('WEB_SEARCH', { query: 'x'.repeat(500) });
   check('model-provided query strings are bounded before tool execution', o.args.query.length === 240, o && o.args.query.length);
+  o = await ask('SITE_SEARCH', { target: 'y'.repeat(500) });
+  check('site-search target strings are bounded before tool execution', o.args.query.length === 240, o && o.args.query.length);
   o = await ask('TASK_ADD', { task: { title: 'buy milk' } });
   check('object-shaped task text is rejected instead of becoming [object Object]', o === null && NLUQ.describe().last.reason === 'missing_argument');
 
