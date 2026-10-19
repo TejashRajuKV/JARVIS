@@ -108,8 +108,23 @@ module.exports = function setupOCR(app, { IS_WIN, IS_MAC }) {
       return res.status(413).json({ error: 'image too large (max 10MB)' });
     }
 
-    const format = String((req.body && req.body.format) || 'png').toLowerCase();
-    const ext = { png: 'png', jpeg: 'jpg', jpg: 'jpg', webp: 'webp', gif: 'gif' }[format] || 'png';
+    // Base64 validity alone does not make the payload an image. Verify the file
+    // signature before writing it or passing attacker-controlled bytes to OCR.
+    const imageFormat = imageBuffer.length >= 12
+      ? (imageBuffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) ) ? 'png'
+        : imageBuffer[0] === 0xFF && imageBuffer[1] === 0xD8 && imageBuffer[2] === 0xFF ? 'jpg'
+        : imageBuffer.subarray(0, 6).toString('ascii').match(/^GIF8[79]a$/) ? 'gif'
+        : imageBuffer.subarray(0, 4).toString('ascii') === 'RIFF' && imageBuffer.subarray(8, 12).toString('ascii') === 'WEBP' ? 'webp'
+        : null)
+      : null;
+    if (!imageFormat) return res.status(400).json({ error: 'image data is not a supported PNG, JPEG, WEBP, or GIF image' });
+
+    const requestedFormat = String((req.body && req.body.format) || '').toLowerCase();
+    const requestedExt = { png: 'png', jpeg: 'jpg', jpg: 'jpg', webp: 'webp', gif: 'gif' }[requestedFormat];
+    if (requestedExt && requestedExt !== imageFormat) {
+      return res.status(400).json({ error: 'image format does not match the supplied image data' });
+    }
+    const ext = imageFormat;
     const stem = path.join(os.tmpdir(), `jarvis_ocrimg_${process.pid}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`);
     const imgPath = stem + '.' + ext;
     const t0 = Date.now();
