@@ -21,6 +21,8 @@ Also: the camera retries once when the browser says "no camera found" (a camera 
 
 **Phase 3, first batch (2026-10-14):** ✅ "don't …" commands do nothing (negation fix); ✅ Qwen assist limited to 26 real intents; ✅ keep-alive every 2 minutes; ✅ README no longer calls neural voice/translation opt-in; ✅ web pages fetched from the public internet only (netsafe.js: resolved addresses + redirects checked hop by hop); ✅ attendance: CLASS CANCELLED button and subject aliases; ✅ monthly budget alerts; ✅ wake-word listener retries without giving up. 85 suites pass.
 
+**2026-10-19 — follow-up reliability batch:** recent action context now flushes to shared storage immediately instead of waiting for the 300 ms debounce, so an immediate page reload cannot silently discard the action. The optional Qwen NLU assist now treats extracted arguments as untrusted: target strings are normalized and length-limited, object-shaped values cannot become accidental strings, and target-bearing intents with missing arguments fall back to the existing rule/planner path. Regression coverage added for immediate persistence and malformed/oversized model arguments.
+
 ## How to read this
 
 - **Phase 0 — close the safety gaps** (do first, small, high value).
