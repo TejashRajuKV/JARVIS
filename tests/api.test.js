@@ -206,8 +206,20 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
       const home = S.home; for (const f of ['.git-credentials', '.npmrc', '.netrc']) fs.writeFileSync(path.join(home, f), 'token=abc');
       const hc = []; for (const f of ['.git-credentials', '.npmrc', '.netrc']) hc.push((await post('/api/tool/readFile', { name: path.join(home, f) })).status);
       check('Security', 'credential files in the home folder (.git-credentials, .npmrc, .netrc) can’t be read through file tools', hc.every(c => c === 404 || c === 403), hc);
-      fs.mkdirSync(path.join(home, '.claude'), { recursive: true }); fs.writeFileSync(path.join(home, '.claude', 'creds.json'), '{}');
+      fs.mkdirSync(path.join(home, '.claude'), { recursive: true }); fs.writeFileSync(path.join(home, '.claude', 'creds.json'), '{"secret":"do-not-read"}');
       check('Security', 'tool folders with logins (.claude) are off-limits too', [403, 404].includes((await post('/api/tool/readFile', { name: path.join(home, '.claude', 'creds.json') })).status));
+      // A symlink inside the sandbox must not become a doorway into credentials or arbitrary external files.
+      const link = path.join(SB, 'Notes', 'credential-shortcut.txt');
+      try {
+        fs.symlinkSync(path.join(home, '.claude', 'creds.json'), link, 'file');
+        const lr = await post('/api/tool/readFile', { name: link });
+        check('Security', 'a sandbox symlink cannot read a protected credential file', [403, 404].includes(lr.status), [lr.status, lr.text.slice(0, 120)]);
+        const lw = await post('/api/tool/writeFile', { name: link, content: 'overwrite attempt', overwrite: true });
+        check('Security', 'a sandbox symlink cannot overwrite a protected credential file', lw.status >= 400 && fs.readFileSync(path.join(home, '.claude', 'creds.json'), 'utf8').includes('do-not-read'), [lw.status, fs.readFileSync(path.join(home, '.claude', 'creds.json'), 'utf8')]);
+      } catch (e) {
+        if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(e.code)) throw e;
+        console.log('SKIP symlink security test: this environment does not permit creating symlinks');
+      } finally { try { fs.unlinkSync(link); } catch {} }
       fs.writeFileSync(path.join(home, 'notes-outside.txt'), 'plain'); check('Security', 'a normal file elsewhere in the home folder still reads', (await post('/api/tool/readFile', { name: path.join(home, 'notes-outside.txt') })).json.content === 'plain');
       for (const f of ['.zz-secret.json', 'Code/.zz-secret.json', 'Code/.zz-new.json']) fs.rmSync(path.join(SB, f), { force: true }); fs.rmSync(path.join(SB, '.zz-archive'), { recursive: true, force: true }); for (const f of ['.git-credentials', '.npmrc', '.netrc']) fs.rmSync(path.join(home, f), { force: true });
     }
