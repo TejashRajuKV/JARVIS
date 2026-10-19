@@ -225,11 +225,17 @@ foreach ($l in $res.Lines) {
   app.locals.ocrWords = ocrWords;
   // POST { image: base64 (JPEG/PNG) } → { width, height, words, lines, text }
   app.post('/api/ocr/words', async (req, res) => {
-    const b64 = String((req.body && req.body.image) || '').replace(/^data:image\/\w+;base64,/, '');
+    const b64 = String((req.body && req.body.image) || '').replace(/^data:image\/(?:png|jpe?g);base64,/i, '');
     if (!b64) return res.status(400).json({ error: 'image (base64) required' });
     if (b64.length > 4 * 1024 * 1024) return res.status(413).json({ error: 'That picture is too large to read; use a smaller one.' });
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b64) || b64.length % 4 !== 0) {
+      return res.status(400).json({ error: 'image must be valid base64 data' });
+    }
+    const imageBuffer = Buffer.from(b64, 'base64');
+    if (!imageBuffer.length) return res.status(400).json({ error: 'image data is empty' });
+    if (imageBuffer.length > 3 * 1024 * 1024) return res.status(413).json({ error: 'That picture is too large to read; use a smaller one.' });
     const t0 = Date.now();
-    const r = await ocrWords(Buffer.from(b64, 'base64'));
+    const r = await ocrWords(imageBuffer);
     if (r.error) return res.status(/not a JPEG/.test(r.error) ? 400 : /needs Windows/.test(r.error) ? 501 : 500).json({ error: r.error });
     res.json({ success: true, ...r, ms: Date.now() - t0 });
   });
