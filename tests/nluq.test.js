@@ -45,7 +45,7 @@ const ask = async (intent, args, conf) => { reply = { success: true, intent, con
   triggerTimeout = false;
   let o = await ask('CLOSE_APPLICATION', { app: 'x'.repeat(500) });
   check('close-application targets are bounded before reaching the tool', o.args.app.length === 100, o && o.args.app.length);
-  o = await ask('CLOSE_APPLICATION', { name: '  notepad\\n  ' });
+  o = await ask('CLOSE_APPLICATION', { name: '  notepad\n  ' });
   check('close-application aliases are normalized like other model-provided text', o.args.app === 'notepad', o && o.args.app);
   o = await ask('VOLUME', { level: 140 });
   check('"volume" is VOLUME_SET with the level clamped to 0-100', o.intent === 'VOLUME_SET' && o.args.level === 100, o);
