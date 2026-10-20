@@ -5,7 +5,6 @@ const { spawn, exec, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const crypto = require('crypto');
 
 // One JARVIS per user: a second start (an AI tool, VS Code, a terminal) reuses the running one instead of adding a copy
 // with its own chat, ntfy stream and wake-word listener. This runs before anything else starts work (instance.js).
@@ -341,17 +340,13 @@ function approvedChange(req, res, action, ...paths) {
     // A body flag alone ("approved": true) proves nothing: anything that can reach this route could set it. The 409 hands out a one-time token for exactly THIS
     // action on exactly THESE paths, valid for 5 minutes; the page sends it back after the person pressed ALLOW. A token is used up by one retry.
     const sig = action + '|' + outside.map(p => norm(path.resolve(p))).sort().join('|');
-    const tok = String(req.body.approvalToken || ''), rec = approvalTokens.get(tok);
-    if (req.body.approved === true && rec && rec.sig === sig && rec.exp > Date.now()) { approvalTokens.delete(tok); return true; }
-    const token = crypto.randomBytes(16).toString('hex');
-    const now = Date.now(); for (const [k, v] of approvalTokens) if (v.exp < now) approvalTokens.delete(k);
-    if (approvalTokens.size > 500) approvalTokens.delete(approvalTokens.keys().next().value);
-    approvalTokens.set(token, { sig, exp: now + 5 * 60000 });
+    if (req.body.approved === true && approvals.consume(req.body.approvalToken, sig)) return true;
+    const token = approvals.issue(sig);
     res.status(409).json({ needsApproval: true, approvalToken: token, action, paths: outside, error: 'This changes files outside ~/jarvis and needs your permission' }); return false;
   }
   return true;
 }
-const approvalTokens = new Map();
+const approvals = require('./approvals').createApprovals();
 
 // Find by name across the laptop: Desktop, Documents, Downloads (and OneDrive's), the top of your home folder, and
 // other drives a few levels down. Folder- or file-names as people say them (sameName: "dss print" → dsa_sprint; a

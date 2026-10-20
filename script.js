@@ -1436,8 +1436,16 @@ function tasksTick(now) {
     if (serverScheduler && !r.routineId) continue;
     if (!r.fired && r.at <= now) {
       changed = true;
+      const dueAt = r.at;
       if (r.repeat) r.at = nextOccurrence(r, now); else r.fired = true;
-      if (r.routineId && typeof Routines !== 'undefined') { log('ok', 'scheduled routine: ' + r.text); Routines.runById(r.routineId); continue; }
+      // Every open tab ticks: the first to claim this occurrence runs it, so two tabs never run a routine twice.
+      if (r.routineId && typeof Routines !== 'undefined') {
+        const { routineId, text } = r;
+        claimAlert('routine:' + r.id + ':' + dueAt, 6 * 3600).then(won => {
+          if (won) { log('ok', 'scheduled routine: ' + text); Routines.runById(routineId); } else log('info', 'scheduled routine "' + text + '" is run by another tab');
+        });
+        continue;
+      }
       if (r.kind === 'tenders' && typeof Tenders !== 'undefined') { log('ok', 'tender digest'); Tenders.digest(r); continue; }
       sfx.alarm(); toast('⏰ ' + r.text, true); notify('Reminder', r.text);
       log('ok', 'reminder fired: ' + r.text);

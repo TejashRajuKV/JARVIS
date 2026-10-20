@@ -387,6 +387,16 @@
     check('Routines', '…and then both ran, one after the other', await waitUntil(() => Routines.waiting.length === 0 && /Today is/.test(document.querySelector('#messages').innerText) && [...document.querySelectorAll('#messages .msg')].length >= msgs0 + 2, 20000));
     Routines.remove(r1); Routines.remove(r2);
   }
+  {   // a scheduled routine runs in one tab only: whichever tab claims that occurrence first
+    const realRun = Routines.runById, ran = []; Routines.runById = id => { ran.push(id); };
+    const t0 = Date.now() - 1000, mine = { id: 'e2e-rt-a-' + t0, text: 'e2e routine a', at: t0, fired: false, routineId: 'e2e-rid-a' };
+    const theirs = { id: 'e2e-rt-b-' + t0, text: 'e2e routine b', at: t0, fired: false, routineId: 'e2e-rid-b' };
+    await claimAlert('routine:' + theirs.id + ':' + t0, 60);   // another tab already took this one
+    reminders.push(mine, theirs); tasksTick(Date.now()); tasksTick(Date.now());
+    await waitUntil(() => ran.length > 0, 3000); await sleepMs(600);
+    Routines.runById = realRun; reminders = reminders.filter(x => x !== mine && x !== theirs); saveTasks();
+    check('Routines', 'a scheduled routine due in two tabs runs once: the tab that claims it first runs it, the other skips it', ran.length === 1 && ran[0] === 'e2e-rid-a' && mine.fired && theirs.fired, ran);
+  }
   {   // only one tab says an alert: the first claim wins
     const k = 'e2e:claim:' + Date.now();
     const first = await claimAlert(k, 30), second = await claimAlert(k, 30);
