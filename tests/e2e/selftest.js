@@ -391,11 +391,13 @@
     const realRun = Routines.runById, ran = []; Routines.runById = id => { ran.push(id); };
     const t0 = Date.now() - 1000, mine = { id: 'e2e-rt-a-' + t0, text: 'e2e routine a', at: t0, fired: false, routineId: 'e2e-rid-a' };
     const theirs = { id: 'e2e-rt-b-' + t0, text: 'e2e routine b', at: t0, fired: false, routineId: 'e2e-rid-b' };
+    const late = { id: 'e2e-rt-c-' + t0, text: 'e2e routine c', at: t0 - 2 * 36e5, fired: false, routineId: 'e2e-rid-c' };   // due 2 h ago: JARVIS was closed
     await claimAlert('routine:' + theirs.id + ':' + t0, 60);   // another tab already took this one
-    reminders.push(mine, theirs); tasksTick(Date.now()); tasksTick(Date.now());
+    reminders.push(mine, theirs, late); tasksTick(Date.now()); tasksTick(Date.now());
     await waitUntil(() => ran.length > 0, 3000); await sleepMs(600);
-    Routines.runById = realRun; reminders = reminders.filter(x => x !== mine && x !== theirs); saveTasks();
+    Routines.runById = realRun; reminders = reminders.filter(x => x !== mine && x !== theirs && x !== late); saveTasks();
     check('Routines', 'a scheduled routine due in two tabs runs once: the tab that claims it first runs it, the other skips it', ran.length === 1 && ran[0] === 'e2e-rid-a' && mine.fired && theirs.fired, ran);
+    check('Routines', 'a scheduled routine missed by hours (JARVIS was closed) is not run late; JARVIS says it skipped it', late.fired && !ran.includes('e2e-rid-c') && /skipped the scheduled routine \*\*e2e routine c/.test([...document.querySelectorAll('#messages .msg')].map(m => m.innerText).join('\n').replace(/e2e routine c/, '**e2e routine c')), ran);
   }
   {   // only one tab says an alert: the first claim wins
     const k = 'e2e:claim:' + Date.now();

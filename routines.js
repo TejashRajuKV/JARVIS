@@ -57,7 +57,9 @@ const Routines = (() => {
     let res;
     try { res = await Agent.runUnattended(r.name, r.steps); } finally { running = false; }
     bumpStat('routinesRun');
-    return Object.assign(res, { speak: cap(r.name) + ' complete, ' + Persona.sir() + '.', intent: 'ROUTINE_RUN', tool: 'routine' });
+    const st = res && res.runStatus;
+    const how = st === 'cancelled' ? ' cancelled, ' : st === 'partial' || st === 'failed' ? ' finished, but not every step completed, ' : ' complete, ';
+    return Object.assign(res, { speak: cap(r.name) + how + Persona.sir() + '.', intent: 'ROUTINE_RUN', tool: 'routine' });
   }
   // Two routines due at the same moment (or one due while another is still running) used to lose the second. Now it waits in line, once per routine, and runs when the first is done.
   const waitingIds = [];

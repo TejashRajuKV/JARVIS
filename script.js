@@ -685,6 +685,7 @@ async function callToolRaw(endpoint, data, helloToken) {
   try {
     const headers = { 'Content-Type': 'application/json' };
     if (helloToken) headers['X-Hello-Token'] = helloToken;
+    if (typeof Undo !== 'undefined' && Undo.currentRun && Undo.currentRun()) headers['X-Jarvis-Run'] = Undo.currentRun();   // file actions of a plan step are filed under its run (undolog.js)
     const res = await fetch(API + endpoint, { method: 'POST', headers, body: JSON.stringify(data || {}), signal: AbortSignal.timeout(callTimeoutMs(endpoint)) });
     const j = await res.json().catch(() => ({ error: 'Bad response (' + res.status + ')' }));
     if (!res.ok && !j.error) j.error = 'HTTP ' + res.status;
@@ -1441,6 +1442,15 @@ function tasksTick(now) {
       // Every open tab ticks: the first to claim this occurrence runs it, so two tabs never run a routine twice.
       if (r.routineId && typeof Routines !== 'undefined') {
         const { routineId, text } = r;
+        // Missed by more than 30 minutes (JARVIS closed, laptop asleep): say so instead of running "morning" in the afternoon.
+        if (now - dueAt > 30 * 60e3) {
+          claimAlert('routine-missed:' + r.id + ':' + dueAt, 6 * 3600).then(won => {
+            if (!won) return;
+            log('warn', 'skipped scheduled routine "' + text + '" (due ' + new Date(dueAt).toLocaleString() + ')');
+            jarvisSay({ text: 'I skipped the scheduled routine **' + text + '**: it was due at ' + fmtTime(dueAt) + ', while JARVIS wasn’t running. Say “run ' + text + '” to run it now.', intent: 'ROUTINE_MISSED' });
+          });
+          continue;
+        }
         claimAlert('routine:' + r.id + ':' + dueAt, 6 * 3600).then(won => {
           if (won) { log('ok', 'scheduled routine: ' + text); Routines.runById(routineId); } else log('info', 'scheduled routine "' + text + '" is run by another tab');
         });
@@ -2956,7 +2966,7 @@ async function restoreUndoFromServer() {
   try {
     const r = await getJSON('/undo/pending');
     if (!r || !Array.isArray(r.items) || !r.items.length) return;
-    const n = Undo.restore(r.items.map(i => ({ label: i.label, t: i.t, fn: async () => { const x = await callTool(i.endpoint, i.body); if (x && x.error) throw new Error(x.error); return 'Undone: ' + i.label + '.'; } })));
+    const n = Undo.restore(r.items.map(i => ({ label: i.label, t: i.t, run: i.run, fn: async () => { const x = await callTool(i.endpoint, i.body); if (x && x.error) throw new Error(x.error); return 'Undone: ' + i.label + '.'; } })));
     if (n) log('info', 'undo: ' + n + ' earlier action' + (n === 1 ? '' : 's') + ' from before the reload can still be undone');
   } catch (e) { /* undo from before the reload is simply not available */ }
 }

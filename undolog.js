@@ -29,13 +29,14 @@ function createUndoLog({ file, now = Date.now }) {
   const read = () => { try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return Array.isArray(j) ? j.filter(r => r && typeof r.endpoint === 'string' && r.body && typeof r.t === 'number') : []; } catch { return []; } };
   const write = list => { try { fs.writeFileSync(file, JSON.stringify(list.slice(-MAX))); } catch { /* undo still works for this page session */ } };
   const fresh = list => { const t = now(); return list.filter(r => t - r.t <= TTL); };
-  function add({ label, endpoint, body }) {
+  function add({ label, endpoint, body, run }) {
     const key = keyOf(endpoint, body); if (!key) return null;
     const list = fresh(read()).filter(r => r.key !== key);
     const rec = { id: crypto.randomBytes(6).toString('hex'), t: now(), label: String(label || 'that').slice(0, 120), endpoint, body, key };
+    if (/^AGT-\d{8}-\d{3,6}$/.test(String(run || ''))) rec.run = String(run);   // the plan run it belongs to (header X-Jarvis-Run)
     list.push(rec); write(list); return rec.id;
   }
-  const pending = () => fresh(read()).map(({ id, t, label, endpoint, body }) => ({ id, t, label, endpoint, body }));
+  const pending = () => fresh(read()).map(({ id, t, label, endpoint, body, run }) => ({ id, t, label, endpoint, body, run }));
   function consume(endpoint, body) {
     const key = keyOf(endpoint, body); if (!key) return 0;
     const all = read(), keep = all.filter(r => r.key !== key);

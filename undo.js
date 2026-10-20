@@ -5,6 +5,7 @@
    Not undoable (and never pushed): shutdown/restart/sleep, sent messages, git commits, coding-AI prompts.
    Entries made while a multi-step plan runs carry that run's id (setRun), so "undo that task" can reverse a whole
    plan, newest step first (undoRun). */
+const RUN_ID = /^AGT-\d{8}-\d{3,6}$/;   // a plan run's id: restored entries keep it, so "undo that task" still works after a reload
 function createUndo({ now = () => Date.now(), ttl = 30 * 60e3, max = 40 } = {}) {
   const stack = [];
   const expired = {};   // run id → how many of its entries timed out (so a task undo can say so)
@@ -22,7 +23,7 @@ function createUndo({ now = () => Date.now(), ttl = 30 * 60e3, max = 40 } = {}) 
     const t = now(); let n = 0;
     for (const it of items || []) {
       if (!it || typeof it.fn !== 'function' || !Number.isFinite(it.t) || t - it.t > ttl || it.t > t + 60e3) continue;
-      stack.push({ label: String(it.label || 'that'), fn: it.fn, t: it.t, run: null }); n++;
+      stack.push({ label: String(it.label || 'that'), fn: it.fn, t: it.t, run: RUN_ID.test(it.run) ? it.run : null }); n++;
     }
     stack.sort((a, b) => a.t - b.t);
     while (stack.length > max) stack.shift();
@@ -61,7 +62,7 @@ function createUndo({ now = () => Date.now(), ttl = 30 * 60e3, max = 40 } = {}) 
   const size = () => { fresh(); return stack.length; };
   const peek = () => { fresh(); return stack.length ? stack[stack.length - 1].label : null; };
   const clear = () => { stack.length = 0; };
-  return { push, restore, undo, undoRun, setRun, countRun, lastRun, size, peek, clear, onChange: fn => { listener = fn; } };
+  return { push, restore, undo, undoRun, setRun, currentRun: () => curRun, countRun, lastRun, size, peek, clear, onChange: fn => { listener = fn; } };
 }
 
 const Undo = createUndo();

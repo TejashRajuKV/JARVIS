@@ -1336,8 +1336,8 @@ app.post('/api/tool/writeFile', (req, res) => {
     if (exists && (req.body.overwrite || req.body.append)) { try { backup = Date.now() + '_' + path.basename(p); fs.copyFileSync(p, path.join(TRASH, backup)); } catch { backup = null; } }
     if (req.body.append && exists) fs.appendFileSync(p, (content.startsWith('\n') ? '' : '\n') + content);
     else fs.writeFileSync(p, content);
-    if (!exists) undoLog.add({ label: 'created ' + path.basename(p), endpoint: '/tool/undoCreate', body: { name: p } });
-    else if (backup) undoLog.add({ label: 'changed ' + path.basename(p), endpoint: '/tool/restoreVersion', body: { backup, name: p } });
+    if (!exists) undoLog.add({ run: req.get('x-jarvis-run'), label: 'created ' + path.basename(p), endpoint: '/tool/undoCreate', body: { name: p } });
+    else if (backup) undoLog.add({ run: req.get('x-jarvis-run'), label: 'changed ' + path.basename(p), endpoint: '/tool/restoreVersion', body: { backup, name: p } });
     res.json({ success: true, name: rel(p), path: p, created: !exists, appended: !!(req.body.append && exists), backup });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1357,7 +1357,7 @@ app.post('/api/tool/createFolder', (req, res) => {
   try {
     const existed = fs.existsSync(p);
     fs.mkdirSync(p, { recursive: true });
-    if (!existed) undoLog.add({ label: 'created the folder ' + path.basename(p), endpoint: '/tool/undoCreate', body: { name: p } });
+    if (!existed) undoLog.add({ run: req.get('x-jarvis-run'), label: 'created the folder ' + path.basename(p), endpoint: '/tool/undoCreate', body: { name: p } });
     res.json({ success: true, name: rel(p), path: p, existed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1392,7 +1392,7 @@ app.post('/api/tool/deleteItem', (req, res) => {
   try {
     const original = rel(p);
     const trashName = moveToTrash(p);
-    undoLog.add({ label: 'deleted ' + path.basename(p), endpoint: '/tool/restoreItem', body: { trashName, original } });
+    undoLog.add({ run: req.get('x-jarvis-run'), label: 'deleted ' + path.basename(p), endpoint: '/tool/restoreItem', body: { trashName, original } });
     res.json({ success: true, name: rel(p), trashed: true, trashName, original });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1430,21 +1430,21 @@ function moveAcross(src, dest) {
 app.post('/api/tool/renameFile', (req, res) => {
   const pr = twoPaths(req.body.oldName, req.body.newName, res);
   if (!pr || !approvedChange(req, res, 'rename', pr.src, pr.dest)) return;
-  try { moveAcross(pr.src, pr.dest); undoLog.add({ label: 'renamed ' + path.basename(pr.src), endpoint: '/tool/undoMove', body: { to: pr.dest, from: pr.src } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
+  try { moveAcross(pr.src, pr.dest); undoLog.add({ run: req.get('x-jarvis-run'), label: 'renamed ' + path.basename(pr.src), endpoint: '/tool/undoMove', body: { to: pr.dest, from: pr.src } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/tool/copyFile', (req, res) => {
   const pr = twoPaths(req.body.src, req.body.dest, res);
   if (!pr || !approvedChange(req, res, 'copy into', pr.dest)) return;   // the original isn't changed
-  try { fs.cpSync(pr.src, pr.dest, { recursive: true }); undoLog.add({ label: 'copied ' + path.basename(pr.src), endpoint: '/tool/undoCreate', body: { name: pr.dest } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
+  try { fs.cpSync(pr.src, pr.dest, { recursive: true }); undoLog.add({ run: req.get('x-jarvis-run'), label: 'copied ' + path.basename(pr.src), endpoint: '/tool/undoCreate', body: { name: pr.dest } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/tool/moveFile', (req, res) => {
   const pr = twoPaths(req.body.src, req.body.dest, res);
   if (!pr || !approvedChange(req, res, 'move', pr.src, pr.dest)) return;
-  try { moveAcross(pr.src, pr.dest); undoLog.add({ label: 'moved ' + path.basename(pr.src), endpoint: '/tool/undoMove', body: { to: pr.dest, from: pr.src } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
+  try { moveAcross(pr.src, pr.dest); undoLog.add({ run: req.get('x-jarvis-run'), label: 'moved ' + path.basename(pr.src), endpoint: '/tool/undoMove', body: { to: pr.dest, from: pr.src } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 

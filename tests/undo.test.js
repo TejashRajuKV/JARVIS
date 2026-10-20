@@ -82,6 +82,17 @@ const check = (n, ok, x) => { total++; if (!ok) { fail++; console.log('FAIL  ' +
     Q.push('live', () => 1); Q.restore([mk('mixed', 500)]); check('restore: mixes in order with entries made in this session, and the stack keeps its size limit', Q.size() === 3 && (() => { for (let i = 0; i < 9; i++) Q.restore([mk('x' + i, i)]); return Q.size() <= 5; })());
     check('restore: junk input is harmless', Q.restore() === 0 && Q.restore(null) === 0 && Q.restore('x') === 0);
   }
+  {   // after a reload the server's records come back with their plan run, so "undo that task" / ROLLBACK still works
+    const tr = 5e6, R = createUndo({ now: () => tr }), done = [];
+    R.restore([{ label: 'deleted a', t: tr - 60e3, run: 'AGT-20261019-004', fn: () => { done.push('a'); return 'ok a'; } },
+      { label: 'renamed b', t: tr - 30e3, run: 'AGT-20261019-004', fn: () => { done.push('b'); return 'ok b'; } },
+      { label: 'loose', t: tr - 10e3, run: 'not a run; drop', fn: () => 1 }]);
+    check('restore keeps each entry\'s plan run id', R.countRun('AGT-20261019-004') === 2 && R.countRun('not a run; drop') === 0 && R.size() === 3);
+    const u = await R.undoRun('AGT-20261019-004');
+    check('…and undoRun reverses that plan, newest first, leaving the plain entry', u && u.done.length === 2 && done.join() === 'b,a' && R.size() === 1, [u, done]);
+    R.setRun('AGT-20261019-005'); const inPlan = R.currentRun(); R.setRun(null);
+    check('currentRun names the plan a call belongs to, null outside one', inPlan === 'AGT-20261019-005' && R.currentRun() === null);
+  }
   console.log(`undo: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;
 })();

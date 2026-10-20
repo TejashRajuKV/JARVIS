@@ -34,5 +34,12 @@ const call = headers => { let out, code = 200; routes['/api/undo/pending']({ hea
 check('route: the laptop page gets the list; another site, another device or no headers are refused', call({ 'sec-fetch-site': 'same-origin', host: 'localhost:3001' }).success === true && call({ 'sec-fetch-site': 'cross-site', host: 'localhost:3001' }).code === 403 && call({ 'sec-fetch-site': 'same-origin', host: 'x.tail1.ts.net' }).code === 403 && call({}).code === 403);
 
 fs.rmSync(tmp, { recursive: true, force: true });
+{ // a record keeps the plan run it came from (X-Jarvis-Run), so a whole plan can be undone after a reload; anything else is dropped
+  const lr = U.createUndoLog({ file: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-undolog-run-')), '.undo-log.json'), now: () => clock });
+  const idr = lr.add({ label: 'deleted r.txt', endpoint: '/tool/restoreItem', body: { trashName: '9_r.txt', original: 'C:\\x\\r.txt' }, run: 'AGT-20261019-007' });
+  lr.add({ label: 'deleted s.txt', endpoint: '/tool/restoreItem', body: { trashName: '9_s.txt', original: 'C:\\x\\s.txt' }, run: '../../evil' });
+  const pr = lr.pending();
+  check('add: the plan run id is kept with the record; a value that is not a run id is not stored', pr.find(x => x.id === idr).run === 'AGT-20261019-007' && pr.find(x => x.label === 'deleted s.txt').run === undefined, pr);
+}
 console.log(`undolog: ${total - fail}/${total}`);
 process.exitCode = fail ? 1 : 0;

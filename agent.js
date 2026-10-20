@@ -99,10 +99,27 @@ const Agent = (() => {
     store.set('jarvis.agentCounter', { day, n });
     return 'AGT-' + day + '-' + String(n).padStart(3, '0');
   }
+  // A run is saved when it starts, after every step and when it ends (same id → replaced), so a restart mid-task leaves a record of what happened.
   function saveRun(rec) {
     const runs = store.get(RUNS_KEY, []);
-    runs.push(rec); while (runs.length > 50) runs.shift();
+    const at = runs.findIndex(r => r && r.id === rec.id);
+    if (at >= 0) runs[at] = rec; else runs.push(rec);
+    while (runs.length > 50) runs.shift();
     store.set(RUNS_KEY, runs);
+  }
+  // Runs executing in this page. A running record is refreshed every minute; one not refreshed for 3 minutes belongs to a page that
+  // closed or restarted mid-task, so it is marked interrupted: the steps it recorded happened, the rest never ran.
+  const active = new Set(), STALE_RUN_MS = 3 * 60e3;
+  function cancel(id) { let n = 0; for (const r of active) if (!id || r.id === id) { r.cancelled = true; n++; } return n; }
+  function sweepInterrupted(now = Date.now()) {
+    const runs = store.get(RUNS_KEY, []), mine = new Set([...active].map(r => r.id)), hit = [];
+    for (const r of runs) if (r && r.running && !mine.has(r.id) && now - (r.updated || r.at || 0) > STALE_RUN_MS) {
+      r.running = false; r.interrupted = true;
+      for (const st of r.steps || []) if (!st.status) st.status = 'notrun';
+      hit.push(r);
+    }
+    if (hit.length) store.set(RUNS_KEY, runs);
+    return hit;
   }
   const lastRuns = (n = 5) => store.get(RUNS_KEY, []).slice(-n).reverse();
 
@@ -355,12 +372,16 @@ const Agent = (() => {
     steps.forEach(s => { s.status = undefined; s.note = ''; s.ms_execute = undefined; s.ms_verify = undefined; });
     return execute({ goal: run.goal, steps }, { source: run.source, stopOnFail: false });
   }
+  function recOf(run, running) {
+    return { id: run.id, goal: run.goal, source: run.source, at: Date.now(), ms_route: run.ms_route, ms_plan: run.ms_plan || 0, total: run.total, cancelled: !!run.cancelled, ...(running ? { running: true, updated: Date.now() } : {}),
+      steps: run.steps.map(s => ({ id: s.id, tool: s.tool || s.intent, args: s.args, tier: s.tier, status: s.status || 'notrun', verified: s.status === 'verified', note: s.note || '', reason: s.reason || '', label: s.label, ms_execute: s.ms_execute ?? null, ms_verify: s.ms_verify ?? null, asked: !!s.asked, undoable: s.undoable || 0 })) };
+  }
   function finish(run) {
+    active.delete(run); clearInterval(run.beat);
     run.total = Math.round(performance.now() - run.t0);
     run.done = true;
     const failed = run.steps.filter(s => s.status === 'failed').length, ok = run.steps.filter(s => s.status === 'verified' || s.status === 'unverified').length;
-    const rec = { id: run.id, goal: run.goal, source: run.source, at: Date.now(), ms_route: run.ms_route, ms_plan: run.ms_plan || 0, total: run.total, cancelled: !!run.cancelled,
-      steps: run.steps.map(s => ({ id: s.id, tool: s.tool || s.intent, args: s.args, tier: s.tier, status: s.status || 'notrun', verified: s.status === 'verified', note: s.note || '', reason: s.reason || '', label: s.label, ms_execute: s.ms_execute ?? null, ms_verify: s.ms_verify ?? null, asked: !!s.asked, undoable: s.undoable || 0 })) };
+    const rec = recOf(run);
     saveRun(rec); logTree(run); bumpStat('agentRuns');
     const retryable = retryableSteps(run);
     const nVer = run.steps.filter(s => s.status === 'verified').length, nUn = run.steps.filter(s => s.status === 'unverified').length;
@@ -378,7 +399,8 @@ const Agent = (() => {
     if (continuable.length) actions.push({ label: 'CONTINUE', fn: () => continueRun(run).then(res => deliver(res, { intent: 'AGENT_RUN', confidence: 1 })) });
     if (reversible && typeof runUndoTask === 'function') actions.push({ label: 'ROLLBACK (' + reversible + ')', fn: () => runUndoTask(run.id) });
     if (run.steps.length > 1) actions.push({ label: 'INSPECT', fn: () => deliver(inspect(run.id), { intent: 'AGENT_INSPECT', confidence: 1 }) });
-    return { text: render(run) + tail, speak: run.cancelled ? 'Task cancelled, ' + Persona.sir() + '.' : (failed ? 'Done, with ' + plural(failed, 'problem') + '. ' : 'All done, ' + Persona.sir() + '. ') + plural(ok, 'step') + ' completed.',
+    const runStatus = run.cancelled ? 'cancelled' : failed ? (ok ? 'partial' : 'failed') : nSkip ? 'partial' : 'completed';
+    return { runStatus, text: render(run) + tail, speak: run.cancelled ? 'Task cancelled, ' + Persona.sir() + '.' : (failed ? 'Done, with ' + plural(failed, 'problem') + '. ' : 'All done, ' + Persona.sir() + '. ') + plural(ok, 'step') + ' completed.',
       intent: 'AGENT_RUN', tool: 'agent', meta: 'AGENT · ' + run.id + ' · ' + (run.ms_plan ? 'plan ' + (run.ms_plan / 1000).toFixed(1) + 's · ' : '') + 'total ' + (run.total / 1000).toFixed(1) + 's', noPersona: true, actions: actions.length ? actions : undefined };
   }
   // A card asking to allow one step (confirm / explicit tier). Resolves true / false.
@@ -633,16 +655,20 @@ const Agent = (() => {
     }
     // A visible way to interrupt a real multi-step run (only for AI-built plans — a split of known-safe
     // commands is normally near-instant, so a cancel button would just be noise for those).
-    if (!run.unattended && run.source === 'planner' && run.steps.length > 1) {
+    // Routines run unattended but get the button too: a long routine can be stopped between steps.
+    if (run.steps.length > 1 && ((!run.unattended && run.source === 'planner') || run.source === 'routine')) {
       jarvisSay({ text: 'Running **' + (run.goal || 'your request') + '** · `' + run.id + '`…', intent: 'AGENT_CANCEL_OFFER', noPersona: true,
         actions: [{ label: 'CANCEL TASK', fn: () => { run.cancelled = true; } }] });
     }
+    active.add(run); saveRun(recOf(run, true));
+    run.beat = setInterval(() => saveRun(recOf(run, true)), 60e3);
     for (let i = 0; i < run.steps.length; i++) {
       if (run.cancelled) { for (let j = i; j < run.steps.length; j++) run.steps[j].status = 'notrun'; break; }
       const s = run.steps[i];
       const unmet = (s.needs || []).map(id => run.steps.find(x => x.id === id)).filter(d => d && ['failed', 'declined', 'blocked', 'notrun'].includes(d.status));
       if (unmet.length) { s.status = 'notrun'; s.note = 'skipped — step ' + (run.steps.indexOf(unmet[0]) + 1) + ' (' + unmet[0].label + ') didn’t complete'; continue; }
       await runStep(run, s, i === 0 && !!opts.preApproved);
+      saveRun(recOf(run, true));
       if (!run.unattended && run.steps.length > 1) setState('EXECUTING', run.id + ' · ' + (i + 1) + '/' + run.steps.length);
       if (s.status === 'declined' || (s.status === 'failed' && opts.stopOnFail)) {
         for (let j = i + 1; j < run.steps.length; j++) run.steps[j].status = 'notrun';
@@ -1119,7 +1145,7 @@ const Agent = (() => {
     const notRun = n('notrun') + n('skipped') + n('blocked');
     const tier = t => st.filter(s => s.tier === t).length, asked = st.filter(s => s.asked).length;
     const undoable = st.reduce((a, s) => a + (s.undoable || 0), 0);
-    const status = rec.cancelled ? 'CANCELLED' : fail ? (ver + un ? 'PARTIAL' : 'FAILED') : (decl || notRun) ? 'PARTIAL' : 'COMPLETED';
+    const status = rec.interrupted ? 'INTERRUPTED' : rec.running ? 'RUNNING' : rec.cancelled ? 'CANCELLED' : fail ? (ver + un ? 'PARTIAL' : 'FAILED') : (decl || notRun) ? 'PARTIAL' : 'COMPLETED';
     const bar = '━'.repeat(34), row = (k, v) => (k + ' '.repeat(13)).slice(0, 13) + v;
     const L = [bar, 'EXECUTION ' + rec.id, bar, '',
       row('Goal', rec.goal || '(no goal text)'), row('Source', rec.source || '–'),
@@ -1150,7 +1176,15 @@ const Agent = (() => {
   }
 
   registry();
-  return { route, parts, optimize, splitGoal, annotate, DISTRACTORS, isAction, wantsAction, isQuestion, execute, handleMulti, plan, chatTool, runUnattended, watchSingle, preSingle, history, formatRun, inspect, registry, tierFor, lastRuns, envGoal, prepareEnvironment, retryableSteps,
+  function reportInterrupted() {
+    for (const r of sweepInterrupted()) {
+      const done = (r.steps || []).filter(x => x.status === 'verified' || x.status === 'unverified').length, n = (r.steps || []).length;
+      log('warn', 'task ' + r.id + ' was interrupted after ' + done + '/' + n + ' steps');
+      jarvisSay({ text: '⚠ Task `' + r.id + '` (**' + (r.goal || 'a task') + '**) was interrupted — JARVIS closed or restarted while it ran. ' + done + ' of ' + n + ' steps finished; the rest never ran. Say “inspect ' + r.id + '” to see which, or “undo ' + r.id + '” to reverse what can be.', intent: 'AGENT_INTERRUPTED', noPersona: true });
+    }
+  }
+  { const t = setTimeout(reportInterrupted, 4000), t2 = setInterval(reportInterrupted, 60e3); if (t && t.unref) { t.unref(); t2.unref(); } }
+  return { cancel, sweepInterrupted, active: () => [...active].map(r => r.id), route, parts, optimize, splitGoal, annotate, DISTRACTORS, isAction, wantsAction, isQuestion, execute, handleMulti, plan, chatTool, runUnattended, watchSingle, preSingle, history, formatRun, inspect, registry, tierFor, lastRuns, envGoal, prepareEnvironment, retryableSteps,
     learnedMatch, learnSave, runLearned, learnedSummary, forgetAllLearned, learnedCount, recordMiss, missList, forgetMiss, aliasMatch, teach, learnGoal, learnLanguage,
     createProjectGoal, createProject, explainLastAction, LEARN_LANG_MAP,
     designPromptGoal, buildTcreiPrompt, DESIGN_PROMPT_QUESTIONS, DESIGN_PROMPT_STEPS,
