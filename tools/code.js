@@ -109,6 +109,7 @@ ToolHandlers.add('code', async function (p, raw, s, a) {
       // A folder JARVIS isn't allowed to use yet (e.g. on the Desktop): find it and offer to allow it, then carry on.
       if (folder && (await callTool('/tool/locateProject', { name: folder })).error) {
         const f = await callTool('/tool/findFolderAnywhere', { name: folder });
+        if (f.error && f.error !== 'Invalid folder name') return { text: 'I couldn’t look for the folder **' + folder + '**: ' + f.error, error: f.error };
         const paths = (f.paths || []);
         if (!paths.length) return { text: 'I can’t find a folder called **' + folder + '**. Add it in **Settings → Project folders** (paste its full path, e.g. `C:\\Users\\you\\Desktop\\' + folder + '`), then ask again.' };
         return { text: 'I found **' + folder + '** at `' + paths[0] + '`' + (paths.length > 1 ? ' (and ' + (paths.length - 1) + ' other place' + (paths.length > 2 ? 's' : '') + ')' : '') + ', but JARVIS isn’t allowed to use that folder yet. Allow it? (It’s added to Settings → Project folders; you can remove it there any time.)', intent: 'CODE_ASK',
@@ -270,6 +271,7 @@ ToolHandlers.add('code', async function (p, raw, s, a) {
           suggestions: ['Open vs code in ' + shown(l.path), 'Open the ' + shown(l.path) + ' folder'] }; }
         toolStep('findFolderAnywhere → ' + name);
         const f = await callTool('/tool/findFolderAnywhere', { name });
+        if (f.error && f.error !== 'Invalid folder name') return { text: 'I couldn’t search the laptop for **' + name + '**: ' + f.error, error: f.error };
         const paths = f.paths || [];
         if (paths.length && askIfClose(paths, ' on this laptop')) return askIfClose(paths, ' on this laptop');
         if (paths.length) { setFocus('folder', paths[0]); setResults(paths.slice(0, 30)); return { text: '✓ Yes — found **' + shown(paths[0]) + '** at `' + paths[0] + '`' + tookAs(paths[0]) + (paths.length > 1 ? ' (and ' + plural(paths.length - 1, 'other place') + ')' : '') +
@@ -281,6 +283,7 @@ ToolHandlers.add('code', async function (p, raw, s, a) {
           }) }; }
       } else {
         const sf = await callTool('/tool/searchFiles', { query: name.replace(/\.[a-z0-9]{1,5}$/i, '') });
+        if (sf.error) return { text: 'I couldn’t search for **' + name + '**: ' + sf.error, error: sf.error };
         const hits = (sf.results || []).filter(x => !String(x).endsWith('/'));   // paths; folders end in "/"
         if (hits.length) return { text: '✓ Yes — ' + hits.slice(0, 3).map(x => '`' + x + '`').join(', ') + '.', tool: 'checkExists' };
       }

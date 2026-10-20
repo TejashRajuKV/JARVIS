@@ -53,6 +53,7 @@ ToolHandlers.add('system', async function (p, raw, s, a) {
     case 'SYS_BATTERY': {
       toolStep('batteryStatus');
       const r = await callTool('/tool/batteryStatus');
+      if (r.error) return { text: 'I couldn’t read the battery: ' + r.error, error: r.error };
       if (r.level === null || r.level === undefined) return { text: 'No battery detected — looks like a desktop or it is not reporting.' };
       const low = Thresholds.isBatteryLow(r.level, r.status) ? ' That is low — plug in soon.' : '';
       return { text: 'Battery is at **' + r.level + '%** and ' + r.status.toLowerCase() + '.' + low, tool: 'batteryStatus' };

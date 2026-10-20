@@ -1956,7 +1956,10 @@ app.post('/api/tool/runningApps', (req, res) => {
       done(new Set(stdout.split(/\r?\n/).map(l => (l.split('","')[0] || '').replace(/^"/, '').replace(/\.exe$/i, '').toLowerCase())));
     });
   } else {
-    execFile('ps', ['-A', '-o', 'comm='], (err, stdout) => done(new Set(err ? [] : stdout.split('\n').map(l => path.basename(l.trim()).toLowerCase()))));
+    execFile('ps', ['-A', '-o', 'comm='], (err, stdout) => {
+      if (err) return res.json({ success: true, checked: [], running: [], error: 'could not read the process list' });
+      done(new Set(stdout.split('\n').map(l => path.basename(l.trim()).toLowerCase())));
+    });
   }
 });
 

@@ -9,6 +9,8 @@ ToolHandlers.add('productivity', async function (p, raw, s, a) {
       const DISTRACTORS = Agent.DISTRACTORS;
       toolStep('runningApps');
       const r = await callTool('/tool/runningApps', { apps: DISTRACTORS });
+      // An unreadable process list is "can't tell", never "nothing is open".
+      if (r.error || (Array.isArray(r.checked) && !r.checked.length)) return { text: 'I couldn’t check which apps are open, so I didn’t close anything or start a focus session' + (r.error ? ': ' + r.error : '') + '.', error: r.error || 'could not read the process list' };
       const running = r.running || [];
       const min = settings.focusMin || 25;
       // Inside a plan that has its own focus-session step, this step only closes the apps (no second session).
@@ -26,7 +28,9 @@ ToolHandlers.add('productivity', async function (p, raw, s, a) {
           return 'Opened ' + shut.map(k => (NLU.APPS.find(x => x.k === k) || { n: k }).n).join(', ') + ' again (unsaved work in them can’t come back).';
         });
         if (withFocus) { startFocus(min); Undo.push('started a ' + min + '-minute focus session', () => stopFocus(true) ? 'Focus session stopped.' : 'That focus session had already ended.'); }
-        jarvisSay({ text: 'Closed ' + names.join(', ') + '.' + (withFocus ? ' Focus session running for **' + min + ' minutes** — you have got this.' : ''), intent: 'BLOCK_DISTRACTIONS' });
+        const nm = ks => ks.map(k => (NLU.APPS.find(x => x.k === k) || { n: k }).n).join(', ');
+        const left = running.filter(k => !shut.includes(k));
+        jarvisSay({ text: (shut.length ? 'Closed ' + nm(shut) + '.' : 'I couldn’t close any of them.') + (left.length ? ' **' + nm(left) + '** didn’t close — please close ' + (left.length > 1 ? 'them' : 'it') + ' yourself.' : '') + (withFocus ? ' Focus session running for **' + min + ' minutes** — you have got this.' : ''), intent: 'BLOCK_DISTRACTIONS' });
       } } };
     }
     case 'SHOW_DESKTOP': toolStep('showDesktop'); await callTool('/tool/showDesktop'); return { text: 'Minimised everything.', noTTS: true, tool: 'showDesktop' };
