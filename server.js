@@ -2339,17 +2339,21 @@ app.post('/api/tool/sleepSystem', (req, res) => {
   else run('systemctl', ['suspend']);
   res.json({ success: true });
 });
+// Shutdown, restart and cancel wait for the command's exit code, so JARVIS never says "shutting down" or "cancelled" when it wasn't.
+const runChecked = (cmd, args, cb) => execFile(cmd, args, { windowsHide: true, timeout: 15000 }, (err, stdout, stderr) => cb(err, String(stderr || stdout || '').trim().slice(0, 160)));
+const powerFailed = (res, what, out) => res.status(500).json({ error: 'could not ' + what + (out ? ' (' + out + ')' : '') });
 app.post('/api/tool/shutdownSystem', (req, res) => {
-  if (IS_WIN) run('shutdown', ['/s', '/t', '30']); else run('shutdown', ['-h', '+1']);
-  res.json({ success: true, seconds: IS_WIN ? 30 : 60 });
+  runChecked('shutdown', IS_WIN ? ['/s', '/t', '30'] : ['-h', '+1'], (err, out) => err ? powerFailed(res, 'schedule the shutdown', out) : res.json({ success: true, seconds: IS_WIN ? 30 : 60 }));
 });
 app.post('/api/tool/restartSystem', (req, res) => {
-  if (IS_WIN) run('shutdown', ['/r', '/t', '30']); else run('shutdown', ['-r', '+1']);
-  res.json({ success: true, seconds: IS_WIN ? 30 : 60 });
+  runChecked('shutdown', IS_WIN ? ['/r', '/t', '30'] : ['-r', '+1'], (err, out) => err ? powerFailed(res, 'schedule the restart', out) : res.json({ success: true, seconds: IS_WIN ? 30 : 60 }));
 });
 app.post('/api/tool/cancelShutdown', (req, res) => {
-  if (IS_WIN) run('shutdown', ['/a']); else run('shutdown', ['-c']);
-  res.json({ success: true });
+  runChecked('shutdown', IS_WIN ? ['/a'] : ['-c'], (err, out) => {
+    if (!err) return res.json({ success: true });
+    if (IS_WIN && err.code === 1116) return res.json({ success: true, nothingPending: true });   // ERROR_NO_SHUTDOWN_IN_PROGRESS
+    powerFailed(res, 'cancel the shutdown — run "' + (IS_WIN ? 'shutdown /a' : 'shutdown -c') + '" yourself', out);
+  });
 });
 
 /* ---------------- volume / media ---------------- */

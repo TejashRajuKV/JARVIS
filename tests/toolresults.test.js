@@ -9,14 +9,14 @@ const root = f => path.join(__dirname, '..', f);
 const OFFLINE = { error: 'the backend is offline (press START JARVIS above, or the desktop icon)' };
 
 function sandbox(replies) {
-  const calls = [], said = [], focus = [];
+  const calls = [], said = [], focus = [], undo = [];
   const ctx = vm.createContext({
-    console, calls, said, focus, API: '/api',
+    console, calls, said, focus, undo, API: '/api',
     callTool: async (ep, data) => { calls.push([ep, data]); const r = replies[ep]; return typeof r === 'function' ? r(data) : JSON.parse(JSON.stringify(r || OFFLINE)); },
     fetch: async () => ({ json: async () => ({}) }),
     toolStep: () => {}, setFocus: () => {}, setResults: () => {}, log: () => {},
     jarvisSay: m => said.push(m), startFocus: m => focus.push(m), stopFocus: () => true,
-    Undo: { push: () => {} }, settings: { focusMin: 25 }, ctx: {},
+    Undo: { push: l => undo.push(l) }, settings: { focusMin: 25 }, ctx: {},
     Agent: { DISTRACTORS: ['discord', 'steam', 'whatsapp', 'spotify'] },
     NLU: { APPS: [{ k: 'discord', n: 'Discord' }, { k: 'steam', n: 'Steam' }, { k: 'whatsapp', n: 'WhatsApp' }, { k: 'spotify', n: 'Spotify' }] },
     Thresholds: { isBatteryLow: l => l < 20 },
@@ -63,6 +63,18 @@ function sandbox(replies) {
   s = sandbox({ '/agent/exists': { exists: false }, '/tool/locateProject': { error: 'not found' }, '/tool/findFolderAnywhere': { success: true, paths: [] }, '/tool/searchFiles': { success: true, results: [], paths: [] } });
   r = await s.run('CHECK_EXISTS', 'does calcproj exist');
   check('exists: a search that worked and found nothing still answers "✗ No folder named …"', /✗ No folder named \*\*calcproj\*\*/.test(r.text), r);
+
+  // ---- laptop actions that used to ignore their result
+  for (const [intent, said, good] of [['SYS_LOCK', 'lock my screen', /Locking your screen/], ['SYS_CANCEL_SHUTDOWN', 'cancel shutdown', /Cancelled\. Your system stays on/],
+    ['VOLUME_MUTE', 'mute', /^Muted/], ['VOLUME_UP', 'volume up', /Volume up/], ['VOLUME_DOWN', 'volume down', /Volume down/],
+    ['MEDIA_PLAY', 'pause music', /play\/pause/], ['MEDIA_NEXT', 'next song', /Next track/], ['MEDIA_PREV', 'previous song', /Previous track/], ['MEDIA_STOP', 'stop music', /Stopped playback/], ['SHOW_DESKTOP', 'show desktop', /Minimised everything/]]) {
+    s = sandbox({}); r = await s.run(intent, said);
+    check(intent + ': a failed call says "I couldn’t …", not the success line, adds no undo step, and is marked failed', /couldn’t/.test(r.text) && !good.test(r.text) && s.undo.length === 0 && r.ok === false, r);
+    s = sandbox({ '/tool/lockSystem': { success: true }, '/tool/cancelShutdown': { success: true }, '/tool/setVolume': { success: true }, '/tool/mediaKey': { success: true }, '/tool/showDesktop': { success: true } });
+    r = await s.run(intent, said); check(intent + ': a call that worked still gives the success line', good.test(r.text) && r.ok === true, r);
+  }
+  s = sandbox({ '/tool/cancelShutdown': { success: true, nothingPending: true } }); r = await s.run('SYS_CANCEL_SHUTDOWN', 'cancel shutdown');
+  check('cancel shutdown: nothing pending is said plainly (not "Cancelled")', /no shutdown or restart pending/.test(r.text) && !/^Cancelled/.test(r.text), r);
 
   console.log(`toolresults: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;

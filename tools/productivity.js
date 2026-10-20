@@ -33,7 +33,7 @@ ToolHandlers.add('productivity', async function (p, raw, s, a) {
         jarvisSay({ text: (shut.length ? 'Closed ' + nm(shut) + '.' : 'I couldn’t close any of them.') + (left.length ? ' **' + nm(left) + '** didn’t close — please close ' + (left.length > 1 ? 'them' : 'it') + ' yourself.' : '') + (withFocus ? ' Focus session running for **' + min + ' minutes** — you have got this.' : ''), intent: 'BLOCK_DISTRACTIONS' });
       } } };
     }
-    case 'SHOW_DESKTOP': toolStep('showDesktop'); await callTool('/tool/showDesktop'); return { text: 'Minimised everything.', noTTS: true, tool: 'showDesktop' };
+    case 'SHOW_DESKTOP': { toolStep('showDesktop'); const r = await callTool('/tool/showDesktop'); return r.error ? { text: 'I couldn’t minimise the windows: ' + r.error, error: r.error } : { text: 'Minimised everything.', noTTS: true, tool: 'showDesktop' }; }
     case 'OPEN_KNOWN_FOLDER': {
       const m = s.match(/\b(downloads|desktop|pictures|photos|music|videos)\b/);
       toolStep('openKnownFolder → ' + (m ? m[1] : '?'));
