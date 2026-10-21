@@ -600,6 +600,11 @@ function updateLLMUI() {
     setEngine('llm', 'on', 'ollama · ' + llm.model + (llm.warming ? ' · loading…' : ''));
     setPill('pillLLM', 'ok', 'Local AI: ' + llm.model);
     note.innerHTML = 'Connected to Ollama. Free-form questions go to <em>' + escHtml(llm.model) + '</em>; clear commands run instantly via rules.';
+  } else if (cloud) {
+    const provErr = llm.errors && (llm.errors[info.id.split('::')[0]] || llm.errors[info.provider]);
+    setEngine('llm', 'down', info.providerLabel.toLowerCase() + ' unreachable — rules only');
+    setPill('pillLLM', 'bad', info.providerLabel + ' unreachable');
+    note.innerHTML = 'Could not reach <b>' + escHtml(info.providerLabel) + '</b>' + (provErr ? ' (' + escHtml(provErr) + ')' : '') + '. Check your internet connection or API key in Settings → AI BRAIN.';
   } else if (llm.online) {
     setEngine('llm', 'down', 'no model — ollama pull qwen3.5:4b'); setPill('pillLLM', 'bad', 'Ollama has no models');
     note.innerHTML = 'Ollama is running but has no models. Run <em>ollama pull qwen3.5:4b</em>.';
@@ -3440,7 +3445,7 @@ async function handleUser(text, source) {
       } else {
         const why = !settings.llm ? 'My AI brain is switched off in settings, so I only understand direct commands.'
           : !backend.online ? 'The backend is offline, so I cannot reach my AI brain. Press START JARVIS (top of the page) or double-click the desktop icon.'
-          : !llm.online ? 'My AI brain (Ollama) is not running, so I only understand direct commands right now.'
+          : !llm.online ? (isCloudModel(llm.model) ? 'I could not reach ' + modelInfo(llm.model).providerLabel + ', so I only understand direct commands right now.' : 'My AI brain (Ollama) is not running, so I only understand direct commands right now.')
           : 'I did not quite catch that.';
         await deliver({ text: (llm.online && settings.llm && backend.online ? Persona.say('unsure') : why) + ' Did you mean one of these?', suggestions: NLU.suggest(norm.text), intent: 'UNKNOWN', noPersona: true }, p);
       }
