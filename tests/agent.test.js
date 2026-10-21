@@ -373,6 +373,40 @@ for (const t of ['create a project', 'create a new folder called notes', 'what i
     const blockedIds = Agent.retryableSteps(blocked).map(s => s.id);
     SAFETY.push(['retryableSteps excludes dependents of a blocked step but keeps independent steps', { ids: blockedIds }, x => !x.ids.includes('b') && x.ids.includes('c')]);
   }
+  // Routines run unattended but can be cancelled too; every run is saved while it goes and says how it ended (runStatus).
+  {
+    const mk = n => Array.from({ length: n }, (_, i) => ({ id: 'step_' + (i + 1), tool: 'add_todo', intent: 'ADD_TODO', args: { text: 'x' }, text: 'add x', tier: 'safe', reason: '', check: null, label: 'R' + (i + 1) }));
+    global.todos = [{ id: 'x' }];
+    let mid = null;
+    global.executeTool = async () => { await new Promise(r => setTimeout(r, 15)); if (!mid) mid = Agent.lastRuns(1)[0]; return { op: { kind: 'todo', id: 'x' } }; };
+    global.__lastActions = null;
+    const p = Agent.execute({ goal: 'routine cancel', steps: mk(3) }, { source: 'routine', unattended: true });
+    await new Promise(r => setTimeout(r, 40));
+    const offered = !!global.__lastActions && global.__lastActions[0].label === 'CANCEL TASK';
+    const viaApi = Agent.active().length === 1 && Agent.cancel() === 1;
+    const res = await p, rec = Agent.lastRuns(1)[0];
+    SAFETY.push(['a routine (unattended, several steps) offers CANCEL TASK too', { offered }, x => x.offered]);
+    SAFETY.push(['Agent.cancel() stops the running plan between steps; it reports runStatus "cancelled"', { viaApi, st: res.runStatus, steps: rec.steps.map(s => s.status) }, x => x.viaApi && x.st === 'cancelled' && x.steps[2] === 'notrun']);
+    SAFETY.push(['a run is saved as "running" before its first step (so a restart mid-task leaves a record), same id as the final record', { mid: mid && { id: mid.id, running: mid.running }, id: rec.id }, x => x.mid && x.mid.running === true && x.mid.id === x.id]);
+    SAFETY.push(['the final record replaces it (one record per run, no longer running)', { n: store.get('jarvis.agentRuns', []).filter(r => r.id === rec.id).length, running: rec.running, cancelled: rec.cancelled, active: Agent.active().length }, x => x.n === 1 && !x.running && x.cancelled && x.active === 0]);
+    global.executeTool = async () => ({ op: { kind: 'todo', id: 'x' } });
+    const okRes = await Agent.execute({ goal: 'routine ok', steps: mk(1) }, { source: 'routine', unattended: true });
+    SAFETY.push(['a run where every step worked reports runStatus "completed"', { st: okRes.runStatus }, x => x.st === 'completed']);
+  }
+  // A run left "running" by a page that closed or restarted: after 3 minutes without a heartbeat it is marked interrupted.
+  {
+    const now = Date.now(), runs = store.get('jarvis.agentRuns', []);
+    runs.push({ id: 'AGT-20260101-900', goal: 'left running', source: 'planner', at: now - 10 * 60e3, running: true, updated: now - 10 * 60e3, steps: [{ id: 'a', label: 'A', status: 'verified' }, { id: 'b', label: 'B' }] });
+    runs.push({ id: 'AGT-20260101-901', goal: 'another tab', source: 'planner', at: now - 30e3, running: true, updated: now - 30e3, steps: [{ id: 'a', label: 'A' }] });
+    store.set('jarvis.agentRuns', runs);
+    const hit = Agent.sweepInterrupted().map(r => r.id), recs = store.get('jarvis.agentRuns', []);
+    const left = recs.find(r => r.id === 'AGT-20260101-900'), live = recs.find(r => r.id === 'AGT-20260101-901');
+    let card = ''; try { card = Agent.formatRun(left); } catch (e) { card = 'crashed: ' + e.message; }
+    SAFETY.push(['interrupted: a stale running record is marked interrupted; a recently refreshed one (another tab) is left alone', { hit, live: live.running }, x => x.hit.length === 1 && x.hit[0] === 'AGT-20260101-900' && x.live === true]);
+    SAFETY.push(['interrupted: the step that happened stays done, the one never reached is "notrun"', left, r => r.interrupted && !r.running && r.steps[0].status === 'verified' && r.steps[1].status === 'notrun']);
+    SAFETY.push(['interrupted: INSPECT shows it as INTERRUPTED', { status: (String(card).match(/STATUS: \w+/) || [card])[0] }, x => x.status === 'STATUS: INTERRUPTED']);
+    SAFETY.push(['interrupted: a second sweep finds nothing new', { n: Agent.sweepInterrupted().length }, x => x.n === 0]);
+  }
   let sfail = 0;
   for (const [d, r, ok] of SAFETY) if (!ok(r)) { sfail++; console.log('SAFETY FAIL  ' + d + ' → ' + JSON.stringify(r)); }
   console.log(`safety: ${SAFETY.length - sfail}/${SAFETY.length}`);

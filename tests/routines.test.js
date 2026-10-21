@@ -83,6 +83,12 @@ const tick = () => new Promise(r => setTimeout(r, 10));
   undo[0][1]();
   check('builder: undo of the new one removes it', !R.find('night owl') && R.list().length === n1);
   }
+  {   // the spoken line follows how the run ended, never "complete" after a failure or a cancel
+    const realAgent = ctx.Agent, r0 = R.list()[0], spoken = {};
+    for (const st of ['completed', 'partial', 'failed', 'cancelled']) { ctx.Agent = { runUnattended: async () => ({ text: 'x', runStatus: st }) }; spoken[st] = (await R.run(r0)).speak; }
+    ctx.Agent = realAgent;
+    check('routine result: "complete" only when every step worked; partial/failed and cancelled say so', / complete, /.test(spoken.completed) && /not every step/.test(spoken.partial) && /not every step/.test(spoken.failed) && /cancelled/.test(spoken.cancelled) && !/ complete, /.test(spoken.cancelled + spoken.partial + spoken.failed), spoken);
+  }
   console.log(`routines: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;
 })().catch(e => { console.log('FAIL  crashed — ' + (e && e.stack || e)); process.exitCode = 1; });

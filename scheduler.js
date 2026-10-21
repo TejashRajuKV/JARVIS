@@ -317,12 +317,15 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
   }
   app.locals.broadcast = broadcast;   // server.js uses it to tell other tabs about a changed chat
 
+  // Never throws: reminders are saved as fired before they are delivered, so one failed delivery must not skip the rest.
   async function deliver(ev, title, body) {
-    const settings = getState()['jarvis.settings'] || {};
-    const tabs = clients.size;
-    if (tabs) broadcast(ev); else await toast(title, body);
-    await phonePush(settings, title, body);
-    log(`${ev.type} fired: ${body} → ${tabs ? tabs + ' tab(s)' : 'Windows toast'}${settings.phonePush ? ' + phone' : ''}`);
+    try {
+      const settings = getState()['jarvis.settings'] || {};
+      const tabs = clients.size;
+      if (tabs) broadcast(ev); else await toast(title, body);
+      await phonePush(settings, title, body);
+      log(`${ev.type} fired: ${body} → ${tabs ? tabs + ' tab(s)' : 'Windows toast'}${settings.phonePush ? ' + phone' : ''}`);
+    } catch (e) { log(`${ev.type} delivery failed: ${body} (${e && e.message})`); }
   }
 
   async function tick() {

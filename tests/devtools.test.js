@@ -49,7 +49,12 @@ const T = createDevTools({ roots: () => [root], complete });
   check('summary today: the other repo is listed, uncommitted files are counted with a stat', b && b.commits.length === 1 && a.uncommitted === 2 && /changed/.test(a.stat), [a && a.uncommitted, a && a.stat]);
   check('summary today: total counts all commits found', s.total === a.commits.length + b.commits.length && s.searched === 2 && s.label === 'today');
   s = await T.summary({ window: 'today', everyone: true }); check('summary: everyone=true includes the teammate', s.repos.find(r => r.name === 'alpha').commits.some(c => /teammate/.test(c.s)));
-  s = await T.summary({ window: 'week' }); check('summary: this week reaches back to Monday (older than today but within it, when it is not Monday)', s.repos.find(r => r.name === 'alpha').commits.length >= 2 || new Date().getDay() === 1);
+  s = await T.summary({ window: 'week' });
+  { // which of my three commits (60 h, 30 h, 0.2 h ago) fall on or after local Monday 00:00 depends on when the test runs
+    const d = new Date(), monday = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - ((d.getDay() + 6) % 7) * 864e5;
+    const want = [60, 30, 0.2].filter(h => Date.now() - h * 36e5 >= monday).length, got = s.repos.find(r => r.name === 'alpha').commits.length;
+    check('summary: this week reaches back to Monday 00:00 (exactly my commits since then)', got === want, [got, want]);
+  }
   s = await T.summary({ window: 'last week' }); check('summary: last week has none of today\'s commits', !s.repos.some(r => r.commits.some(c => c.s === 'Add search page')));
   s = await T.summary({ window: 'today', repo: A }); check('summary: one repo by path', s.repos.length === 1 && s.repos[0].name === 'alpha' && s.searched === 1);
   s = await T.summary({ window: 'today', repo: path.join(tmp, 'elsewhere') }); check('summary: a repo outside the project folders is refused', !!s.error && /not one of your project folders/.test(s.error));

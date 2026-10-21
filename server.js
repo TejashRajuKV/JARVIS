@@ -5,7 +5,6 @@ const { spawn, exec, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const crypto = require('crypto');
 
 // One JARVIS per user: a second start (an AI tool, VS Code, a terminal) reuses the running one instead of adding a copy
 // with its own chat, ntfy stream and wake-word listener. This runs before anything else starts work (instance.js).
@@ -305,6 +304,8 @@ const BLOCKED_NAMES = /^(\$recycle\.bin|system volume information|recovery|\$win
 const under = (p, dir) => { const a = norm(path.resolve(p)), b = norm(dir); return a === b || a.startsWith(b + path.sep); };
 function blockedPath(p, { forWrite } = {}) {
   const r = path.resolve(p), physical = physicalPath(r);
+  // physicalPath is null for a dangling link: a write would land wherever the link points, which was never checked.
+  if (forWrite && !physical) return true;
   // Check both spellings and the resolved destination. This catches symlinks/junctions into OS and credential paths.
   const lexicalRoot = rootOf(r);
   if (lexicalRoot && hasLinkedComponent(r, lexicalRoot)) return true;
@@ -339,17 +340,13 @@ function approvedChange(req, res, action, ...paths) {
     // A body flag alone ("approved": true) proves nothing: anything that can reach this route could set it. The 409 hands out a one-time token for exactly THIS
     // action on exactly THESE paths, valid for 5 minutes; the page sends it back after the person pressed ALLOW. A token is used up by one retry.
     const sig = action + '|' + outside.map(p => norm(path.resolve(p))).sort().join('|');
-    const tok = String(req.body.approvalToken || ''), rec = approvalTokens.get(tok);
-    if (req.body.approved === true && rec && rec.sig === sig && rec.exp > Date.now()) { approvalTokens.delete(tok); return true; }
-    const token = crypto.randomBytes(16).toString('hex');
-    const now = Date.now(); for (const [k, v] of approvalTokens) if (v.exp < now) approvalTokens.delete(k);
-    if (approvalTokens.size > 500) approvalTokens.delete(approvalTokens.keys().next().value);
-    approvalTokens.set(token, { sig, exp: now + 5 * 60000 });
+    if (req.body.approved === true && approvals.consume(req.body.approvalToken, sig)) return true;
+    const token = approvals.issue(sig);
     res.status(409).json({ needsApproval: true, approvalToken: token, action, paths: outside, error: 'This changes files outside ~/jarvis and needs your permission' }); return false;
   }
   return true;
 }
-const approvalTokens = new Map();
+const approvals = require('./approvals').createApprovals();
 
 // Find by name across the laptop: Desktop, Documents, Downloads (and OneDrive's), the top of your home folder, and
 // other drives a few levels down. Folder- or file-names as people say them (sameName: "dss print" → dsa_sprint; a
@@ -1248,6 +1245,7 @@ app.post('/api/tool/folderStats', (req, res) => {
 });
 
 const pdf = require('./pdftext');
+const { writeUnique } = require('./safewrite');
 const cap1 = s => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 // Drag a file into JARVIS (or 📎): saved to ~/jarvis/Documents so you can ask about it, summarise it or make flashcards.
 const UPLOAD_EXT = /\.(pdf|txt|md|markdown|csv|json|py|js|ts|c|cpp|h|java|cs|go|rs|html|css|sql|ipynb|docx|pptx|xlsx)$/i;
@@ -1258,25 +1256,14 @@ app.post('/api/tool/upload', express.raw({ type: 'application/octet-stream', lim
   const dir = path.join(SANDBOX, 'Documents'); fs.mkdirSync(dir, { recursive: true });
   const actualDir = physicalPath(dir);
   if (!actualDir || rootOf(actualDir) !== SANDBOX || isInternal(actualDir)) return res.status(400).json({ error: 'The JARVIS Documents folder must stay inside its sandbox' });
-  // Create with O_EXCL so an existing (including dangling) symlink cannot redirect an upload outside Documents.
-  // A check-then-write using existsSync has a race and treats dangling symlinks as missing files.
+  // writeUnique never follows an existing or dangling link (plain 'wx' does on Windows), so nothing lands outside Documents.
   const ext = path.extname(name), base = name.slice(0, -ext.length);
   let dest = null;
-  for (let n = 1; n <= 1000; n++) {
-    const candidate = path.join(dir, n === 1 ? name : base + ' (' + n + ')' + ext);
-    let fd;
-    try {
-      fd = fs.openSync(candidate, 'wx', 0o600);
-      try { fs.writeFileSync(fd, req.body); } finally { fs.closeSync(fd); }
-      dest = candidate;
-      break;
-    } catch (e) {
-      if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
-      if (e.code === 'EEXIST') continue;
-      return res.status(500).json({ error: 'Could not save the uploaded file' });
-    }
+  try { dest = writeUnique(dir, n => n === 1 ? name : base + ' (' + n + ')' + ext, req.body); }
+  catch (e) {
+    if (e.code === 'ETOOMANY') return res.status(409).json({ error: 'Too many files with that name already exist' });
+    return res.status(500).json({ error: 'Could not save the uploaded file' });
   }
-  if (!dest) return res.status(409).json({ error: 'Too many files with that name already exist' });
   let pages = null, scanned = false;
   if (/\.pdf$/i.test(dest)) {
     try { const r = await pdf.pdfPages(dest); pages = r.total; scanned = r.scanned; }
@@ -1349,8 +1336,8 @@ app.post('/api/tool/writeFile', (req, res) => {
     if (exists && (req.body.overwrite || req.body.append)) { try { backup = Date.now() + '_' + path.basename(p); fs.copyFileSync(p, path.join(TRASH, backup)); } catch { backup = null; } }
     if (req.body.append && exists) fs.appendFileSync(p, (content.startsWith('\n') ? '' : '\n') + content);
     else fs.writeFileSync(p, content);
-    if (!exists) undoLog.add({ label: 'created ' + path.basename(p), endpoint: '/tool/undoCreate', body: { name: p } });
-    else if (backup) undoLog.add({ label: 'changed ' + path.basename(p), endpoint: '/tool/restoreVersion', body: { backup, name: p } });
+    if (!exists) undoLog.add({ run: req.get('x-jarvis-run'), label: 'created ' + path.basename(p), endpoint: '/tool/undoCreate', body: { name: p } });
+    else if (backup) undoLog.add({ run: req.get('x-jarvis-run'), label: 'changed ' + path.basename(p), endpoint: '/tool/restoreVersion', body: { backup, name: p } });
     res.json({ success: true, name: rel(p), path: p, created: !exists, appended: !!(req.body.append && exists), backup });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1370,7 +1357,7 @@ app.post('/api/tool/createFolder', (req, res) => {
   try {
     const existed = fs.existsSync(p);
     fs.mkdirSync(p, { recursive: true });
-    if (!existed) undoLog.add({ label: 'created the folder ' + path.basename(p), endpoint: '/tool/undoCreate', body: { name: p } });
+    if (!existed) undoLog.add({ run: req.get('x-jarvis-run'), label: 'created the folder ' + path.basename(p), endpoint: '/tool/undoCreate', body: { name: p } });
     res.json({ success: true, name: rel(p), path: p, existed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1405,7 +1392,7 @@ app.post('/api/tool/deleteItem', (req, res) => {
   try {
     const original = rel(p);
     const trashName = moveToTrash(p);
-    undoLog.add({ label: 'deleted ' + path.basename(p), endpoint: '/tool/restoreItem', body: { trashName, original } });
+    undoLog.add({ run: req.get('x-jarvis-run'), label: 'deleted ' + path.basename(p), endpoint: '/tool/restoreItem', body: { trashName, original } });
     res.json({ success: true, name: rel(p), trashed: true, trashName, original });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1443,21 +1430,21 @@ function moveAcross(src, dest) {
 app.post('/api/tool/renameFile', (req, res) => {
   const pr = twoPaths(req.body.oldName, req.body.newName, res);
   if (!pr || !approvedChange(req, res, 'rename', pr.src, pr.dest)) return;
-  try { moveAcross(pr.src, pr.dest); undoLog.add({ label: 'renamed ' + path.basename(pr.src), endpoint: '/tool/undoMove', body: { to: pr.dest, from: pr.src } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
+  try { moveAcross(pr.src, pr.dest); undoLog.add({ run: req.get('x-jarvis-run'), label: 'renamed ' + path.basename(pr.src), endpoint: '/tool/undoMove', body: { to: pr.dest, from: pr.src } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/tool/copyFile', (req, res) => {
   const pr = twoPaths(req.body.src, req.body.dest, res);
   if (!pr || !approvedChange(req, res, 'copy into', pr.dest)) return;   // the original isn't changed
-  try { fs.cpSync(pr.src, pr.dest, { recursive: true }); undoLog.add({ label: 'copied ' + path.basename(pr.src), endpoint: '/tool/undoCreate', body: { name: pr.dest } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
+  try { fs.cpSync(pr.src, pr.dest, { recursive: true }); undoLog.add({ run: req.get('x-jarvis-run'), label: 'copied ' + path.basename(pr.src), endpoint: '/tool/undoCreate', body: { name: pr.dest } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/tool/moveFile', (req, res) => {
   const pr = twoPaths(req.body.src, req.body.dest, res);
   if (!pr || !approvedChange(req, res, 'move', pr.src, pr.dest)) return;
-  try { moveAcross(pr.src, pr.dest); undoLog.add({ label: 'moved ' + path.basename(pr.src), endpoint: '/tool/undoMove', body: { to: pr.dest, from: pr.src } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
+  try { moveAcross(pr.src, pr.dest); undoLog.add({ run: req.get('x-jarvis-run'), label: 'moved ' + path.basename(pr.src), endpoint: '/tool/undoMove', body: { to: pr.dest, from: pr.src } }); res.json({ success: true, from: rel(pr.src), to: rel(pr.dest) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1964,7 +1951,10 @@ app.post('/api/tool/runningApps', (req, res) => {
       done(new Set(stdout.split(/\r?\n/).map(l => (l.split('","')[0] || '').replace(/^"/, '').replace(/\.exe$/i, '').toLowerCase())));
     });
   } else {
-    execFile('ps', ['-A', '-o', 'comm='], (err, stdout) => done(new Set(err ? [] : stdout.split('\n').map(l => path.basename(l.trim()).toLowerCase()))));
+    execFile('ps', ['-A', '-o', 'comm='], (err, stdout) => {
+      if (err) return res.json({ success: true, checked: [], running: [], error: 'could not read the process list' });
+      done(new Set(stdout.split('\n').map(l => path.basename(l.trim()).toLowerCase())));
+    });
   }
 });
 
@@ -2344,17 +2334,21 @@ app.post('/api/tool/sleepSystem', (req, res) => {
   else run('systemctl', ['suspend']);
   res.json({ success: true });
 });
+// Shutdown, restart and cancel wait for the command's exit code, so JARVIS never says "shutting down" or "cancelled" when it wasn't.
+const runChecked = (cmd, args, cb) => execFile(cmd, args, { windowsHide: true, timeout: 15000 }, (err, stdout, stderr) => cb(err, String(stderr || stdout || '').trim().slice(0, 160)));
+const powerFailed = (res, what, out) => res.status(500).json({ error: 'could not ' + what + (out ? ' (' + out + ')' : '') });
 app.post('/api/tool/shutdownSystem', (req, res) => {
-  if (IS_WIN) run('shutdown', ['/s', '/t', '30']); else run('shutdown', ['-h', '+1']);
-  res.json({ success: true, seconds: IS_WIN ? 30 : 60 });
+  runChecked('shutdown', IS_WIN ? ['/s', '/t', '30'] : ['-h', '+1'], (err, out) => err ? powerFailed(res, 'schedule the shutdown', out) : res.json({ success: true, seconds: IS_WIN ? 30 : 60 }));
 });
 app.post('/api/tool/restartSystem', (req, res) => {
-  if (IS_WIN) run('shutdown', ['/r', '/t', '30']); else run('shutdown', ['-r', '+1']);
-  res.json({ success: true, seconds: IS_WIN ? 30 : 60 });
+  runChecked('shutdown', IS_WIN ? ['/r', '/t', '30'] : ['-r', '+1'], (err, out) => err ? powerFailed(res, 'schedule the restart', out) : res.json({ success: true, seconds: IS_WIN ? 30 : 60 }));
 });
 app.post('/api/tool/cancelShutdown', (req, res) => {
-  if (IS_WIN) run('shutdown', ['/a']); else run('shutdown', ['-c']);
-  res.json({ success: true });
+  runChecked('shutdown', IS_WIN ? ['/a'] : ['-c'], (err, out) => {
+    if (!err) return res.json({ success: true });
+    if (IS_WIN && err.code === 1116) return res.json({ success: true, nothingPending: true });   // ERROR_NO_SHUTDOWN_IN_PROGRESS
+    powerFailed(res, 'cancel the shutdown — run "' + (IS_WIN ? 'shutdown /a' : 'shutdown -c') + '" yourself', out);
+  });
 });
 
 /* ---------------- volume / media ---------------- */

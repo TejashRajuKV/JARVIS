@@ -3,6 +3,8 @@
    Moved unchanged out of script.js (tools/registry.js). Called as handler(p, raw, s, a) with s = p.text and a = p.args || {}; the globals it uses
    (callTool, toolStep, settings, todos…) come from script.js at call time. An intent that is not this area's returns ToolHandlers.NONE. */
 ToolHandlers.add('system', async function (p, raw, s, a) {
+  // A call that failed is reported as a failure (ok = false), never as the success line.
+  const failed = (what, r) => ({ text: 'I couldn’t ' + what + ': ' + r.error, error: r.error });
   switch (p.intent) {
     /* ---- power ---- */
     case 'LOCK_JARVIS': {   // "lock jarvis" / "lock yourself": JARVIS's own lock (not the Windows screen)
@@ -14,7 +16,7 @@ ToolHandlers.add('system', async function (p, raw, s, a) {
       setTimeout(() => location.reload(), 900);   // the server now serves the lock page
       return { text: 'Locking JARVIS. Windows Hello will open it again.', speak: 'Locked.', tool: 'lockJarvis' };
     }
-    case 'SYS_LOCK': toolStep('lockSystem'); await callTool('/tool/lockSystem'); return { text: 'Locking your screen.', tool: 'lockSystem' };
+    case 'SYS_LOCK': { toolStep('lockSystem'); const r = await callTool('/tool/lockSystem'); return r.error ? failed('lock the screen', r) : { text: 'Locking your screen.', tool: 'lockSystem' }; }
     case 'SYS_SLEEP':
       return confirmPower('Put the computer to sleep now?', 'YES — SLEEP', () => withHello('power', async tok => { toolStep('sleepSystem'); const r = await callTool('/tool/sleepSystem', {}, tok); jarvisSay(r.error ? { text: cap(r.error) + '.', intent: 'SYS_SLEEP' } : { text: 'Goodnight.', intent: 'SYS_SLEEP' }); }));
     case 'SYS_SHUTDOWN':
@@ -22,12 +24,17 @@ ToolHandlers.add('system', async function (p, raw, s, a) {
       return confirmPower('Shut down the computer? Unsaved work in other apps will be lost.', 'YES — SHUT DOWN', () => withHello('power', async tok => { toolStep('shutdownSystem'); const r = await callTool('/tool/shutdownSystem', {}, tok); jarvisSay(r.error ? { text: cap(r.error) + '.', intent: 'SYS_SHUTDOWN' } : { text: 'Shutting down in ' + (r.seconds || 30) + ' seconds. Say "cancel shutdown" to abort.', intent: 'SYS_SHUTDOWN', suggestions: ['Cancel shutdown'] }); }));
     case 'SYS_RESTART':
       return confirmPower('Restart the computer?', 'YES — RESTART', () => withHello('power', async tok => { toolStep('restartSystem'); const r = await callTool('/tool/restartSystem', {}, tok); jarvisSay(r.error ? { text: cap(r.error) + '.', intent: 'SYS_RESTART' } : { text: 'Restarting in ' + (r.seconds || 30) + ' seconds. Say "cancel shutdown" to abort.', intent: 'SYS_RESTART', suggestions: ['Cancel shutdown'] }); }));
-    case 'SYS_CANCEL_SHUTDOWN': toolStep('cancelShutdown'); await callTool('/tool/cancelShutdown'); return { text: 'Cancelled. Your system stays on.', tool: 'cancelShutdown' };
+    case 'SYS_CANCEL_SHUTDOWN': {
+      toolStep('cancelShutdown'); const r = await callTool('/tool/cancelShutdown');
+      if (r.error) return failed('cancel the shutdown', r);
+      return { text: r.nothingPending ? 'There was no shutdown or restart pending — your system stays on.' : 'Cancelled. Your system stays on.', tool: 'cancelShutdown' };
+    }
 
     /* ---- volume & media ---- */
     case 'VOLUME_MUTE': {
       const action = a.action || (/\bunmute\b|\b(sound|audio|volume) on\b/.test(s) ? 'unmute' : 'mute');
-      toolStep('setVolume → ' + action); await callTool('/tool/setVolume', { action });
+      toolStep('setVolume → ' + action); const r = await callTool('/tool/setVolume', { action });
+      if (r.error) return failed(action === 'mute' ? 'mute the sound' : 'turn the sound back on', r);
       Undo.push(action === 'mute' ? 'muted' : 'unmuted', async () => { await callTool('/tool/setVolume', { action: action === 'mute' ? 'unmute' : 'mute' }); return action === 'mute' ? 'Sound is back on.' : 'Muted again.'; });
       return { text: action === 'mute' ? 'Muted.' : 'Sound back on.', noTTS: action === 'mute', tool: 'setVolume' };
     }
@@ -35,14 +42,15 @@ ToolHandlers.add('system', async function (p, raw, s, a) {
     case 'VOLUME_DOWN': {
       const up = p.intent === 'VOLUME_UP';
       const steps = /\b(a lot|way|max|much|full)\b/.test(s) ? 20 : /\b(a (little|bit)|slightly|tad)\b/.test(s) ? 2 : 5;
-      toolStep('setVolume → ' + (up ? 'up' : 'down')); await callTool('/tool/setVolume', { action: up ? 'up' : 'down', steps });
+      toolStep('setVolume → ' + (up ? 'up' : 'down')); const r = await callTool('/tool/setVolume', { action: up ? 'up' : 'down', steps });
+      if (r.error) return failed('turn the volume ' + (up ? 'up' : 'down'), r);
       Undo.push(up ? 'volume up' : 'volume down', async () => { await callTool('/tool/setVolume', { action: up ? 'down' : 'up', steps }); return 'Volume put back (' + (up ? 'down' : 'up') + ').'; });
       return { text: up ? 'Volume up.' : 'Volume down.', tool: 'setVolume' };
     }
-    case 'MEDIA_PLAY': toolStep('mediaKey → play'); await callTool('/tool/mediaKey', { key: 'play' }); return { text: 'Toggled play/pause.', noTTS: true, tool: 'mediaKey' };
-    case 'MEDIA_NEXT': toolStep('mediaKey → next'); await callTool('/tool/mediaKey', { key: 'next' }); return { text: 'Next track.', noTTS: true, tool: 'mediaKey' };
-    case 'MEDIA_PREV': toolStep('mediaKey → prev'); await callTool('/tool/mediaKey', { key: 'prev' }); return { text: 'Previous track.', noTTS: true, tool: 'mediaKey' };
-    case 'MEDIA_STOP': toolStep('mediaKey → stop'); await callTool('/tool/mediaKey', { key: 'stop' }); return { text: 'Stopped playback.', noTTS: true, tool: 'mediaKey' };
+    case 'MEDIA_PLAY': { toolStep('mediaKey → play'); const r = await callTool('/tool/mediaKey', { key: 'play' }); return r.error ? failed('send the media key', r) : { text: 'Toggled play/pause.', noTTS: true, tool: 'mediaKey' }; }
+    case 'MEDIA_NEXT': { toolStep('mediaKey → next'); const r = await callTool('/tool/mediaKey', { key: 'next' }); return r.error ? failed('send the media key', r) : { text: 'Next track.', noTTS: true, tool: 'mediaKey' }; }
+    case 'MEDIA_PREV': { toolStep('mediaKey → prev'); const r = await callTool('/tool/mediaKey', { key: 'prev' }); return r.error ? failed('send the media key', r) : { text: 'Previous track.', noTTS: true, tool: 'mediaKey' }; }
+    case 'MEDIA_STOP': { toolStep('mediaKey → stop'); const r = await callTool('/tool/mediaKey', { key: 'stop' }); return r.error ? failed('send the media key', r) : { text: 'Stopped playback.', noTTS: true, tool: 'mediaKey' }; }
 
     /* ---- system info ---- */
     case 'SCREENSHOT': {
@@ -53,6 +61,7 @@ ToolHandlers.add('system', async function (p, raw, s, a) {
     case 'SYS_BATTERY': {
       toolStep('batteryStatus');
       const r = await callTool('/tool/batteryStatus');
+      if (r.error) return { text: 'I couldn’t read the battery: ' + r.error, error: r.error };
       if (r.level === null || r.level === undefined) return { text: 'No battery detected — looks like a desktop or it is not reporting.' };
       const low = Thresholds.isBatteryLow(r.level, r.status) ? ' That is low — plug in soon.' : '';
       return { text: 'Battery is at **' + r.level + '%** and ' + r.status.toLowerCase() + '.' + low, tool: 'batteryStatus' };
