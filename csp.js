@@ -28,5 +28,5 @@ function buildCsp() {
   return Object.entries(d).map(([k, v]) => k + ' ' + v.join(' ')).join('; ');
 }
 // the paths that are JARVIS's own HTML pages
-const isPagePath = p => /^\/(?:index\.html|lock\.html)?$/i.test(String(p || ''));
+const isPagePath = p => /^\/(?:index\.html|lock\.html|phonehub\.html)?$/i.test(String(p || ''));
 module.exports = { buildCsp, isPagePath, CDN };
