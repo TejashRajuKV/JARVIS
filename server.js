@@ -856,6 +856,7 @@ app.post('/api/tool/openUrl', (req, res) => {
   let url;
   try { url = new URL(String(req.body.url || '')); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
   if (!['http:', 'https:'].includes(url.protocol)) return res.status(400).json({ error: 'Only http/https URLs allowed' });
+  try { if (app.locals.jarvisBrowserRecovery) app.locals.jarvisBrowserRecovery.record(url.href); } catch (e) { /* recovery is best-effort and must never block opening a page */ }
   const [cmd, args] = IS_WIN ? ['rundll32', ['url.dll,FileProtocolHandler', url.href]]
     : IS_MAC ? ['open', [url.href]] : ['xdg-open', [url.href]];
   const p = spawn(cmd, args, { detached: true, stdio: 'ignore' });
@@ -1640,6 +1641,10 @@ rag.startWatcher(); // new/changed files are picked up automatically (still chea
 require('./skills')(app, { llm, DEFAULT_MODEL, SANDBOX, openPath, rel, findAllowed, anyPath, approvedChange, whereDir });
 // Skill packs: any folder with a SKILL.md in ~/jarvis/Skills (or ./skills-bundled) becomes a skill (skillpack.js).
 require('./skillpack')(app, { llm, DEFAULT_MODEL, SANDBOX });
+// Skill Hub: explicit workflow notes, safe browser recovery, and read-only local self-diagnostics.
+require('./workflow-memory')(app, { SANDBOX });
+require('./browser-recovery')(app, { SANDBOX, IS_WIN, IS_MAC });
+require('./diagnostics')(app, { root: __dirname, sandbox: SANDBOX, ollamaUrl: OLLAMA, defaultModel: DEFAULT_MODEL });
 // "Check my AI": Ollama, recent AI errors, disks, memory (aihealth.js).
 require('./aihealth')(app, { llm, recorder: aiCalls, OLLAMA, DEFAULT_MODEL, SANDBOX });
 // Service watchdog: is Ollama / a dev server / a site you named still up? Alerts reach the page over the same event stream as reminders.
