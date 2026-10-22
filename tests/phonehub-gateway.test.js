@@ -114,5 +114,11 @@ async function call(handler, options) {
     assert.match(gatewaySource, /text.event-stream/);
     assert.match(gatewaySource, /req\.on\('close', close\)/);
   });
+  check('gateway exposes voice and call endpoints only behind explicit capabilities', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'phonehub-gateway.js'), 'utf8');
+    assert.match(source, /VOICE_ROUTE/);
+    assert.match(source, /auth\.authorize\(\{ token: tokenMatch \? tokenMatch\[1\] : '', nonce \}, 'voice'\)/);
+    assert.match(source, /auth\.authorize\(\{ token: tokenMatch \? tokenMatch\[1\] : '', nonce \}, 'calls'\)/);
+  });
   console.log('phonehub-gateway: ' + total + ' checks passed');
 })().catch(() => { process.exitCode = 1; });
