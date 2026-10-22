@@ -2,7 +2,7 @@
 
 ## Current implementation stage
 
-phonehub-auth.js contains dependency-free pairing/session primitives. It is intentionally **not a network listener and is not wired into server.js yet**. That boundary is deliberate: JARVIS's existing HTTP server binds to loopback and has strict host/origin checks. The Android feature must not weaken those protections by exposing the full laptop-control API on the LAN.
+phonehub-auth.js contains dependency-free pairing/session primitives. `phonehub-gateway.js` now contains a separate HTTPS-only, allowlisted route handler and explicit-private-IP server factory. Neither module is wired into `server.js` yet; no gateway starts automatically. That boundary is deliberate: JARVIS's existing HTTP server binds to loopback and has strict host/origin checks. The Android feature must not weaken those protections by exposing the full laptop-control API on the LAN.
 
 ## Security contract for the gateway
 
@@ -17,6 +17,12 @@ The future Phone Gateway must:
 7. Support immediate device revocation and session expiry. Do not trust a capability list supplied by the phone after pairing.
 8. Validate request size, method, path, origin, host and local-network peer policy before calling this module. Never expose existing /api/tool/*, state, file, screenshot, clipboard or arbitrary command endpoints through the phone gateway.
 9. Keep a visible laptop-side activity log and require an explicit confirmation for consequential operations such as sending SMS or initiating calls. Phone-originated commands must not be allowed to turn on the laptop camera/microphone or bypass existing permission tiers.
+
+## Gateway module
+
+`phonehub-gateway.js` exports `createPhoneHubRequestHandler()` and `createPhoneHubHttpsServer()`. The HTTPS factory requires a private IPv4 RFC1918 or IPv6 ULA bind address and both TLS key and certificate; it refuses wildcard, loopback, public, or plaintext binds. The handler accepts only `/health`, `POST /v1/pair`, `GET /v1/status`, and `GET /v1/notifications`. It rejects public peers, unexpected Host/Origin values, non-JSON pairing bodies, oversized bodies, unknown paths, and replayed or unauthorized requests. It never proxies to existing JARVIS API routes. Defaults use a 4 KiB request-body cap and TLS 1.2 minimum.
+
+The gateway factory does not generate certificates or select a LAN interface automatically. A future opt-in startup integration must present a trusted certificate to the Android client and must not weaken the existing loopback-only web server.
 
 ## Module API
 
@@ -33,7 +39,8 @@ The caller must generate a cryptographically random nonce (at least 16 URL-safe 
 ## Integration checkpoints
 
 - [x] Add isolated pairing/session primitives and deterministic unit tests.
-- [ ] Add HTTPS gateway listener with strict network binding and health checks.
+- [x] Add isolated HTTPS gateway factory and strict request handler (not yet started by the application).
+- [ ] Wire gateway startup into a dedicated opt-in process/configuration with explicit TLS material and selected private IP.
 - [ ] Add laptop UI for QR/code pairing, capability grants, active devices and revoke.
 - [ ] Add Android companion app with encrypted token storage and pinned certificate fingerprint.
 - [ ] Add phone-side notification, status and permission-aware command flows.
