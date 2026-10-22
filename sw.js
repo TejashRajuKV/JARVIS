@@ -2,7 +2,7 @@
    Rules: same-origin GET files only â†’ network-first, cache as offline fallback; /api/* is NEVER cached; everything else
    (chat with the AI, laptop control) still needs the backend running on this machine. */
 'use strict';
-const VERSION = 'jarvis-v41';   // bump when the app shell changes (new fonts/styles), so old caches are dropped
+const VERSION = 'jarvis-v42';   // bump when the app shell changes (new fonts/styles), so old caches are dropped
 const SHELL = ['index.html', 'style.css', 'themes.css', 'ui.css', 'manifest.webmanifest',
   // NOT api/state.js: that is a full copy of your chats, memory and tasks, and the worker never answers /api/ from a cache anyway
   'lock-client.js', 'vendor/qrcode.js',
