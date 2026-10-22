@@ -54,6 +54,7 @@ function createPhoneHubAuth(options = {}) {
     };
     const dir = path.dirname(stateFile);
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    try { fs.chmodSync(dir, 0o700); } catch {}
     const temporary = stateFile + '.' + process.pid + '.' + crypto.randomBytes(6).toString('hex') + '.tmp';
     try {
       fs.writeFileSync(temporary, JSON.stringify(state), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
@@ -68,6 +69,7 @@ function createPhoneHubAuth(options = {}) {
   function restore() {
     if (!stateFile || !fs.existsSync(stateFile)) return;
     let state;
+    try { fs.chmodSync(stateFile, 0o600); } catch {}
     try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')); }
     catch { throw new Error('Phone Hub state file is unreadable; refusing to reset device credentials'); }
     if (!state || state.version !== 1 || !Array.isArray(state.pairings) ||
