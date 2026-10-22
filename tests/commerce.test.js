@@ -10,7 +10,7 @@ check('invalid phone punctuation is rejected', !!buildAction({ kind: 'whatsapp',
 check('short phone numbers are rejected', !!buildAction({ kind: 'whatsapp', phone: '1234', message: 'hello' }).error);
 check('empty message is rejected', !!buildAction({ kind: 'whatsapp', phone: '+919876543210', message: '   ' }).error);
 const movie = buildAction({ kind: 'movie', movie: 'Dune', city: 'Bengaluru' });
-check('movie handoff stays on BookMyShow and keeps a user-action boundary', movie.url.startsWith('https://in.bookmyshow.com/explore/movies-bangalore') && movie.purchasesAutomatically === false, movie);
+check('movie handoff stays on BookMyShow and keeps a user-action boundary', movie.url === 'https://in.bookmyshow.com/explore/movies-bengaluru' && movie.purchasesAutomatically === false, movie);
 const bus = buildAction({ kind: 'bus', from: 'Bengaluru', to: 'Mysuru', date: 'tomorrow' });
 check('bus handoff uses the redBus route and requires manual booking', bus.url === 'https://www.redbus.in/bus-tickets/bangalore-to-mysore' && bus.purchasesAutomatically === false, bus);
 check('same origin/destination is refused', !!buildAction({ kind: 'bus', from: 'Delhi', to: 'Delhi' }).error);
