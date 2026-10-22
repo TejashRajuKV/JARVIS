@@ -14,7 +14,7 @@ Configure these **server-side environment variables** before starting JARVIS:
 
 Never put the account token in a web page, Android resource, Git repository, or QR code. Twilio account/number availability and destination verification depend on your account and region. A failed provider request does not mean a call was placed.
 
-Open `http://localhost:<JARVIS_PORT>/calling.html`, confirm the status, enter a short message and explicitly press **Call my configured number**. Calls are limited to three attempts per ten minutes per server process.
+Open `http://localhost:<JARVIS_PORT>/calling.html`, confirm the status, enter a short message and explicitly press **Call my configured number**. You can also say **“JARVIS, call me”** in the desktop command interface after enabling the provider. Calls are limited to three attempts per ten minutes per server process.
 
 ## Optional reminder calls
 
