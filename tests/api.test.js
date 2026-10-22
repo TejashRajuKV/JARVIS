@@ -40,7 +40,7 @@ const NOT_TESTABLE = {
 // Every route declared in the server files, as "METHOD /path" with :params, for the gate.
 const ROUTE_FILES = ['server.js', 'system-tools.js', 'agent-tools.js', 'rag.js', 'skills.js', 'scheduler.js', 'backup.js', 'codetools.js',
   'hotkey.js', 'hello.js', 'applock.js', 'llm.js', 'update.js', 'tts.js', 'autostart.js', 'wakeword.js',
-  'skillpack.js', 'aihealth.js', 'watchdog.js', 'nearby.js', 'csvtools.js', 'projectwiki.js', 'imagegen.js', 'pdftools.js', 'diskcare.js', 'ocr.js', 'scan.js', 'chatarchive.js', 'studyserver.js', 'keepalive.js', 'mirror.js', 'shotindex.js', 'devtools.js', 'whisper.js'];
+  'skillpack.js', 'aihealth.js', 'workflow-memory.js', 'browser-recovery.js', 'diagnostics.js', 'watchdog.js', 'nearby.js', 'csvtools.js', 'projectwiki.js', 'imagegen.js', 'pdftools.js', 'diskcare.js', 'ocr.js', 'scan.js', 'chatarchive.js', 'studyserver.js', 'keepalive.js', 'mirror.js', 'shotindex.js', 'devtools.js', 'whisper.js'];
 const ROUTES = [];
 for (const f of ROUTE_FILES) {
   const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -481,6 +481,29 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     check('Skill packs', 'running a skill with the AI offline: a clean error, not a crash', r.status >= 400 && typeof r.json.error === 'string', r.status + ' ' + r.text);
     r = await post('/api/skills/reload', {});
     check('Skill packs', 'reload rescans and reports how many', r.json.success && r.json.count >= 4 && Array.isArray(r.json.skipped), r.json);
+    r = await post('/api/skills/career-helper/enabled', { enabled: false });
+    check('Skill packs', 'a skill can be disabled through the manager endpoint', r.json.success && r.json.enabled === false);
+    check('Skill packs', 'disabled skill is omitted from normal routing', !(await get('/api/skills')).json.skills.some(s => s.name === 'career-helper'));
+    r = await post('/api/skills/career-helper/enabled', { enabled: true });
+    check('Skill packs', 'a disabled skill can be re-enabled', r.json.success && r.json.enabled === true);
+    // The Skill Hub's supporting services use only local state and never execute a saved workflow automatically.
+    r = await get('/api/workflows');
+    check('Workflow memory', 'empty or existing saved workflow list loads', r.json.success && Array.isArray(r.json.workflows));
+    r = await post('/api/workflows', { name: 'API test workflow', prompt: 'Review the changed files and check test coverage.' });
+    const workflowId = r.json.workflow && r.json.workflow.id;
+    check('Workflow memory', 'a named prompt can be saved', r.status === 201 && !!workflowId && r.json.workflow.prompt.includes('test coverage'));
+    r = await del('/api/workflows/' + encodeURIComponent(workflowId));
+    check('Workflow memory', 'a saved workflow can be deleted', r.json.success);
+    r = await del('/api/workflows');
+    check('Workflow memory', 'all saved workflows can be cleared', r.json.success && (await get('/api/workflows')).json.workflows.length === 0);
+    r = await get('/api/browser-recovery');
+    check('Browser recovery', 'local page recovery list loads without inspecting browser history', r.json.success && Array.isArray(r.json.pages));
+    r = await post('/api/browser-recovery/open/not-a-real-id', {});
+    check('Browser recovery', 'unknown page IDs are rejected without launching a browser', r.status === 404 && !!r.json.error);
+    r = await del('/api/browser-recovery');
+    check('Browser recovery', 'recovery list can be cleared', r.json.success);
+    r = await get('/api/diagnostics');
+    check('Self diagnostics', 'read-only diagnostics returns checks and recommendations', r.json.success && Array.isArray(r.json.checks) && r.json.summary.total >= 10 && Array.isArray(r.json.recommendations), r.text.slice(0, 300));
     // "Check my AI": works with the AI offline (that is when it matters), keeps outcomes only, never the question or a key.
     r = await get('/api/ai/health');
     check('AI health', 'the report loads with the AI offline and says Ollama is not answering', r.json.success && r.json.ollama.reachable === false && r.json.verdicts.some(v => v.level === 'bad' && /not answering/.test(v.text)) && /^Something needs attention/.test(r.json.headline) && /\*\*AI health\*\*/.test(r.json.text), r.text.slice(0, 300));
