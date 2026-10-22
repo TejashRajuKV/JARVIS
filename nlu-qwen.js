@@ -66,6 +66,14 @@ window.NLUQ = (function () {
     TASK_ADD:          { tool: 'addTask',    intent: 'ADD_TODO',    args: a => ({ text: pickText(a, ['text', 'task', 'title'], 140) }) },
     TASK_LIST:         { tool: 'listTasks',  intent: 'LIST_TODOS',  args: () => ({}) },
     PLAY_MUSIC:        { tool: 'playMusic',  intent: 'YOUTUBE_PLAY', args: a => ({ query: pickText(a, ['query', 'song', 'artist'], 200) }) },
+    COMMERCE_COMPARE: { tool: 'web', args: a => {
+      const type = safeText(a && a.type, 20).toLowerCase() === 'bus' ? 'bus' : 'product';
+      const providerRaw = safeText(a && a.provider, 20).toLowerCase().replace(/\s+/g, '');
+      const provider = ['all','amazon','flipkart','googleshopping','abhibus','redbus','government'].includes(providerRaw) ? providerRaw : 'all';
+      return type === 'bus'
+        ? { type, from: pickText(a, ['from', 'origin', 'departure'], 100), to: pickText(a, ['to', 'destination'], 100), date: pickText(a, ['date', 'travelDate'], 40), provider }
+        : { type, query: pickText(a, ['query', 'product', 'item', 'model'], 160), provider };
+    } },
     PAUSE:             { tool: 'pause',      intent: 'MEDIA_PLAY',  args: () => ({}) },
     NEXT_TRACK:        { tool: 'nextTrack',  intent: 'MEDIA_NEXT',  args: () => ({}) },
     PREV_TRACK:        { tool: 'prevTrack',  intent: 'MEDIA_PREV',  args: () => ({}) },
@@ -173,6 +181,13 @@ window.NLUQ = (function () {
       SEARCH_FILES: 'query', CREATE_FOLDER: 'name', CALCULATE: 'expression',
       TASK_ADD: 'text', PLAY_MUSIC: 'query',
     };
+    if (qwen.intent === 'COMMERCE_COMPARE') {
+      const valid = mappedArgs.type === 'bus' ? !!(safeText(mappedArgs.from) && safeText(mappedArgs.to)) : !!safeText(mappedArgs.query);
+      if (!valid) {
+        lastResult = { ok: false, reason: 'missing_commerce_target', qwen, ms: lastLatencyMs };
+        return null;
+      }
+    }
     const required = requiredText[qwen.intent];
     if (required && !safeText(mappedArgs[required])) {
       lastResult = { ok: false, reason: 'missing_argument', qwen, field: required, ms: lastLatencyMs };
