@@ -22,4 +22,5 @@ check('fuzzy skill match cannot auto-run a skill without an explicit trigger phr
 check('shopping comparison opens Amazon, Flipkart and Google Shopping without inventing a cheapest-price claim',hub.includes('amazon.in/s?k=')&&hub.includes('flipkart.com/search?q=')&&hub.includes('tbm=shop')&&(hub.includes('will not name a cheapest seller')||hub.includes('does not name a cheapest seller')));
 check('bus comparison supports AbhiBus, redBus and official-government portal discovery',hub.includes('site:abhibus.com')&&hub.includes('site:redbus.in')&&hub.includes('official government bus booking'));
 check('product and bus forms call live comparison endpoint and render provider results',hub.includes("json('/api/commerce/compare'")&&hub.includes('jhShopResults')&&hub.includes('jhBusResults')&&hub.includes('renderComparison'));
+check('comparison UI calls the live public-listing comparison endpoint and renders observed candidates',hub.includes('/api/commerce/compare')&&hub.includes('renderComparison')&&hub.includes('Lowest observed candidate'));
 console.log('skill-hub-ui: '+(total-fail)+'/'+total);process.exitCode=fail?1:0;
