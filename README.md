@@ -517,6 +517,11 @@ All explicit wording; anything that changes the system asks first, and the page�
 - **Developer helpers** — “git summary today / yesterday / this week” (your commits in the project folders you gave JARVIS, plus uncommitted files), “write my standup” (last working day + today + near deadlines), “write a commit message” (the AI reads your uncommitted diff; files like `.env` and keys are left out; **it writes text only — nothing is staged or committed**), “why did my build fail?” / “explain the error on my screen” (reads the clipboard, else the screen; finds your own files and lines in the trace, reads ±15 lines around them, and explains). With an online AI model each of these asks before sending code.
   Commit messages come in two styles: plain (“Add login rate limit”) or **conventional** — say “write a **conventional** commit message” (or “semantic”) and you get “feat: add login rate limit”, “fix: crash when…”, “docs: …”; a message the AI already wrote that way is kept as it is.
 
+- **WhatsApp drafts** — “send WhatsApp message to +91 98765 43210 saying I’ll arrive at 5”. JARVIS opens a prefilled WhatsApp draft; verify the recipient and press Send yourself. It does not send silently.
+- **Movie tickets** — “book movie tickets for Dune in Bengaluru” opens BookMyShow for the city. Pick the exact movie, cinema, time and seats and confirm on the provider site.
+- **Bus tickets** — “book bus tickets from Bengaluru to Mysuru on 25 October” opens the redBus route. Verify date, boarding point, operator and cancellation policy before booking.
+- **Shopping** — “shop for wireless mouse” or “buy wireless mouse” opens an Amazon India search. JARVIS does not place orders, save payment details or pay; you review the seller and checkout yourself.
+
 ### Phone — alerts and commands
 
 - **Phone alerts:** Settings → **Phone alerts** pushes reminders and deadline alerts to the free **ntfy** app on your phone. Messages to ntfy go out one at a time, an identical reply is sent only once within 30 seconds, and after a "too many requests" answer from ntfy.sh JARVIS pauses instead of retrying, so the phone app stays responsive.
