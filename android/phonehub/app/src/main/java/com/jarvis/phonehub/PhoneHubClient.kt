@@ -23,11 +23,7 @@ internal class PhoneHubClient(baseUrl: String) {
         require(uri.path.isNullOrEmpty() || uri.path == "/") { "Enter only the gateway origin, not an API path" }
         require(uri.port in 1..65535 && !uri.host.isNullOrBlank()) { "Enter an HTTPS IP address and port" }
         require(isPrivateAddress(uri.host)) { "Use the laptop's private LAN IP address" }
-        root = "https://" + if (uri.host.contains(':')) "[${uri.host}]" else uri.host + ":" + uri.port
-        // IPv6 host formatting is handled separately to avoid accidentally omitting the port.
-        if (uri.host.contains(':')) {
-            @Suppress("UNUSED_VARIABLE") val ipv6Root = root
-        }
+        root = "https://" + (if (uri.host.contains(':')) "[${uri.host}]" else uri.host) + ":" + uri.port
     }
 
     fun pair(pairingId: String, code: String, deviceName: String): JSONObject {
