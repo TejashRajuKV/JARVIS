@@ -62,7 +62,7 @@ There is also a **cinematic landing page** that introduces JARVIS: open `http://
 | ⌨ **JARVIS Code** | A coding chat of its own (**JARVIS CODE** button): pick a project folder in the Windows folder picker, choose **Build / Plan / Ask** and a model, describe what you want — JARVIS writes real files into the folder, opens the page, and **undo** takes it back. |
 | 🛠 **Coding** | Write → save → run code, **EXPLAIN & FIX** crashes in one click, **DSA coach** (hints before solutions), **website generator**, "open VS Code in *folder* and tell Copilot to…", and **dev environments that recover from failures** (missing dependencies → install → restart → verify). |
 | ⚡ **Automation** | Multi-step commands, **routines**, **triggers** ("when I plug in my charger…"), a **global hotkey** for any selected text, reminders that fire even with the tab closed. |
-| 📱 **Phone** | Reminders on your phone (ntfy), and phone commands locked behind a 6-digit **authenticator code**. |
+| 📱 **Phone** | Current: ntfy reminders + authenticator-protected commands. In progress: Android-first secure local-Wi-Fi Phone Hub. Pairing/session primitives are in `phonehub-auth.js`; the HTTPS gateway and Android app are not yet integrated. See `docs/PHONE-HUB.md`. |
 | 🔐 **Safe & private** | Local-only server, permission tiers, Windows Hello approvals, **undo**, encrypted backups, keys that never leave the laptop. |
 
 
