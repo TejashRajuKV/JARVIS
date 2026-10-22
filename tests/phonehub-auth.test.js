@@ -51,6 +51,17 @@ check('grant rejects unknown device', !auth.grant('missing-device', ['status']).
 check('revoke invalidates device', auth.revoke(paired.device.id) &&
   auth.authenticate(req(paired.token, '5')).error === 'DEVICE_REVOKED');
 
+const oneDevice = createPhoneHubAuth({ now: () => now, maxDevices: 1 });
+const firstPairing = oneDevice.beginPairing();
+const firstDevice = oneDevice.completePairing({ pairingId: firstPairing.pairingId, code: firstPairing.code });
+const secondPairing = oneDevice.beginPairing();
+check('device registry has a configurable hard cap', oneDevice.completePairing({
+  pairingId: secondPairing.pairingId, code: secondPairing.code
+}).error === 'DEVICE_CAPACITY');
+check('device-capacity rejection does not consume the pairing challenge', oneDevice.completePairing({
+  pairingId: secondPairing.pairingId, code: secondPairing.code
+}).error === 'DEVICE_CAPACITY');
+
 const locked = auth.beginPairing();
 const lockedWrong = locked.code === '000000' ? '000001' : '000000';
 auth.completePairing({ pairingId: locked.pairingId, code: lockedWrong });
