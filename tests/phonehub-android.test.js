@@ -10,6 +10,7 @@ const manifest = read('app/src/main/AndroidManifest.xml');
 const client = read('app/src/main/java/com/jarvis/phonehub/PhoneHubClient.kt');
 const vault = read('app/src/main/java/com/jarvis/phonehub/TokenVault.kt');
 const activity = read('app/src/main/java/com/jarvis/phonehub/MainActivity.kt');
+const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'phonehub-android.yml'), 'utf8');
 
 const checks = [
   ['Android manifest denies cleartext HTTP', /usesCleartextTraffic="false"/.test(manifest)],
@@ -22,6 +23,8 @@ const checks = [
   ['token encryption uses Android Keystore AES-GCM', /AndroidKeyStore/.test(vault) && /AES\/GCM\/NoPadding/.test(vault)],
   ['token storage uses randomized encryption', /setRandomizedEncryptionRequired\(true\)/.test(vault)],
   ['app surfaces pairing, status and notifications', /fun pair\(/.test(client) && /fun status\(/.test(client) && /fun notifications\(/.test(client) && /refreshNotifications/.test(activity) && /forgetPhone\(\)/.test(activity)],
+  ['UI state updates are marshalled to the Android main thread', activity.includes('private fun setUi(block: () -> Unit)') && activity.includes('runOnUiThread(block)')],
+  ['CI workflow builds and uploads a debug APK', workflow.includes('assembleDebug') && workflow.includes('upload-artifact@v4')],
   ['no trust-all TLS manager or hostname-verifier override', !/TrustAll|X509TrustManager|HostnameVerifier|hostnameVerifier\s*=/.test(client)]
 ];
 
