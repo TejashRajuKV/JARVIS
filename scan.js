@@ -186,6 +186,55 @@ module.exports = function setupScan(app, { SANDBOX, llm, DEFAULT_MODEL, rel, ope
     } catch (e) { res.status(502).json({ error: String(e.message || e).slice(0, 200) }); }
   });
 
+  /* ---- analyze an existing saved screenshot without re-capturing the live screen ---- */
+  app.post('/api/vision/saved-image', async (req, res) => {
+    if (!laptopOnly(req, res)) return;
+    const input = String((req.body && req.body.path) || '').trim();
+    if (!input || input.length > 1200) return res.status(400).json({ error: 'Choose a saved screenshot first.' });
+    let target;
+    try {
+      target = path.resolve(input);
+      const st = fs.lstatSync(target);
+      if (!st.isFile() || st.isSymbolicLink() || st.size < 24 || st.size > 10 * 1024 * 1024) return res.status(400).json({ error: 'The saved image must be a regular image file no larger than 10 MB.' });
+      const ext = path.extname(target).toLowerCase();
+      if (!['.png', '.jpg', '.jpeg'].includes(ext)) return res.status(400).json({ error: 'Only saved PNG and JPEG images can be analyzed.' });
+      const home = require('os').homedir();
+      const roots = [
+        path.join(home, 'Desktop'), path.join(home, 'Pictures', 'Screenshots'),
+        path.join(home, 'OneDrive', 'Pictures', 'Screenshots'), path.join(home, 'OneDrive', 'Screenshots'),
+        path.join(SANDBOX, 'Screenshots'), path.join(SANDBOX, 'Watch'),
+      ];
+      // The JARVIS screenshot fallback lives directly in SANDBOX; only those specifically named files are accepted there.
+      if (path.dirname(target) === path.resolve(SANDBOX) && /^JARVIS_screenshot_.*\.png$/i.test(path.basename(target))) roots.push(SANDBOX);
+      const realTarget = fs.realpathSync(target);
+      const allowed = roots.some(root => {
+        try { const realRoot = fs.realpathSync(root), rel = path.relative(realRoot, realTarget); return rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel); }
+        catch { return false; }
+      });
+      if (!allowed) return res.status(403).json({ error: 'For privacy, I can analyze images only from Desktop or recognized screenshot folders.' });
+      const buf = fs.readFileSync(realTarget);
+      const png = buf.subarray(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]));
+      const jpg = buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+      if (!png && !jpg) return res.status(400).json({ error: 'The file extension does not match a supported PNG or JPEG image.' });
+      const b64 = buf.toString('base64');
+      const question = String((req.body && req.body.question) || 'Describe the visible scene and identify clearly visible objects. Read visible text where possible and say when something is uncertain.').trim().slice(0, 600);
+      const model = String((req.body && req.body.model) || DEFAULT_MODEL);
+      let canSee = false; try { canSee = !!(llm && await llm.hasVision(model)); } catch {}
+      if (!canSee) return res.status(422).json({ error: 'The selected AI model (' + model + ') cannot analyze images. Choose a vision-capable model in Settings.' });
+      let hint = '';
+      if (app.locals.ocrWords) { const o = await app.locals.ocrWords(buf); if (o && !o.error) hint = String(o.text || '').slice(0, 1800); }
+      const answer = await llm.complete({
+        model, temperature: 0.1, maxTokens: 1000, numCtx: 12288, timeoutMs: 240000, images: [b64],
+        system: 'Analyze the supplied saved screenshot image, not the current screen. Describe clearly visible objects, interface elements, and readable text. Do not claim precise object detection boxes or certainty you do not have. Never infer hidden/private content. State uncertainty and image quality limits.',
+        messages: [{ role: 'user', content: question + (hint ? '\\n\\nOCR hint (may contain mistakes; verify against pixels):\\n' + hint : '') }],
+      });
+      if (!answer) return res.status(502).json({ error: 'The vision model returned no answer.' });
+      return res.json({ success: true, answer: String(answer).slice(0, 6000), model, cloud: !!(llm.isCloud && llm.isCloud(model)), usedOcr: !!hint, file: path.basename(target) });
+    } catch (error) {
+      return res.status(500).json({ error: 'Could not analyze that saved screenshot: ' + String(error.message || error).slice(0, 160) });
+    }
+  });
+
   /* ---- room-watch snapshots ---- */
   app.post('/api/room/snapshot', jpegBody(MAX_SNAPSHOT_BYTES), (req, res) => {
     if (!laptopOnly(req, res)) return;
