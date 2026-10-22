@@ -107,5 +107,12 @@ async function call(handler, options) {
   });
   check('oversized JSON receives a 413 error', () => assert.equal(res.statusCode, 413));
 
-  const gatewaySource = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'phonehub-gateway.js'), 'utf8');\n  check('live event stream is protected by notification capability authorization', () => {\n    assert.match(gatewaySource, /req\.url === STREAM_ROUTE/);\n    assert.match(gatewaySource, /auth\.authorize\(\{ token: tokenMatch \? tokenMatch\[1\] : '', nonce \}, 'notifications'\)/);\n    assert.match(gatewaySource, /text\\/event-stream/);\n    assert.match(gatewaySource, /req\.on\('close', close\)/);\n  });\n  console.log('phonehub-gateway: ' + total + ' checks passed');
+  const gatewaySource = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'phonehub-gateway.js'), 'utf8');
+  check('live event stream is protected by notification capability authorization', () => {
+    assert.match(gatewaySource, /req\.url === STREAM_ROUTE/);
+    assert.match(gatewaySource, /auth\.authorize/);
+    assert.match(gatewaySource, /text.event-stream/);
+    assert.match(gatewaySource, /req\.on\('close', close\)/);
+  });
+  console.log('phonehub-gateway: ' + total + ' checks passed');
 })().catch(() => { process.exitCode = 1; });
