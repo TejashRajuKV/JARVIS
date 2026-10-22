@@ -12,6 +12,8 @@ m = Services.match('book bus tickets from Bengaluru to Mysuru on 25 October');
 check('bus booking extracts route and date', m && m.kind === 'bus' && /Bengaluru/i.test(m.from) && /Mysuru/i.test(m.to) && /25 October/i.test(m.date), m);
 m = Services.match('buy wireless mouse');
 check('buy request only creates shopping search intent', m && m.kind === 'shopping' && m.item === 'wireless mouse', m);
+m = Services.match('search Flipkart for a USB-C hub');
+check('explicit shopping site is recognized', m && m.kind === 'shopping' && m.shop === 'flipkart' && m.item === 'a USB-C hub', m);
 check('ordinary conversation is not intercepted', Services.match('I bought a mouse yesterday') === null);
 check('ambiguous generic message is not intercepted', Services.match('message me later') === null);
 console.log((failed ? 'FAIL ' : 'PASS ') + 'services-page.test.js — ' + (total - failed) + '/' + total);
