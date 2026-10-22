@@ -9,7 +9,7 @@ const check = (n, ok, x) => { total++; if (!ok) { fail++; console.log('FAIL  ' +
 
 const loaded = SP.loadAll(path.join(__dirname, '..', 'skills-bundled'), path.join(__dirname, 'no-such-folder'));
 const skills = loaded.skills.map(s => SP.publicView(s));
-check('the bundled skills load with keywords, and the two internal ones are kept out of suggestions', skills.length === 6 && skills.find(s => s.name === 'research').keywords.length > 5 && skills.filter(s => s.suggest === false).map(s => s.name).sort().join() === 'csv-insights,image-prompt', skills.map(s => [s.name, s.suggest]));
+check('the bundled skills load with keywords, and the two internal ones are kept out of suggestions', skills.length === 10 && skills.find(s => s.name === 'research').keywords.length > 5 && skills.filter(s => s.suggest === false).map(s => s.name).sort().join() === 'csv-insights,image-prompt', skills.map(s => [s.name, s.suggest]));
 
 const name = (t, list = skills) => { R.reset(); const p = R.pick(t, list); return p ? p.name : null; };
 /* ---------- messages that should suggest a skill ---------- */
@@ -20,6 +20,10 @@ for (const [t, want] of [
   ['please review my code and point out any bugs in the function', 'code-review'],
   ['explain this code and suggest how to refactor the class', 'code-review'],
   ['do a code review of my project file', 'code-review'],
+  ['help me debug this stack trace and find the root cause', 'debugging-coach'],
+  ['make a study sprint for my exam revision with active recall', 'study-sprint'],
+  ['extract action items and decisions from these meeting notes', 'meeting-notes'],
+  ['improve my resume bullets for a software engineering interview', 'career-helper'],
   ['give me a quick answer: what does DNS do', 'quick'],
   ['be brief, what is a mutex', 'quick'],
   ['plan and do this: organize my project folders step by step', 'plan-then-act'],
