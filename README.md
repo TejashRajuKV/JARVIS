@@ -1266,6 +1266,12 @@ node -e "const D=require('./decider.js'); console.log(D.decide(D.signals('neares
 
 ---
 
+### Context-aware intent and public price comparison
+
+JARVIS resolves short follow-ups such as “open it” and “do that again” against a recent successful navigation command when context is available. Replays are deliberately restricted to low-risk navigation/read-only requests; destructive, messaging, booking, payment and purchase actions are never replayed from a vague reference. Conversation context is temporary and time-limited rather than a permanent mood or intent profile.
+
+The Skill Hub comparison endpoint fans out searches for Amazon India, Flipkart and Google Shopping discovery, or AbhiBus, redBus and government transport services. It extracts **observed price candidates** from public search snippets/readable pages and reports the lowest observed candidate when one exists. This is not a checkout-verified price feed: search engines can be stale, sites can block page reads, product variants may differ, and delivery/booking charges, coupons, bank offers and seat availability can change. The UI must label such amounts unverified and must not claim a verified cheapest option without comparable final prices.
+
 ### Product and bus comparison (current scope)
 
 The Skill Hub opens parallel searches for Amazon India, Flipkart and Google Shopping, and searches AbhiBus, redBus and government bus-booking portals for a route/date. These are comparison-discovery links, **not a verified live-price aggregator**: JARVIS must not name a cheapest option until it can compare the exact product/variant or route/date and confirm final price, delivery/booking fees, offers, and availability. Government portals vary by state; verify the official domain before entering personal or payment details.
