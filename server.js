@@ -2665,6 +2665,7 @@ app.post('/api/translate', async (req, res) => {
 /* ---------------- Windows laptop controls ---------------- */
 require('./system-tools')(app, { IS_WIN, APPS });
 require('./ocr')(app, { IS_WIN, IS_MAC });
+require('./commerce')(app); // WhatsApp drafts, ticket search and shopping hand-offs; never sends or pays automatically
 require('./portwatch')(app, { IS_WIN, IS_MAC });
 require('./tts')(app);
 
