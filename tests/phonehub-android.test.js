@@ -11,6 +11,7 @@ const client = read('app/src/main/java/com/jarvis/phonehub/PhoneHubClient.kt');
 const vault = read('app/src/main/java/com/jarvis/phonehub/TokenVault.kt');
 const activity = read('app/src/main/java/com/jarvis/phonehub/MainActivity.kt');
 const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'phonehub-android.yml'), 'utf8');
+const worker = read('app/src/main/java/com/jarvis/phonehub/PhoneHubNotificationWorker.kt');
 
 const checks = [
   ['Android manifest denies cleartext HTTP', /usesCleartextTraffic="false"/.test(manifest)],
@@ -24,6 +25,9 @@ const checks = [
   ['token storage uses randomized encryption', /setRandomizedEncryptionRequired\(true\)/.test(vault)],
   ['app surfaces pairing, status and notifications', /fun pair\(/.test(client) && /fun status\(/.test(client) && /fun notifications\(/.test(client) && /refreshNotifications/.test(activity) && /forgetPhone\(\)/.test(activity)],
   ['UI state updates are marshalled to the Android main thread', activity.includes('private fun setUi(block: () -> Unit)') && activity.includes('runOnUiThread(block)')],
+  ['background notifications use a network-constrained 15-minute worker', /PeriodicWorkRequestBuilder<PhoneHubNotificationWorker>\\(15, TimeUnit.MINUTES\\)/.test(worker) && /NetworkType.CONNECTED/.test(worker)],
+  ['background worker suppresses initial historical notification spam', /if \\(previous == null\\)/.test(worker) && /if \\(!foundPrevious\\)/.test(worker)],
+  ['notification permission is declared and requested on Android 13+', /POST_NOTIFICATIONS/.test(manifest) && /requestPermissions/.test(activity)],
   ['CI workflow builds and uploads a debug APK', workflow.includes('assembleDebug') && workflow.includes('upload-artifact@v4')],
   ['no trust-all TLS manager or hostname-verifier override', !/TrustAll|X509TrustManager|HostnameVerifier|hostnameVerifier\s*=/.test(client)]
 ];
