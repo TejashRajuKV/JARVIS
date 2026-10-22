@@ -113,6 +113,20 @@ try {
   let rejected = false;
   try { createPhoneHubAuth({ stateFile: corruptFile }); } catch { rejected = true; }
   check('corrupt state fails closed instead of silently forgetting paired devices', rejected);
+  const invalidRecordFile = path.join(tempDir, 'invalid-record.json');
+  fs.writeFileSync(invalidRecordFile, JSON.stringify({
+    version: 1,
+    pairings: [],
+    devices: [['not-a-device-id', {
+      tokenHash: 'a'.repeat(64), capabilities: ['status'], createdAt: now,
+      expiresAt: now + 10000, revokedAt: null
+    }]],
+    usedNonces: []
+  }));
+  let invalidRecordRejected = false;
+  try { createPhoneHubAuth({ stateFile: invalidRecordFile }); } catch { invalidRecordRejected = true; }
+  check('malformed persisted device IDs fail closed', invalidRecordRejected);
+
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
