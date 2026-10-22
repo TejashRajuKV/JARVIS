@@ -2490,7 +2490,7 @@ app.get('/api/tool/screenshots', (req, res) => {
       try {
         const st = fs.statSync(full);
         if (!st.isFile() || st.size < 8 || st.size > 30 * 1024 * 1024) continue;
-        items.push({ id: Buffer.from(full).toString('base64url'), name, modified: st.mtimeMs, bytes: st.size });
+        items.push({ id: Buffer.from(full).toString('base64url'), name, path: full, modified: st.mtimeMs, bytes: st.size });
       } catch {}
     }
   }
