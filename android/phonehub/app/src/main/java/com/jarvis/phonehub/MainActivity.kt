@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshNotifications() = runWithToken { client, token ->
         val items: JSONArray = client.notifications(token)
-        notificationText = if (items.length() == 0) {
+        val rendered = if (items.length() == 0) {
             "No recent JARVIS notifications."
         } else {
             (0 until items.length()).joinToString("\n\n") { index ->
@@ -137,6 +137,7 @@ class MainActivity : ComponentActivity() {
                 (title + if (body.isBlank()) "" else "\n" + body).take(1000)
             }
         }
+        setUi { notificationText = rendered }
     }
 
     private fun interface PhoneHubAction {
