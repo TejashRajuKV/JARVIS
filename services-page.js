@@ -8,6 +8,7 @@ const Services = (() => {
     whatsapp: [
       /^(?:please\s+)?(?:send|text|message)\s+(?:me\s+)?(?:a\s+)?(?:whats?app\s+)?message\s+to\s+([+\d() .-]{8,24})\s+(?:saying|that says|:|message:)\s+(.+)$/i,
       /^(?:please\s+)?(?:send|text)\s+whats?app\s+to\s+([+\d() .-]{8,24})\s*:\s*(.+)$/i,
+      /^(?:please\s+)?(?:send|text|message)\s+(?:me\s+)?(?:a\s+)?(?:whats?app\s+)?message\s+to\s+([a-z][a-z .'-]{1,60})\s+(?:saying|that says|:|message:)\s+(.+)$/i,
     ],
     movie: /^(?:please\s+)?(?:book|find|search)\s+(?:me\s+)?(?:movie|cinema|film)\s+tickets?\s+(?:for\s+)?(.+?)(?:\s+in\s+([a-z][a-z .'-]{1,50}))?$/i,
     bus: /^(?:please\s+)?(?:book|find|search)\s+(?:me\s+)?bus\s+tickets?\s+from\s+([a-z][a-z .'-]{1,50}?)\s+to\s+([a-z][a-z .'-]{1,50}?)(?:\s+on\s+(.+))?$/i,
