@@ -54,3 +54,24 @@ The caller must generate a cryptographically random nonce (at least 16 URL-safe 
 - [ ] Consider iOS only after Android pairing, revocation and permission behavior are verified.
 
 **Verification note:** A passing unit suite only proves this module's logic. It does not prove HTTPS setup, LAN isolation, Android storage, or physical-device behavior.
+
+## Certificate onboarding helper
+
+The repository includes `scripts/phonehub-cert.js` to generate a local CA and a gateway certificate with a Subject Alternative Name matching the selected private LAN IP. This automates key/certificate generation; Android still requires a person to install and trust the exported CA because apps must not silently install device-wide trust anchors.
+
+From the repository root (OpenSSL must be available on PATH):
+
+```powershell
+node scripts/phonehub-cert.js --host 192.168.1.10 --out "$HOME/jarvis/phonehub-certs"
+```
+
+Replace the example with the laptop's actual private LAN IP. Set `JARVIS_PHONEHUB_HOST`, `JARVIS_PHONEHUB_TLS_KEY`, and `JARVIS_PHONEHUB_TLS_CERT` to the printed values. Transfer only `phonehub-ca.crt` to Android and install it through Android certificate settings; never copy `phonehub-ca.key` to the phone. User-installed CA support varies by Android version and device policy, so confirm TLS trust on the target device. The helper refuses public, loopback, wildcard and hostname targets, and refuses to overwrite existing output unless `--force` is explicit.
+
+## Remaining release gates
+
+- [x] GitHub Actions compiled the debug APK with `assembleDebug` and reached the artifact-upload step (run `39722038932`, source revision `aa2a88f`).
+- [x] Add certificate-generation helper and source-level safety regression cases.
+- [ ] QR pairing UI/scanner: not implemented; the app still requires pairing ID and code entry.
+- [ ] Instant push delivery: not implemented; WorkManager is periodic polling. True background push needs a configured push transport/provider or a foreground persistent connection with lifecycle, battery, and reconnect handling.
+- [ ] Install and test on a physical Android device, including TLS trust, LAN pairing, notification permission/delivery, revocation and session expiry.
+- [ ] Device tests are not substitutable by source checks or CI compilation. No physical-device result is claimed.
