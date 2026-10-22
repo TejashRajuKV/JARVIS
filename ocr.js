@@ -17,9 +17,8 @@
  *    2. /api/ocr/screen — same as /api/sys/screenRead but with a `monitor`
  *       parameter (1-based) so the user can target a specific display. The
  *       existing /api/sys/screenRead stays untouched for backwards compat.
- *    3. A cleanup sweep for old screenshot PNGs left on the Desktop by
- *       /api/tool/screenshot (which doesn't auto-delete). Files older than
- *       1 hour are removed on each call to /api/ocr/screen.
+ *    3. A compatibility cleanup hook that deliberately preserves saved Desktop screenshots;
+ *       the previous one-hour sweep silently deleted screenshots users had saved.
  *
  *  No existing route is modified. Tesseract.js is an optional peer dependency
  *  — if `tesseract.js` is not installed, the fallback path returns a clear
