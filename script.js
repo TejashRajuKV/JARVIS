@@ -122,7 +122,7 @@ const store = (() => {
 
 /* ============ data ============ */
 const settings = Object.assign(
-  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '', qwenNlu: false, hudOverlay: false, bootCinema: true, attendancePrompt: true, offlineStt: false, attendanceMin: 75 },
+  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '', qwenNlu: false, hudOverlay: false, bootCinema: true, attendancePrompt: true, offlineStt: false, attendanceMin: 75, researchMode: 'ai' },
   store.get('jarvis.settings', {})
 );
 Persona.setAddressSource(() => {
@@ -2080,8 +2080,18 @@ async function doResearch(q, extraSuggestions) {
   setState('PROCESSING', 'Searching the web…'); toolStep('research → ' + q);
   const r = await callTool('/tool/research', { q, online: true });
   if (r.error || !r.results || !r.results.length) return { text: 'I could not search the web right now' + (r.error ? ' (' + r.error + ')' : '') + '.', suggestions: ['Search Google for ' + q] };
-  const sources = '\n\n**Sources**\n' + r.results.slice(0, 4).map((x, i) => (i + 1) + '. [' + x.title + '](' + x.url + ')').join('\n');
-  if (!llmReady()) return { text: 'Top results for **' + q + '**:\n' + r.results.slice(0, 5).map((x, i) => (i + 1) + '. [' + x.title + '](' + x.url + ') — ' + x.snippet).join('\n'), suggestions: extraSuggestions };
+  const sources = '\\n\\n**Sources**\\n' + r.results.slice(0, 4).map((x, i) => (i + 1) + '. [' + x.title + '](' + x.url + ')').join('\\n');
+  // Search Mode is terminal: render retrieved evidence and return before any LLM prompt is built.
+  const evidence = r.results.slice(0, 5).map((x, i) => {
+    const page = (r.pages || []).find(p => p.url === x.url) || (r.pages || [])[i];
+    const excerpt = String((page && page.text) || x.snippet || '').replace(/\\s+/g, ' ').trim().slice(0, 650);
+    return '### [' + (i + 1) + '] [' + (x.title || x.url) + '](' + x.url + ')\\n' + (excerpt || x.snippet || 'No readable passage was extracted from this page.');
+  }).join('\\n\\n');
+  const directEvidence = '## Search results for **' + q + '**\\n\\n' + evidence + sources + '\\n\\n_Search Mode does not call an LLM; these are retrieved passages, not an AI-generated synthesis._';
+  if (settings.researchMode === 'search') return { text: directEvidence, suggestions: extraSuggestions || ['Switch to AI Research Mode'], noPersona: true, tool: 'research' };
+  if (!llmReady()) return { text: directEvidence + '\\n\\n_The local model is unavailable, so I have shown the evidence without synthesis._', suggestions: extraSuggestions, noPersona: true, tool: 'research' };
+  if (typeof isCloudModel === 'function' && isCloudModel(llm.model))
+    return { text: directEvidence + '\\n\\n_AI Research Mode requires a local model. Your selected model appears to be cloud-hosted, so I did not send the research question or evidence to it. Select a local Ollama model to enable synthesis._', suggestions: ['Choose a local Ollama model'], noPersona: true, tool: 'research' };
   const pages = r.pages.map((x, i) => '[' + (i + 1) + '] ' + x.title + ' (' + x.url + ')\n' + ((x.text || '').length > 200 ? x.text : x.snippet).slice(0, 3000)).join('\n\n');
   // Something that changes (a winner, a price, news): a small model will happily "remember" a years-old answer, so the
   // code decides. Results that don't even mention the question's key words are reported as such, without the AI.
@@ -3046,6 +3056,22 @@ async function handleUser(text, source) {
     if (cmdHistory[cmdHistory.length - 1] !== text) { cmdHistory.push(text); if (cmdHistory.length > 50) cmdHistory.shift(); store.set('jarvis.cmdHistory', cmdHistory); }
     log('info', 'input (' + (source || 'text') + '): "' + text + '"');
     setState('PROCESSING', 'Understanding…');
+
+    // Persistent research modes. Search Mode never hands retrieved evidence to any LLM.
+    const modeText = String(text).trim().toLowerCase().replace(/[.!?]+$/, '').replace(/^jarvis[, ]+/, '');
+    if (/^(what('?s| is) (my )?(research )?mode|which research mode is (on|active))$/.test(modeText)) {
+      const active = settings.researchMode === 'search' ? 'Search Mode (zero LLM calls)' : 'AI Research Mode (web evidence + local LLM)';
+      await deliver({ text: 'Research mode: **' + active + '**.', noPersona: true }, { intent: 'RESEARCH_MODE', confidence: 1 }); return;
+    }
+    if (/^(turn on|enable|activate|enter|use|switch to) (the )?search mode$/.test(modeText)) {
+      settings.researchMode = 'search'; saveSettings();
+      await deliver({ text: '✓ **Search Mode enabled.** Research questions will search the web, extract and rank evidence, and show source links — **no LLM calls**. Say “switch to AI Research Mode” to synthesize evidence with your local model.', noPersona: true }, { intent: 'RESEARCH_MODE', confidence: 1 }); return;
+    }
+    if (/^(turn on|enable|activate|enter|use|switch to) (the )?(ai research|research) mode$/.test(modeText)
+        || /^(turn off|disable|stop) search mode$/.test(modeText)) {
+      settings.researchMode = 'ai'; saveSettings();
+      await deliver({ text: '✓ **AI Research Mode enabled.** I will search the web first, then synthesize only the retrieved evidence with your local model and include source citations. Cloud models are not used for research synthesis.', noPersona: true }, { intent: 'RESEARCH_MODE', confidence: 1 }); return;
+    }
 
     // "switch to Telugu" / "తెలుగులో మాట్లాడు" / "english please"
     const sw = Lang.switchRequest(text);
