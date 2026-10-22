@@ -51,6 +51,9 @@ function createCallingService(options = {}) {
     if (metadata.source === 'reminder' && !callOnReminders()) {
       throw Object.assign(new Error('REMINDER_CALLS_DISABLED'), { code: 'REMINDER_CALLS_DISABLED' });
     }
+    if (metadata.source === 'reminder' && isQuietHours(env.JARVIS_CALL_QUIET_HOURS || '22:00-07:00', new Date(current))) {
+      throw Object.assign(new Error('CALL_QUIET_HOURS'), { code: 'CALL_QUIET_HOURS' });
+    }
     attempts.push(current);
     const sid = String(env.JARVIS_TWILIO_ACCOUNT_SID);
     const text = escapeXml(message);
@@ -70,6 +73,15 @@ function createCallingService(options = {}) {
   }
 
   return Object.freeze({ status, call, callOnReminders });
+}
+
+function isQuietHours(windowValue, date) {
+  const match = /^(\\d{2}):(\\d{2})-(\\d{2}):(\\d{2})$/.exec(String(windowValue || ''));
+  if (!match) return false;
+  const [start, end] = [Number(match[1]) * 60 + Number(match[2]), Number(match[3]) * 60 + Number(match[4])];
+  if ([match[1], match[3]].some((v, i) => Number(v) > 23) || Number(match[2]) > 59 || Number(match[4]) > 59 || start === end) return false;
+  const current = date.getHours() * 60 + date.getMinutes();
+  return start < end ? current >= start && current < end : current >= start || current < end;
 }
 
 function escapeXml(value) {
@@ -105,4 +117,4 @@ function requestTwilio({ sid, token, form }) {
   });
 }
 
-module.exports = { createCallingService, cleanMessage, escapeXml, MAX_CALLS_PER_WINDOW, WINDOW_MS };
+module.exports = { createCallingService, cleanMessage, escapeXml, isQuietHours, MAX_CALLS_PER_WINDOW, WINDOW_MS };
