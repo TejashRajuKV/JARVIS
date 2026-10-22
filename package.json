@@ -8,7 +8,8 @@
     "dev": "node server.js",
     "test": "node tests/run-all.js",
     "test:live": "node tests/live.test.js",
-    "test:report": "node tests/report.js"
+    "test:report": "node tests/report.js",
+    "test:phonehub": "node tests/phonehub-auth.test.js"
   },
   "keywords": [
     "jarvis",
