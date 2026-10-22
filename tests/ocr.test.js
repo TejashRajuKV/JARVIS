@@ -98,6 +98,16 @@ const { check, done } = suite('ocr');
     await server.stop();
   }
 
+  // Regression coverage: screenshot cleanup must never delete durable user screenshots.
+  {
+    const serverJs = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    const ocrJs = fs.readFileSync(path.join(ROOT, 'ocr.js'), 'utf8');
+    check('Screenshot gallery', 'server exposes a screenshot listing route', serverJs.includes("app.get('/api/tool/screenshots'"));
+    check('Screenshot gallery', 'image route only accepts JARVIS screenshot filenames', serverJs.includes("app.get('/api/tool/screenshots/:id'") && serverJs.includes('/^JARVIS_screenshot_'));
+    check('Screenshot gallery', 'gallery routes are restricted to the local JARVIS page', serverJs.includes('screenshotLocalOnly'));
+    check('Screenshot persistence', 'OCR cleanup does not remove user-visible screenshots', /function cleanupOldScreenshots\(\)\s*\{\s*return 0;\s*\}/.test(ocrJs));
+  }
+
   // ---- unit test: cleanupOldScreenshots (the helper that deletes stale PNGs) ----
   // We can't easily unit-test it without a running server, but we can at least verify
   // the helper is exported and doesn't throw when the Desktop has no screenshots.
