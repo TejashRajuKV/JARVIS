@@ -20,8 +20,8 @@ check('isPagePath: the HTML pages get it; API routes, scripts and other files do
 /* ---------- what the page really needs fits the policy ---------- */
 const html = fs.readFileSync(root('index.html'), 'utf8');
 const phoneHubHtml = fs.readFileSync(root('phonehub.html'), 'utf8');
-check('phonehub.html has no inline script or inline event handler', ![...phoneHubHtml.matchAll(/<script\\b([^>]*)>/gi)].some(m => !/\\bsrc\\s*=/.test(m[1])) && !/\\son[a-z]+\\s*=\\s*["']/i.test(phoneHubHtml), phoneHubHtml.match(/<script[^>]*>/gi));
-check('phonehub.html loads its scripts and styles from this origin', /<script src="\\/phonehub-ui\\.js" defer><\\/script>/.test(phoneHubHtml) && /href="\\/phonehub\\.css"/.test(phoneHubHtml));
+check('phonehub.html has no inline script or inline event handler', ![...phoneHubHtml.matchAll(/<script\b([^>]*)>/gi)].some(m => !/\bsrc\s*=/.test(m[1])) && !/\son[a-z]+\s*=\s*["']/i.test(phoneHubHtml), phoneHubHtml.match(/<script[^>]*>/gi));
+check('phonehub.html loads its scripts and styles from this origin', phoneHubHtml.includes('<script src="/phonehub-ui.js" defer></script>') && phoneHubHtml.includes('href="/phonehub.css"'));
 check('index.html has no inline <script> (they would be blocked)', ![...html.matchAll(/<script\b([^>]*)>/gi)].some(m => !/\bsrc\s*=/.test(m[1])), [...html.matchAll(/<script\b([^>]*)>/gi)].filter(m => !/\bsrc\s*=/.test(m[1])).map(m => m[0]));
 check('index.html has no inline event handlers (onclick= …), which the policy would block', !/\son[a-z]+\s*=\s*["']/i.test(html.replace(/<style[\s\S]*?<\/style>/gi, '')));
 const remote = [...html.matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="(https?:\/\/[^"/]+)/gi)].map(m => m[1]);
