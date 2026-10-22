@@ -119,6 +119,8 @@ async function call(handler, options) {
     assert.match(source, /VOICE_ROUTE/);
     assert.match(source, /auth\.authorize\(\{ token: tokenMatch \? tokenMatch\[1\] : '', nonce \}, 'voice'\)/);
     assert.match(source, /auth\.authorize\(\{ token: tokenMatch \? tokenMatch\[1\] : '', nonce \}, 'calls'\)/);
+    assert.match(source, /CALL_RATE_LIMITED/);
+    assert.match(source, /CALLING_NOT_CONFIGURED/);
   });
   console.log('phonehub-gateway: ' + total + ' checks passed');
 })().catch(() => { process.exitCode = 1; });
