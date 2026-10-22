@@ -9,7 +9,7 @@ check('workflow reuse fills the chat box but does not auto-submit',hub.includes(
 check('browser shortcut is documented but never injected globally',hub.includes('Ctrl+Shift+T')&&!/key(?:down|up).*Ctrl\+Shift\+T/i.test(hub));
 check('search, enable/disable, run and diagnostics controls exist',hub.includes('jhSearch')&&hub.includes('data-enabled=')&&hub.includes('run-skill')&&hub.includes('diagnose'));
 check('screenshot gallery renders saved image previews and can refresh/take screenshots',hub.includes('screenshotView')&&hub.includes('/api/tool/screenshots')&&hub.includes('refresh-shots')&&hub.includes('take-shot'));
-check('quick actions include WhatsApp draft, movie tickets, bus tickets and shopping',hub.includes('jhWhatsAppForm')&&hub.includes('jhMovieForm')&&hub.includes('jhBusForm')&&hub.includes('jhShopForm'));
+check('quick actions include WhatsApp draft, movie tickets, bus tickets and shopping',hub.includes('jhWhatsAppForm')&&hub.includes('jhMovieForm')&&hub.includes('jhBusForm')&&hub.includes('jhShopForm')&&hub.includes('Google Shopping')&&hub.includes('provider')&&hub.includes('government')&&hub.includes('site:abhibus.com')&&hub.includes('site:redbus.in'));
 const systemTools=fs.readFileSync(path.join(root,'tools','system.js'),'utf8');
 check('screen object inspection gives uncertainty-aware object/location guidance',systemTools.includes('OBJECT-DETECTION MODE')&&systemTools.includes('approximate location')&&systemTools.includes('Never invent objects'));
 const nlu=fs.readFileSync(path.join(root,'nlu.js'),'utf8');
@@ -19,4 +19,6 @@ const server=fs.readFileSync(path.join(root,'server.js'),'utf8');
 check('screenshot image endpoint restricts files to known screenshot folders and local page',server.includes('screenshotLocalOnly')&&server.includes("/api/tool/screenshots/:id")&&server.includes('JARVIS_screenshot_'));
 const script=fs.readFileSync(path.join(root,'script.js'),'utf8');
 check('fuzzy skill match cannot auto-run a skill without an explicit trigger phrase',script.includes('if (skillHint && skillHint.auto && skillHint.phrase)'));
+check('shopping comparison opens Amazon, Flipkart and Google Shopping without inventing a cheapest-price claim',hub.includes('amazon.in/s?k=')&&hub.includes('flipkart.com/search?q=')&&hub.includes('tbm=shop')&&hub.includes('no automatic cheapest-site claim'));
+check('bus comparison supports AbhiBus, redBus and official-government portal discovery',hub.includes('site:abhibus.com')&&hub.includes('site:redbus.in')&&hub.includes('official government bus booking'));
 console.log('skill-hub-ui: '+(total-fail)+'/'+total);process.exitCode=fail?1:0;
