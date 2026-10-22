@@ -77,10 +77,10 @@ internal class PhoneHubNotificationWorker(
             prefs.edit().putString("last_seen_id", newest).apply()
             return
         }
-        prefs.edit().putString("last_seen_id", newest).apply()
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) return
+        prefs.edit().putString("last_seen_id", newest).apply()
 
         val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) {
