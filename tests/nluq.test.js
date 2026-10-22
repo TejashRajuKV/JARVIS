@@ -32,6 +32,10 @@ const ask = async (intent, args, conf) => { reply = { success: true, intent, con
     if (!out || !real.has(out.intent)) bad.push(k + ' → ' + (out && out.intent));
   }
   check('every intent the model may name becomes an intent that script.js really has a handler for (none are dead)', bad.length === 0, bad);
+  o = await ask('COMMERCE_COMPARE', { type: 'bus', from: 'Bengaluru', to: 'Mysuru', date: 'tomorrow', provider: 'all' });
+  check('Qwen commerce intent maps to the existing comparison tool with bounded route fields', o.intent === 'COMMERCE_COMPARE' && o.tool === 'web' && o.args.type === 'bus' && o.args.from === 'Bengaluru' && o.args.to === 'Mysuru', o);
+  o = await ask('COMMERCE_COMPARE', { type: 'bus', from: 'Bengaluru' });
+  check('Qwen commerce intent with a missing destination falls back safely', o === null);
   check('the intents that can power off, lock, restart, delete or send are NOT offered to the model', ['SHUTDOWN', 'RESTART', 'SLEEP', 'LOCK', 'TASK_DELETE', 'TASK_DONE', 'REMINDER', 'CREATE_FILE'].every(k => !mine.includes(k)), mine);
 
   await ask('BATTERY');
