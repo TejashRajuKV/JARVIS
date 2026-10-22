@@ -22,6 +22,12 @@ ToolHandlers.add('apps', async function (p, raw, s, a) {
       const what = s.replace(/^(open|launch|start|run|fire up|boot up|boot|pull up|bring up|load|show me)\s+(up\s+)?(the\s+|my\s+)?/, '');
       return { text: 'I couldn’t find an app called "' + what + '" on this laptop. I can open anything in your Start menu by its name — or any website.', suggestions: ['Open ' + what + '.com', 'Search Google for ' + what] };
     }
+    case 'REOPEN_RECENT_APP': {
+      const key = ctx.recentlyClosedApp || store.get('jarvis.recentlyClosedApp', null);
+      const app = key && NLU.appByKey(key);
+      if (!app) return { text: 'I do not have a recently closed app recorded yet. Close an app through JARVIS first, then I can reopen it for you.' };
+      return executeTool({ ...p, intent: 'OPEN_APPLICATION', args: { app: app.names[0] } }, raw);
+    }
     case 'ASK_WHAT': {
       const v = a.verb || 'open';
       const recent = ctx.lastApp ? [cap(v) + ' ' + ((NLU.appByKey(ctx.lastApp) || {}).n || ctx.lastApp)] : [];
@@ -36,8 +42,10 @@ ToolHandlers.add('apps', async function (p, raw, s, a) {
       toolStep('closeApplication → ' + app.k);
       const r = await callTool('/tool/closeApplication', { app: app.k });
       if (!r.success) return { text: r.error ? cap(r.error) + '.' : app.n + ' does not seem to be running.' };
+      ctx.recentlyClosedApp = app.k;
+      try { store.set('jarvis.recentlyClosedApp', app.k); } catch (e) { /* best-effort local convenience */ }
       Undo.push('closed ' + app.n, async () => { const x = await callTool('/tool/openApplication', { app: app.k }); if (x.error) throw new Error(x.error); return 'Opened ' + app.n + ' again (unsaved work in it can’t come back).'; });
-      return { text: 'Closed **' + app.n + '**.', tool: 'closeApplication' };
+      return { text: 'Closed **' + app.n + '**. I can reopen it if you say “open the recently closed app”.', tool: 'closeApplication' };
     }
     case 'WORKFLOW': {
       toolStep('workflow → vscode + projects');
