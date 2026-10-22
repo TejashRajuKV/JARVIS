@@ -7,11 +7,11 @@ const path = require('node:path');
 const net = require('node:net');
 const { spawnSync } = require('node:child_process');
 
-function isPrivateLanAddress(value) {
+function isPrivateLanAddress(value, allowTailscale = false) {
   const address = String(value || '').split('%')[0];
   if (net.isIP(address) === 4) {
     const [a, b] = address.split('.').map(Number);
-    return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+    return (allowTailscale && a === 100 && b >= 64 && b <= 127) || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
   }
   return net.isIP(address) === 6 && /^f[cd][0-9a-f]{2}:/i.test(address);
 }
@@ -24,8 +24,8 @@ function runOpenSSL(args) {
   if (result.status !== 0) throw new Error((result.stderr || result.stdout || 'OpenSSL failed').trim());
 }
 
-function generate({ host, outDir, force = false }) {
-  if (!isPrivateLanAddress(host)) throw new Error('Provide the laptop private LAN IP (RFC1918 IPv4 or IPv6 ULA).');
+function generate({ host, outDir, force = false, allowTailscale = false }) {
+  if (!isPrivateLanAddress(host, allowTailscale)) throw new Error('Provide the laptop private LAN IP (or use --allow-tailscale for a 100.64.0.0/10 Tailscale IP).');
   const output = path.resolve(outDir || path.join(process.cwd(), 'phonehub-certs'));
   fs.mkdirSync(output, { recursive: true, mode: 0o700 });
   const files = ['phonehub-ca.key', 'phonehub-ca.crt', 'phonehub-server.key', 'phonehub-server.crt', 'phonehub-server.cnf'];
@@ -75,10 +75,11 @@ if (require.main === module) {
   const host = hostIndex >= 0 ? args[hostIndex + 1] : '';
   const outDir = outIndex >= 0 ? args[outIndex + 1] : undefined;
   try {
-    const result = generate({ host, outDir, force: args.includes('--force') });
+    const result = generate({ host, outDir, force: args.includes('--force'), allowTailscale: args.includes('--allow-tailscale') });
     console.log('Phone Hub TLS material created in: ' + result.output);
     console.log('Gateway host: ' + result.host);
     console.log('Set JARVIS_PHONEHUB_HOST=' + result.host);
+    if (args.includes('--allow-tailscale')) console.log('Set JARVIS_PHONEHUB_ALLOW_TAILSCALE=true (only for a Tailscale 100.64.0.0/10 address)');
     console.log('Set JARVIS_PHONEHUB_TLS_KEY=' + result.serverKey);
     console.log('Set JARVIS_PHONEHUB_TLS_CERT=' + result.serverCert);
     console.log('Install phonehub-ca.crt on the Android device as a user CA; do not copy phonehub-ca.key to the phone.');
