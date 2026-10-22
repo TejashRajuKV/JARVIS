@@ -922,6 +922,36 @@ const NLU = (() => {
     if (new RegExp(`^(hi|hello|hey|yo|hii+|hola|namaste|sup|good (morning|afternoon|evening))( there)? ${esc(norm.wake || 'jarvis')}$`).test(rawGreet)) return { intent: 'GREETING', confidence: .97, tool: null, args: {}, text: rawGreet };
     const s = norm.text;
     ctx = ctx || {};
+    // Explicit commerce requests are routed to a live provider comparison, not a generic search page.
+    const busRoute = s.match(/\b(?:from\s+)?(.+?)\s+to\s+(.+?)(?:\s+(?:tomorrow|today|tonight|on\s+\d|next\s+week|this\s+week)\b|$)/i);
+    const busAsk = /\b(bus|buses|bus ticket|bus tickets|bus fare|bus booking|coach)\b/i.test(s) && /\b(compare|cheapest|cheaper|price|fare|book|find|get|show|search|look for|options|ticket|tickets)\b/i.test(s);
+    if (busAsk && busRoute && !/\b(what is a bus|how do buses|explain .*bus)\b/i.test(s)) {
+      const date = (s.match(/\b(?:today|tomorrow|tonight|\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2})\b/i) || [])[0] || '';
+      const from = busRoute[1].replace(/^(?:find|compare|book|show me|get me|cheapest bus(?:es)?|bus tickets?)(?:\s+(?:a|the|cheapest))?\s*/i, '').replace(/^bus\s+/i, '').trim();
+      return { intent: 'COMMERCE_COMPARE', confidence: .95, tool: 'web', args: { type: 'bus', from, to: busRoute[2].trim(), date, provider: 'all' }, text: s };
+    }
+    const productAsk = /\b(compare|cheapest|cheaper|price|prices|buy|purchase|shop for|find|search|look for|where can i get)\b/i.test(s)
+      && /\b(amazon|flipkart|product|item|laptop|phone|mobile|mouse|keyboard|headphones|monitor|ssd|ram|gpu|graphics card|charger|earbuds|watch|tablet|camera|shoes|shirt|book|under\s*₹?\s*\d+)\b/i.test(s)
+      && !/\b(bus|buses|bus ticket|bus fare)\b/i.test(s);
+    if (productAsk) {
+      let query = s.replace(/^(?:please\s+)?(?:can you\s+|could you\s+)?(?:compare|find|search for|search|look for|show me|get me|buy|purchase|shop for|where can i get)\s+/i, '');
+      query = query.replace(/\b(?:on|between|across)\s+(?:amazon|flipkart|both sites|both websites)\b/ig, '').replace(/\b(?:and compare|compare prices|compare the prices|which is cheaper|which site is cheaper|cheapest price|lowest price)\b/ig, '').trim();
+      query = query.replace(/\s+/g, ' ').trim();
+      if (query) return { intent: 'COMMERCE_COMPARE', confidence: .94, tool: 'web', args: { type: 'product', query, provider: 'all' }, text: s };
+    }
+    // Resolve brief provider follow-ups against the last explicit commerce task without retaining a permanent profile.
+    if (ctx.lastIntent === 'COMMERCE_COMPARE' && ctx.lastCmd && /^(?:and |also |what about |how about |now |then )?(?:amazon|flipkart|abhibus|red ?bus|government buses|state buses|cheaper|the cheapest|compare again|same route)\b/i.test(s)) {
+      const previous = String(ctx.lastCmd.text || '');
+      const mode = /\b(bus|buses|bus ticket|bus fare|from .+ to .+)\b/i.test(previous) ? 'bus' : 'product';
+      const provider = (s.match(/\b(amazon|flipkart|abhibus|red ?bus|government buses|state buses)\b/i) || [])[1] || '';
+      if (mode === 'bus') {
+        const route = previous.match(/\bfrom\s+(.+?)\s+to\s+(.+?)(?:\s+(?:on|tomorrow|today|tonight|next)\b|$)/i);
+        if (route) return { intent: 'COMMERCE_COMPARE', confidence: .94, tool: 'web', args: { type: 'bus', from: route[1].trim(), to: route[2].trim(), date: (previous.match(/\b(?:today|tomorrow|tonight|\d{4}-\d{2}-\d{2})\b/i)||[])[0] || '', provider }, text: previous };
+      } else {
+        const query = previous.replace(/^(?:please )?(?:compare|find|search|look for|show me|get me|buy|shop for)\s+/i, '').trim();
+        if (query) return { intent: 'COMMERCE_COMPARE', confidence: .94, tool: 'web', args: { type: 'product', query, provider }, text: previous };
+      }
+    }
     // Short follow-ups that only make sense with context.
     if (ctx.lastIntent && /^(and|also|what about|how about|now|then)\b/.test(s)) {
       const rest = s.replace(/^(and|also|what about|how about|now|then)\s+/, '').replace(/\btoo$|\bas well$/, '').trim();
