@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>JARVIS Phone Hub</title>
+  <link rel="stylesheet" href="/phonehub.css">
+  <script src="/phonehub-ui.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <p class="eyebrow">JARVIS · DEVICE CONNECTIONS</p>
+      <h1>Phone Hub</h1>
+      <p class="subhead">Pair a phone on your private network and control exactly which capabilities it receives.</p>
+    </header>
+    <section class="panel" aria-labelledby="gateway-heading">
+      <div class="section-heading">
+        <div><p class="eyebrow">CONNECTION</p><h2 id="gateway-heading">Secure gateway</h2></div>
+        <button id="refresh" class="button secondary" type="button">Refresh</button>
+      </div>
+      <p id="gateway-status" role="status" aria-live="polite">Checking gateway…</p>
+      <p class="muted">The phone listener is separate from JARVIS's laptop-control API. It remains disabled unless HTTPS and an explicit private LAN address are configured.</p>
+      <div id="gateway-error" class="notice error" hidden></div>
+    </section>
+    <section class="panel" aria-labelledby="pairing-heading">
+      <p class="eyebrow">ONE-TIME SETUP</p>
+      <h2 id="pairing-heading">Pair a device</h2>
+      <p class="muted">Codes expire after five minutes. Pairing grants only status and notifications; other capabilities require a separate approval below.</p>
+      <button id="create-pairing" class="button primary" type="button">Create pairing code</button>
+      <div id="pairing-result" class="pairing-result" hidden>
+        <p class="muted">Enter this code in the Android companion app.</p>
+        <p id="pairing-code" class="pairing-code"></p>
+        <p id="pairing-expiry" class="muted"></p>
+      </div>
+      <p id="pairing-error" class="notice error" hidden></p>
+    </section>
+    <section class="panel" aria-labelledby="devices-heading">
+      <div class="section-heading">
+        <div><p class="eyebrow">ACCESS CONTROL</p><h2 id="devices-heading">Paired devices</h2></div>
+      </div>
+      <div id="devices" class="devices"><p class="muted">Loading devices…</p></div>
+    </section>
+    <footer><a href="/">Back to JARVIS</a><span>Phone Hub · Android first</span></footer>
+  </main>
+</body>
+</html>
