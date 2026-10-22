@@ -120,7 +120,7 @@ function createPhoneHubRequestHandler(options = {}) {
         res.setHeader('Connection', 'keep-alive');
         res.setHeader('X-Accel-Buffering', 'no');
         if (res.flushHeaders) res.flushHeaders();
-        res.write(': connected\\n\\n');
+        res.write(': connected\n\n');
         let closed = false;
         let unsubscribe = () => {};
         const close = () => {
@@ -131,12 +131,12 @@ function createPhoneHubRequestHandler(options = {}) {
         };
         unsubscribe = subscribeNotifications(item => {
           if (closed || res.destroyed || res.writableEnded) return;
-          try { res.write('event: notification\\ndata: ' + JSON.stringify(item) + '\\n\\n'); }
+          try { res.write('event: notification\ndata: ' + JSON.stringify(item) + '\n\n'); }
           catch { close(); }
         });
         const heartbeat = setInterval(() => {
           if (closed || res.destroyed || res.writableEnded) return close();
-          try { res.write(': keepalive\\n\\n'); } catch { close(); }
+          try { res.write(': keepalive\n\n'); } catch { close(); }
         }, 25_000);
         if (heartbeat.unref) heartbeat.unref();
         req.on('close', close);
