@@ -6,6 +6,8 @@
 const crypto = require('crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const DEFAULT_CAPABILITIES = Object.freeze([
   'status', 'notifications', 'sms.read', 'sms.send', 'contacts.read',
