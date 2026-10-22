@@ -9,6 +9,9 @@ assert.equal(certTool.isPrivateLanAddress('192.168.1.12'), true);
 assert.equal(certTool.isPrivateLanAddress('10.0.0.4'), true);
 assert.equal(certTool.isPrivateLanAddress('172.20.0.2'), true);
 assert.equal(certTool.isPrivateLanAddress('fd12:3456::1'), true);
+assert.equal(certTool.isPrivateLanAddress('100.100.10.2'), false);
+assert.equal(certTool.isPrivateLanAddress('100.100.10.2', true), true);
+assert.equal(certTool.isPrivateLanAddress('100.128.10.2', true), false);
 for (const host of ['127.0.0.1', '0.0.0.0', '8.8.8.8', 'example.com', '172.32.0.1']) {
   assert.equal(certTool.isPrivateLanAddress(host), false, host + ' must not be accepted');
 }
