@@ -26,7 +26,17 @@ const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
 const { createPhoneHubAuth, DEFAULT_CAPABILITIES } = require('./phonehub-auth');
 const { createPhoneHubHttpsServer, DEFAULT_PORT: PHONEHUB_DEFAULT_PORT } = require('./phonehub-gateway');
-const phoneHubAuth = createPhoneHubAuth();
+const phoneHubStateFile = process.env.JARVIS_PHONEHUB_STATE_FILE || path.join(os.homedir(), 'jarvis', '.phonehub-state.json');
+let phoneHubAuth;
+let phoneHubAuthError = null;
+try {
+  phoneHubAuth = createPhoneHubAuth({ stateFile: phoneHubStateFile });
+} catch (error) {
+  phoneHubAuthError = error.message;
+  // Do not silently replace damaged persistent credentials with a fresh empty device registry.
+  phoneHubAuth = createPhoneHubAuth();
+  console.error('[Phone Hub] persistent auth disabled: ' + error.message);
+}
 let phoneHubGateway = null;
 let phoneHubGatewayError = null;
 
@@ -131,7 +141,8 @@ app.get('/api/phonehub/status', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     gateway: !!phoneHubGateway,
-    gatewayError: phoneHubGatewayError,
+    gatewayError: phoneHubGatewayError || phoneHubAuthError,
+    persistence: !phoneHubAuthError,
     host: phoneHubGateway ? phoneHubGateway.host : null,
     port: phoneHubGateway ? phoneHubGateway.port : null,
     devices: phoneHubAuth.listDevices(),
@@ -2669,6 +2680,11 @@ app.use((err, req, res, next) => {
 
 async function startConfiguredPhoneHubGateway() {
   const host = String(process.env.JARVIS_PHONEHUB_HOST || '').trim();
+  if (phoneHubAuthError) {
+    phoneHubGatewayError = 'Persistent auth storage unavailable: ' + phoneHubAuthError;
+    console.error('[Phone Hub] gateway disabled: ' + phoneHubGatewayError);
+    return;
+  }
   if (!host) {
     console.log('[Phone Hub] gateway disabled (set JARVIS_PHONEHUB_HOST to an explicit private LAN IP to enable)');
     return;
