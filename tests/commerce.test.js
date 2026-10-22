@@ -19,5 +19,12 @@ check('shopping opens an encoded Amazon India search only', shop.url.startsWith(
 check('unsupported service is refused', !!buildAction({ kind: 'payment', amount: 500 }).error);
 check('phone normalization only accepts phone-like input', phoneDigits('+91 (98765) 43210') === '919876543210' && phoneDigits('hello-world') === '');
 check('city aliases normalize known routes', slugCity('Bengaluru') === 'bangalore' && slugCity('Mysuru') === 'mysore');
+
+const { parsePriceCandidates, comparisonPlan, comparePublicListings, providerMatch } = require('../commerce');
+check('price parser extracts rupee amounts without treating ordinary numbers as prices', parsePriceCandidates('Price ₹1,299 only').some(p => p.amount === 1299) && parsePriceCandidates('2026 model with 8GB RAM').length === 0);
+check('product comparison fans out to Amazon, Flipkart and Shopping discovery', comparisonPlan({type:'product',query:'wireless mouse'}).entries.map(p=>p.key).join(',') === 'amazon,flipkart,googleShopping');
+check('bus comparison fans out to AbhiBus, redBus and government services', comparisonPlan({type:'bus',from:'Bengaluru',to:'Mysuru',provider:'all'}).entries.map(p=>p.key).join(',') === 'abhibus,redbus,government');
+check('provider filtering rejects unrelated seller domains', !providerMatch('amazon','https://example.com/product'));
+
 console.log((failed ? 'FAIL ' : 'PASS ') + 'commerce.test.js — ' + (total - failed) + '/' + total);
 if (failed) process.exitCode = 1;
