@@ -930,12 +930,15 @@ const NLU = (() => {
       const from = busRoute[1].replace(/^(?:find|compare|book|show me|get me|cheapest bus(?:es)?|bus tickets?)(?:\s+(?:a|the|cheapest))?\s*/i, '').replace(/^bus\s+/i, '').trim();
       return { intent: 'COMMERCE_COMPARE', confidence: .95, tool: 'web', args: { type: 'bus', from, to: busRoute[2].trim(), date, provider: 'all' }, text: s };
     }
-    const productAsk = /\b(compare|cheapest|cheaper|price|prices|buy|purchase|shop for|find|search|look for|where can i get)\b/i.test(s)
-      && /\b(amazon|flipkart|product|item|laptop|phone|mobile|mouse|keyboard|headphones|monitor|ssd|ram|gpu|graphics card|charger|earbuds|watch|tablet|camera|shoes|shirt|book|under\s*₹?\s*\d+)\b/i.test(s)
+    const productAsk = /\b(compare|cheapest|cheaper|price|prices|cost|buy|purchase|shop for|find|search|look for|where can i get|i need|i want|recommend|best deal)\b/i.test(s)
+      && /\b(amazon|flipkart|product|item|laptop|iphone|ipad|macbook|airpods|smartphone|phone|mobile|mouse|keyboard|headphones|monitor|ssd|ram|gpu|graphics card|charger|earbuds|watch|tablet|camera|shoes|shirt|book|printer|television|washing machine|refrigerator|under\s*₹?\s*\d+)\b/i.test(s)
       && !/\b(bus|buses|bus ticket|bus fare)\b/i.test(s);
     if (productAsk) {
-      let query = s.replace(/^(?:please\s+)?(?:can you\s+|could you\s+)?(?:compare|find|search for|search|look for|show me|get me|buy|purchase|shop for|where can i get)\s+/i, '');
-      query = query.replace(/\b(?:on|between|across)\s+(?:amazon|flipkart|both sites|both websites)\b/ig, '').replace(/\b(?:and compare|compare prices|compare the prices|which is cheaper|which site is cheaper|cheapest price|lowest price)\b/ig, '').trim();
+      let query = s.replace(/^(?:please\s+)?(?:(?:what is|what's|which is)\s+)?(?:can you\s+|could you\s+)?(?:compare|find|search for|search|look for|show me|get me|buy|purchase|shop for|where can i get|i need|i want|recommend|best deal)\s+/i, '')
+        .replace(/^(?:the )?(?:cheapest|lowest-priced|best-priced)\s+/i, '');
+      query = query.replace(/\b(?:on|between|across)\s+(?:amazon|flipkart|both sites|both websites)\b/ig, '')
+        .replace(/\band\s+(?:amazon|flipkart)\b/ig, '')
+        .replace(/\b(?:and compare|compare prices|compare the prices|which is cheaper|which site is cheaper|cheapest price|lowest price|best deal)\b/ig, '').trim();
       query = query.replace(/\s+/g, ' ').trim();
       if (query) return { intent: 'COMMERCE_COMPARE', confidence: .94, tool: 'web', args: { type: 'product', query, provider: 'all' }, text: s };
     }
