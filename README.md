@@ -1276,7 +1276,7 @@ The Skill Hub comparison endpoint fans out searches for Amazon India, Flipkart a
 
 The Skill Hub opens parallel searches for Amazon India, Flipkart and Google Shopping, and searches AbhiBus, redBus and government bus-booking portals for a route/date. These are comparison-discovery links, **not a verified live-price aggregator**: JARVIS must not name a cheapest option until it can compare the exact product/variant or route/date and confirm final price, delivery/booking fees, offers, and availability. Government portals vary by state; verify the official domain before entering personal or payment details.
 
-Natural-language command repair includes common speech/transcription errors such as “ogoen YouTube” → “open YouTube”. This is deterministic correction, not unrestricted guesswork; uncertain commands should be clarified rather than launching an unrelated app.
+Natural-language command repair includes common speech/transcription errors such as “ogoen YouTube” → “open YouTube”. For new installs, local Qwen NLU assistance is enabled by default when the configured local AI is ready; it only selects whitelisted intents and falls back to rules if unavailable. This is deterministic correction, not unrestricted guesswork; uncertain commands should be clarified rather than launching an unrelated app.
 
 ## 15. Known limitations
 
