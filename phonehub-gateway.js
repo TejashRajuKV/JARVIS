@@ -101,7 +101,7 @@ function createPhoneHubRequestHandler(options = {}) {
           code: body.code,
           deviceName: body.deviceName
         });
-        return json(res, result.ok ? 200 : 401, result.ok
+        return json(res, result.ok ? 200 : result.error === 'DEVICE_CAPACITY' ? 429 : 401, result.ok
           ? { ok: true, device: result.device, token: result.token }
           : { ok: false, error: result.error });
       }
