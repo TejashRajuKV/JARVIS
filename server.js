@@ -27,6 +27,7 @@ const IS_MAC = process.platform === 'darwin';
 const { createPhoneHubAuth, DEFAULT_CAPABILITIES } = require('./phonehub-auth');
 const { createPhoneHubHttpsServer, DEFAULT_PORT: PHONEHUB_DEFAULT_PORT } = require('./phonehub-gateway');
 const { createPhoneHubNotifications } = require('./phonehub-notifications');
+const { createCallingService } = require('./calling-service');
 const phoneHubStateFile = process.env.JARVIS_PHONEHUB_STATE_FILE || path.join(os.homedir(), 'jarvis', '.phonehub-state.json');
 let phoneHubAuth;
 let phoneHubAuthError = null;
@@ -39,6 +40,8 @@ try {
   console.error('[Phone Hub] persistent auth disabled: ' + error.message);
 }
 const phoneHubNotifications = createPhoneHubNotifications();
+const callingService = createCallingService();
+app.locals.jarvisCall = (input, metadata) => callingService.call(input, metadata);
 app.locals.phoneHubNotify = event => phoneHubNotifications.publish(event);
 let phoneHubGateway = null;
 let phoneHubGatewayError = null;
@@ -136,6 +139,27 @@ app.get('/api/remote/status', async (req, res) => {
   const serve = tsName ? await tsJSON(['serve', 'status', '--json']) : null;
   const serving = !!serve && JSON.stringify(serve).includes(`:${PORT}"`);
   res.json({ tailscale: !!tsName, url: tsName ? 'https://' + tsName : null, serving, port: PORT });
+});
+
+// Calling controls stay on the existing loopback-only JARVIS origin. Provider secrets are read only from
+// the server environment and are never returned to browser clients.
+app.get('/api/calling/status', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(callingService.status());
+});
+app.post('/api/calling/call', async (req, res) => {
+  try {
+    const message = String(req.body && (req.body.message || req.body.body) || '').trim();
+    if (!message || message.length > 600) return res.status(400).json({ error: 'message must be 1–600 characters' });
+    const result = await callingService.call({ message }, { source: 'owner' });
+    res.status(202).json(result);
+  } catch (error) {
+    const code = error.code || 'CALL_FAILED';
+    const status = code === 'CALLING_NOT_CONFIGURED' ? 503 :
+      code === 'CALL_RATE_LIMITED' ? 429 :
+      code === 'PHONE_NUMBER_MUST_BE_E164' || code === 'CALL_MESSAGE_REQUIRED' ? 400 : 502;
+    res.status(status).json({ error: code, retryAfterMs: error.retryAfterMs });
+  }
 });
 
 // Phone Hub owner controls stay on the existing loopback-only JARVIS origin. The phone gateway is
@@ -2703,7 +2727,15 @@ async function startConfiguredPhoneHubGateway() {
       allowedOrigins: String(process.env.JARVIS_PHONEHUB_ALLOWED_ORIGINS || '').split(',').map(v => v.trim()).filter(Boolean),
       getStatus: async () => ({ online: true, platform: process.platform, uptimeSeconds: Math.floor(process.uptime()) }),
       getNotifications: async () => phoneHubNotifications.list(50),
-      subscribeNotifications: listener => phoneHubNotifications.subscribe(listener)
+      subscribeNotifications: listener => phoneHubNotifications.subscribe(listener),
+      makeCall: (input, metadata) => callingService.call(input, metadata),
+      respondToVoice: async text => {
+        const result = await llm.complete({ messages: [
+          { role: 'system', content: 'You are JARVIS, a concise voice assistant. Reply naturally in spoken language. Never claim you performed laptop actions or changed settings; this endpoint is conversation only. If asked to perform an action, explain that action execution is not enabled in this voice session.' },
+          { role: 'user', content: text }
+        ], maxTokens: 180, temperature: 0.4, timeoutMs: 25000 });
+        return String(result || '').trim();
+      }
     });
     const address = await phoneHubGateway.listen();
     console.log(`[Phone Hub] HTTPS gateway listening on ${address.address}:${address.port}`);
