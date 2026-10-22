@@ -28,3 +28,19 @@ check('provider filtering rejects unrelated seller domains', !providerMatch('ama
 
 console.log((failed ? 'FAIL ' : 'PASS ') + 'commerce.test.js — ' + (total - failed) + '/' + total);
 if (failed) process.exitCode = 1;
+
+let asyncCompareFailed = 0;
+comparePublicListings({ type: 'product', query: 'wireless mouse' }, {
+  webSearch: async q => q.includes('site:amazon.in')
+    ? [{ title: 'Wireless mouse - Amazon', url: 'https://www.amazon.in/dp/example', snippet: 'Price ₹ 1,299 wireless mouse' }]
+    : q.includes('site:flipkart.com')
+      ? [{ title: 'Wireless mouse - Flipkart', url: 'https://www.flipkart.com/item/example', snippet: 'Price ₹ 999 wireless mouse' }]
+      : [{ title: 'Wireless mouse shopping result', url: 'https://www.google.com/search?tbm=shop&q=wireless+mouse', snippet: 'Price ₹ 899 wireless mouse' }],
+  pageText: async () => ({ text: '' })
+}).then(data => {
+  const pass = data.success && data.providers.length === 3 && data.lowestObserved && data.lowestObserved.amount === 899
+    && data.verifiedCheapest === null && data.providers.every(p => p.results.every(r => r.priceVerified === false));
+  if (!pass) { asyncCompareFailed++; console.log('FAIL comparison engine returns lowest observed public candidate but never marks it verified'); }
+  else console.log('PASS commerce comparison mock — provider fan-out, candidate ranking and unverified-price safety');
+  if (asyncCompareFailed) process.exitCode = 1;
+}).catch(e => { console.log('FAIL commerce comparison mock — ' + e.message); process.exitCode = 1; });
