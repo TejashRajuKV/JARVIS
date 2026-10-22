@@ -11,7 +11,7 @@ let fail=0,total=0;const check=(n,ok,x)=>{total++;if(!ok){fail++;console.log('FA
   check('returns a structured report',result.success&&result.checkedAt===123&&result.checks.length>=10,result.summary);
   check('missing local AI is reported without crashing',result.checks.some(x=>x.name==='Local AI provider'&&!x.ok));
   check('all required mock modules pass',result.checks.filter(x=>['Skill loader','Skill router','Voice recognition client','Scheduler'].includes(x.name)).every(x=>x.ok));
-  check('actionable recommendations are returned for failures',result.recommendations.some(x=>/Ollama/.test(x.name)));
+  check('actionable recommendations are returned for failures',result.recommendations.some(x=>/Ollama/.test(x.action)));
   check('does not execute repair actions',!('repaired' in result)&&!('commandsRun' in result));
  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
  console.log('diagnostics: '+(total-fail)+'/'+total);process.exitCode=fail?1:0;
