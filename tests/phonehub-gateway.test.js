@@ -11,12 +11,12 @@ const {
   createPhoneHubHttpsServer
 } = require('../phonehub-gateway');
 
-function request({ method = 'GET', url = '/', body, headers = {}, remoteAddress = '192.168.1.20' } = {}) {
+function request({ method = 'GET', url = '/', body, headers = {}, remoteAddress = '192.168.1.20', encrypted = true } = {}) {
   const req = Readable.from(body === undefined ? [] : [Buffer.from(typeof body === 'string' ? body : JSON.stringify(body))]);
   req.method = method;
   req.url = url;
   req.headers = { host: '192.168.1.10:' + DEFAULT_PORT, ...headers };
-  req.socket = { remoteAddress };
+  req.socket = { remoteAddress, encrypted };
   return req;
 }
 function response() {
@@ -59,7 +59,9 @@ async function call(handler, options) {
     getStatus: async () => ({ battery: 87 }),
     getNotifications: async () => [{ id: 'n1', title: 'Build complete' }]
   });
-  let res = await call(handler, { remoteAddress: '8.8.8.8', url: '/health' });
+  let res = await call(handler, { encrypted: false, url: '/health' });
+  check('plaintext requests are rejected even if handler is mis-mounted', () => assert.equal(res.statusCode, 426));
+  res = await call(handler, { remoteAddress: '8.8.8.8', url: '/health' });
   check('public network peers rejected', () => assert.equal(res.statusCode, 403));
   res = await call(handler, { headers: { host: 'attacker.example:' + DEFAULT_PORT }, url: '/health' });
   check('unrecognized Host rejected', () => assert.equal(res.statusCode, 403));
