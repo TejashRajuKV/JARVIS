@@ -8,7 +8,7 @@ const MAX_CALLS_PER_WINDOW = 3;
 const MAX_MESSAGE_LENGTH = 600;
 
 function cleanMessage(value) {
-  return String(value || '').replace(/[\\u0000-\\u001f\\u007f]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, MAX_MESSAGE_LENGTH);
+  return String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_MESSAGE_LENGTH);
 }
 
 function createCallingService(options = {}) {
@@ -38,7 +38,7 @@ function createCallingService(options = {}) {
     if (!config.enabled) throw Object.assign(new Error('CALLING_NOT_CONFIGURED'), { code: 'CALLING_NOT_CONFIGURED' });
     const to = String(env.JARVIS_CALL_TO_NUMBER || '').trim();
     const from = String(env.JARVIS_TWILIO_FROM_NUMBER || '').trim();
-    if (!/^\\+[1-9]\\d{7,14}$/.test(to) || !/^\\+[1-9]\\d{7,14}$/.test(from)) {
+    if (!/^\+[1-9]\d{7,14}$/.test(to) || !/^\+[1-9]\d{7,14}$/.test(from)) {
       throw Object.assign(new Error('PHONE_NUMBER_MUST_BE_E164'), { code: 'PHONE_NUMBER_MUST_BE_E164' });
     }
     const message = cleanMessage(input.message || input.body || input.title);
@@ -76,7 +76,7 @@ function createCallingService(options = {}) {
 }
 
 function isQuietHours(windowValue, date) {
-  const match = /^(\\d{2}):(\\d{2})-(\\d{2}):(\\d{2})$/.exec(String(windowValue || ''));
+  const match = /^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/.exec(String(windowValue || ''));
   if (!match) return false;
   const [start, end] = [Number(match[1]) * 60 + Number(match[2]), Number(match[3]) * 60 + Number(match[4])];
   if ([match[1], match[3]].some((v, i) => Number(v) > 23) || Number(match[2]) > 59 || Number(match[4]) > 59 || start === end) return false;
