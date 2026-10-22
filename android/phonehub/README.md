@@ -1,6 +1,6 @@
 # JARVIS Phone Hub for Android (early companion app)
 
-This is the initial native Android companion source for the Phone Hub gateway. It supports manual pairing, encrypted token storage, checking JARVIS status, and requesting notifications.
+This is the initial native Android companion source for the Phone Hub gateway. It supports QR or manual pairing, encrypted token storage, checking JARVIS status, and requesting notifications.
 
 ## Requirements
 
@@ -20,7 +20,7 @@ Set these environment variables before starting JARVIS:
 
 The gateway accepts only HTTPS. Use a certificate whose trust chain is trusted by Android (for example, a certificate issued by a private CA installed on the phone). Do not work around certificate errors by disabling TLS validation. Keep the private key private. The gateway only binds to an explicit private LAN address.
 
-Open the laptop management page at `http://localhost:<JARVIS_PORT>/phonehub.html`, create a pairing code, then enter the gateway HTTPS origin, pairing ID, and six-digit code in the app. The gateway address must use the laptop's LAN IP, not localhost.
+Open the laptop management page at `http://localhost:<JARVIS_PORT>/phonehub.html`, create a pairing code, then scan the displayed QR in the app or enter the gateway HTTPS origin, pairing ID, and six-digit code manually. The gateway address must use the laptop's LAN IP, not localhost.
 
 ## Security behavior
 
