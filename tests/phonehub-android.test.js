@@ -10,11 +10,15 @@ const manifest = read('app/src/main/AndroidManifest.xml');
 const client = read('app/src/main/java/com/jarvis/phonehub/PhoneHubClient.kt');
 const vault = read('app/src/main/java/com/jarvis/phonehub/TokenVault.kt');
 const activity = read('app/src/main/java/com/jarvis/phonehub/MainActivity.kt');
+const phoneHubUi = fs.readFileSync(path.join(__dirname, '..', 'phonehub-ui.js'), 'utf8');
+const phoneHubHtml = fs.readFileSync(path.join(__dirname, '..', 'phonehub.html'), 'utf8');
 const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'phonehub-android.yml'), 'utf8');
 const worker = read('app/src/main/java/com/jarvis/phonehub/PhoneHubNotificationWorker.kt');
 const networkSecurity = read('app/src/main/res/xml/network_security_config.xml');
 
 const checks = [
+  ['pairing QR uses local bundled generator and excludes device token', phoneHubHtml.includes('/qrcode.js') && /new QRCode/.test(phoneHubUi) && /pairingId: data\.pairingId, code: data\.code/.test(phoneHubUi) && !/token\s*:\s*response/.test(phoneHubUi)],
+  ['Android manifest includes optional camera for QR scan', /android\.permission\.CAMERA/.test(manifest) && /android.hardware.camera.*required="false"/.test(manifest)],
   ['Android manifest denies cleartext HTTP', /usesCleartextTraffic="false"/.test(manifest)],
   ['Android app disables backup', /allowBackup="false"/.test(manifest)],
   ['client requires HTTPS', /uri\.scheme\.equals\("https", ignoreCase = true\)/.test(client)],
@@ -24,6 +28,7 @@ const checks = [
   ['client sends bearer token and nonce on authenticated requests', /Authorization", "Bearer \$token"/.test(client) && /X-Jarvis-Nonce/.test(client)],
   ['token encryption uses Android Keystore AES-GCM', /AndroidKeyStore/.test(vault) && /AES\/GCM\/NoPadding/.test(vault)],
   ['token storage uses randomized encryption', /setRandomizedEncryptionRequired\(true\)/.test(vault)],
+  ['app supports QR scanning and pairing payload validation', /IntentIntegrator/.test(activity) && /optString\("endpoint"\)/.test(activity) && /version\) == 1/.test(activity)],
   ['app surfaces pairing, status and notifications', /fun pair\(/.test(client) && /fun status\(/.test(client) && /fun notifications\(/.test(client) && /refreshNotifications/.test(activity) && /forgetPhone\(\)/.test(activity)],
   ['Android TLS trusts system and user-installed CA roots without disabling verification', manifest.includes('@xml/network_security_config') && /certificates src="system"/.test(networkSecurity) && /certificates src="user"/.test(networkSecurity) && /cleartextTrafficPermitted="false"/.test(networkSecurity)],
   ['UI state updates are marshalled to the Android main thread', activity.includes('private fun setUi(block: () -> Unit)') && activity.includes('runOnUiThread(block)')],
