@@ -6,6 +6,7 @@ eval(fs.readFileSync(path.join(__dirname, '..', 'nlu.js'), 'utf8') + ';global.NL
 const CASES = [
   ['open the recently closed app', 'REOPEN_RECENT_APP'],
   ['reopen the last app', 'REOPEN_RECENT_APP'],
+  ['which app did I just close', 'RECENT_CLOSED_APP_STATUS'],
   // explicit outbound call requests only
   ['call me', 'CALL_PHONE'], ['Jarvis, call my phone now', 'CALL_PHONE'], ['ring my mobile', 'CALL_PHONE'],
   // core commands
