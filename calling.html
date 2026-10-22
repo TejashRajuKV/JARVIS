@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>JARVIS Calling</title>
+  <link rel="stylesheet" href="/phonehub.css">
+  <script src="/calling-ui.js" defer></script>
+</head>
+<body>
+  <main class="phonehub-shell">
+    <header class="phonehub-header">
+      <div><p class="eyebrow">JARVIS · PHONE HUB</p><h1>Calling assistant</h1><p class="muted">Send a spoken announcement to your configured phone number.</p></div>
+      <a href="/phonehub.html">Phone Hub settings</a>
+    </header>
+    <section class="panel">
+      <h2>Provider status</h2>
+      <p id="calling-status" role="status" aria-live="polite">Checking server configuration…</p>
+      <p id="calling-details" class="muted"></p>
+      <button id="calling-refresh" type="button">Refresh status</button>
+    </section>
+    <section class="panel">
+      <h2>Call me now</h2>
+      <p class="muted">This places a real outbound phone call. The message will be spoken aloud. Calls are rate-limited. Nothing is called until you press the button.</p>
+      <label for="calling-message">What should JARVIS say?</label>
+      <textarea id="calling-message" maxlength="600" rows="4">Hello. This is JARVIS calling to check in.</textarea>
+      <p id="calling-error" role="alert" class="error" hidden></p>
+      <button id="calling-submit" type="button">Call my configured number</button>
+      <p id="calling-result" role="status" aria-live="polite"></p>
+    </section>
+    <p class="muted">Provider credentials stay on the JARVIS server. Do not put Twilio secrets in this page or the Android app.</p>
+  </main>
+</body>
+</html>
