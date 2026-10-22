@@ -95,7 +95,7 @@ internal class PhoneHubClient(baseUrl: String) {
             when (address) {
                 is Inet4Address -> {
                     val b = address.address.map { it.toInt() and 0xff }
-                    b[0] == 10 || (b[0] == 172 && b[1] in 16..31) || (b[0] == 192 && b[1] == 168)
+                    (b[0] == 100 && b[1] in 64..127) || b[0] == 10 || (b[0] == 172 && b[1] in 16..31) || (b[0] == 192 && b[1] == 168)
                 }
                 is Inet6Address -> (address.address[0].toInt() and 0xfe) == 0xfc
                 else -> false
