@@ -554,7 +554,7 @@ All explicit wording; anything that changes the system asks first, and the page�
 | Student extras | `start lecture mode for DBMS` · `add assignment from a photo` · `fit my study plan to my timetable` · `I got 32/40 in internals, what do I need in the end sem to get 80%?` · `turn on offline speech` |
 | Money, habits, notes | `spent 120 on lunch` · `how much did I spend this month` · `track habit gym` → `I did gym` · `jot down buy a charger` · `show my inbox` |
 | Keep it safe | `keep JARVIS running` · `back up my files to D:` · `backup status` · `turn on weekly backup` · `find old node_modules` |
-| Screenshots | `index my screenshots` · `find the screenshot with the wifi password` |
+| Screenshots | `show my saved screenshots` · `index my screenshots` · `find the screenshot with the wifi password` · choose ANALYZE on a result to identify visible objects/text |
 | Developer day | `git summary today` · `write my standup` · `write a commit message` · `why did my build fail` |
 | Practise | `take my DBMS viva` · `quiz me on DBMS` · `coach me on two sum` |
 | Ask my files | `what do my notes say about paging?` · `what does lecture3.pdf say about 3NF?` |
