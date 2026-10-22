@@ -55,13 +55,13 @@ function hostOf(href) { try { return new URL(href).hostname.toLowerCase().replac
 function providerMatch(provider, href) {
   const host = hostOf(href);
   if (!host) return false;
-  if (provider === 'googleShopping') return host === 'google.com' && /\/shopping(?:\/|\?|$)/i.test(new URL(href).pathname + new URL(href).search) || /shopping\.google\./i.test(host);
+  if (provider === 'googleShopping') { const u = new URL(href); return (host === 'google.com' && (u.pathname.startsWith('/shopping') || u.searchParams.get('tbm') === 'shop')) || /shopping\.google\./i.test(host); }
   return PROVIDERS[provider].domains.some(d => host === d || host.endsWith('.' + d));
 }
 function parsePriceCandidates(text) {
   const s = String(text || '').replace(/\u00a0/g, ' ');
   const out = [], seen = new Set();
-  const re = /(?:₹|INR\s*|Rs\.?\s*)(\d{1,3}(?:,\d{2,3})+|\d{3,7})(?:\.(\d{1,2}))?/gi;
+  const re = /(?:₹\s*|INR\s*|Rs\.?\s*)(\d{1,3}(?:,\d{2,3})+|\d{3,7})(?:\.(\d{1,2}))?/gi;
   let m;
   while ((m = re.exec(s)) && out.length < 4) {
     const amount = Number((m[1] || '').replace(/,/g, '') + (m[2] ? '.' + m[2] : ''));
@@ -115,7 +115,7 @@ async function comparePublicListings(body, deps) {
           const page = await deps.pageText(item.url, { timeout: 5000, max: 5000 });
           const text = clean((page && (page.text || page.content)) || '', 5000);
           const candidates = parsePriceCandidates(text);
-          if (candidates.length && (!item.priceCandidates.length || candidates[0].amount < item.priceCandidates[0].amount)) {
+          if (candidates.length && !item.priceCandidates.length) {
             item.priceCandidates = candidates; item.priceSource = 'readable public page'; item.priceVerified = false;
           }
           if (!item.snippet && text) item.snippet = text.slice(0, 350);
