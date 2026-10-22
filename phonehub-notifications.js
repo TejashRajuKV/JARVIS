@@ -19,6 +19,7 @@ function createPhoneHubNotifications(options = {}) {
   const maxAgeMs = Number.isSafeInteger(options.maxAgeMs) && options.maxAgeMs > 0
     ? options.maxAgeMs : DEFAULT_MAX_AGE_MS;
   const items = [];
+  const listeners = new Set();
 
   function sweep() {
     const cutoff = now() - maxAgeMs;
@@ -42,7 +43,9 @@ function createPhoneHubNotifications(options = {}) {
     });
     items.push(item);
     sweep();
-    return { ...item };
+    const snapshot = { ...item };
+    for (const listener of listeners) { try { listener(snapshot); } catch {} }
+    return snapshot;
   }
 
   function list(limit = 50) {
@@ -51,7 +54,13 @@ function createPhoneHubNotifications(options = {}) {
     return items.slice(-count).reverse().map(item => ({ ...item }));
   }
 
-  return Object.freeze({ publish, list, sweep });
+  function subscribe(listener) {
+    if (typeof listener !== 'function') throw new TypeError('Notification listener must be a function');
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  }
+
+  return Object.freeze({ publish, list, sweep, subscribe });
 }
 
 module.exports = { createPhoneHubNotifications, DEFAULT_MAX_ITEMS, DEFAULT_MAX_AGE_MS };
