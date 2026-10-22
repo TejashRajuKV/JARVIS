@@ -87,6 +87,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
+        }
+        if (!TokenVault.load(this).isNullOrBlank()) PhoneHubNotificationWorker.schedule(this)
     }
 
     private fun pair() = runOnIo {
@@ -96,6 +101,7 @@ class MainActivity : ComponentActivity() {
             val token = response.optString("token")
             if (token.isBlank()) throw IllegalStateException("Gateway did not return a device token")
             TokenVault.save(this, token)
+            PhoneHubNotificationWorker.schedule(this)
             getSharedPreferences("phonehub_settings", MODE_PRIVATE).edit().putString("endpoint", endpoint).apply()
             setUi {
                 status = "Paired as " + response.optJSONObject("device")?.optString("name", deviceName)
@@ -110,6 +116,7 @@ class MainActivity : ComponentActivity() {
 
     private fun forgetPhone() {
         TokenVault.clear(this)
+        PhoneHubNotificationWorker.cancel(this)
         setUi {
             status = "Phone token removed from this device. Revoke the paired device on the laptop too if needed."
             statusJson = ""
