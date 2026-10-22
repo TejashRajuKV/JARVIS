@@ -14,6 +14,7 @@ const DEFAULT_PAIRING_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_MAX_ACTIVE_PAIRINGS = 5;
+const DEFAULT_MAX_USED_NONCES = 10_000;
 const NONCE_TTL_MS = 2 * 60 * 1000;
 
 const randomId = (bytes = 16) => crypto.randomBytes(bytes).toString('hex');
@@ -31,6 +32,7 @@ function createPhoneHubAuth(options = {}) {
   const sessionTtlMs = Number.isSafeInteger(options.sessionTtlMs) && options.sessionTtlMs > 0 ? options.sessionTtlMs : DEFAULT_SESSION_TTL_MS;
   const maxAttempts = Number.isSafeInteger(options.maxAttempts) && options.maxAttempts > 0 ? options.maxAttempts : DEFAULT_MAX_ATTEMPTS;
   const maxActivePairings = Number.isSafeInteger(options.maxActivePairings) && options.maxActivePairings > 0 ? options.maxActivePairings : DEFAULT_MAX_ACTIVE_PAIRINGS;
+  const maxUsedNonces = Number.isSafeInteger(options.maxUsedNonces) && options.maxUsedNonces > 0 ? options.maxUsedNonces : DEFAULT_MAX_USED_NONCES;
   const allowed = new Set(DEFAULT_CAPABILITIES);
   const pairings = new Map();
   const devices = new Map();
@@ -112,6 +114,7 @@ function createPhoneHubAuth(options = {}) {
       for (const [key, expiry] of usedNonces) if (expiry <= now) usedNonces.delete(key);
       const nonceKey = device.id + ':' + nonce;
       if (usedNonces.has(nonceKey)) return { ok: false, error: 'REPLAYED_NONCE' };
+      if (usedNonces.size >= maxUsedNonces) return { ok: false, error: 'NONCE_CAPACITY' };
       usedNonces.set(nonceKey, now + NONCE_TTL_MS);
       return { ok: true, device: publicDevice(device) };
     }
@@ -157,4 +160,4 @@ function createPhoneHubAuth(options = {}) {
   return Object.freeze({ beginPairing, completePairing, authenticate, authorize, grant, revoke, listDevices, sweep });
 }
 
-module.exports = { createPhoneHubAuth, DEFAULT_CAPABILITIES, PAIRING_CAPABILITIES, DEFAULT_MAX_ACTIVE_PAIRINGS };
+module.exports = { createPhoneHubAuth, DEFAULT_CAPABILITIES, PAIRING_CAPABILITIES, DEFAULT_MAX_ACTIVE_PAIRINGS, DEFAULT_MAX_USED_NONCES };
