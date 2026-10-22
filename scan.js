@@ -177,8 +177,7 @@ module.exports = function setupScan(app, { SANDBOX, llm, DEFAULT_MODEL, rel, ope
     try {
       const answer = await llm.complete({
         model, temperature: 0.2, maxTokens: 900, numCtx: 12288, timeoutMs: 240000, images: [b64],
-        system: 'You look at a photo taken by the user and answer their question about it. If it shows a maths, physics or chemistry problem, solve it step by step in plain text and put the final answer last. ' +
-          'Say clearly when something is too blurry or small to read. Never invent text, numbers or symbols that you cannot see. Keep it short.',
+        system: 'Visually inspect the supplied image and answer the user’s specific question. For object-identification requests, name clearly visible objects, describe their approximate position and foreground/background, and count instances only when they are distinct enough to count. Read visible labels/text when possible. Do not claim pixel-accurate bounding boxes or invent objects, text, numbers, or symbols. If the image is blurry, partially hidden, or ambiguous, say so. If it shows a maths, physics, or chemistry problem, solve it step by step in plain text and put the final answer last.',
         messages: [{ role: 'user', content: question + (hint ? '\n\nText the computer read from the picture (it may contain mistakes, check it against the image):\n' + hint : '') }],
       });
       if (!answer) return res.status(502).json({ error: 'The AI gave no answer.' });
