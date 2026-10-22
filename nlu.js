@@ -653,6 +653,10 @@ const NLU = (() => {
     ['SET_CITY', /^(?:remember (?:that )?)?(?:my (?:home )?city is|i live in|i stay in|i(?:'?m| am) (?:based|living|staying) in|set (?:my )?(?:home |weather )?city (?:to|as)|change (?:my )?city to) [a-z][a-z .'-]{1,38}$/, .95, 'weather'],
     ['REMEMBER', /^remember (that |this |my )?(.+)|^(note that|keep in mind) (.+)/, .94],
 
+    // Restore actions are explicit and precede generic open/close rules.
+    ['RESTORE_CLOSED_TAB', /^(?:restore|reopen|bring back) (?:the )?(?:(?:\d{1,2}) )?(?:last|recently closed|closed) (?:browser )?tabs?(?: in (chrome|edge|firefox|brave))?$|^(?:undo close|reopen) (?:the )?(?:last|recently closed) tab(?: in (chrome|edge|firefox|brave))?$/, .97, 'restoreClosedTab'],
+    ['REOPEN_RECENT_APP', /^(?:reopen|restore|open|launch|bring back) (?:the )?(?:last|most recent|recently closed|last closed) app(?:lication)?$|^(?:open|launch) (?:the )?app i (?:just )?closed$/, .97, 'openApplication'],
+
     // context follow-ups
     ['CONTEXT_CLOSE', /^(close|kill|quit|exit|shut) (it|that|this|the app)$/, .95, 'closeApplication'],
     ['CONTEXT_REOPEN', /^(open|launch|start) (it|that) again$|^reopen (it|that)$/, .95, 'openApplication'],
