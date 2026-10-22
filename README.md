@@ -973,7 +973,7 @@ When **Settings → Show how I understood you** is on (or you ask "how did you u
 | `rag.js`, `pdftext.js`, `doctext.js` | Local hybrid search over your notes/code/PDFs/Office files; PDF & Office text extraction |
 | `update.js` | Update check against GitHub Releases (click-to-run) |
 | `skills.js`, `skills-page.js` | Website generator (any folder, or a project's frontend), UI design prompt (TCREI), DSA coach, viva practice, code fixer (server + chat side) |
-| `skillpack.js`, `skills-bundled/` | Skill packs: any `SKILL.md` folder (Hermes / Codex format) in `~/jarvis/Skills` becomes a `/name` skill; the four shipped ones (research, quick, code-review, plan-then-act) |
+| \`skillpack.js\`, \`skills-bundled/\`, \`skill-hub.js\` | Skill packs: bundled and personal \`SKILL.md\` folders, persistent enable/disable, search and run controls in the Skill Hub; bundled skills include research, quick, code-review, plan-then-act, debugging-coach, study-sprint, meeting-notes, and career-helper (plus two internal skills) |
 | `extras-page.js` | Chat side of the extra tools below: recognises the explicit wording, calls the route, words the answer |
 | `aihealth.js` | AI call history (one hook in `llm.js`), the "check my AI" report, disk and memory checks |
 | `watchdog.js` | Service watchdog: Ollama and the pages / ports you add, uptime, one alert per change |
@@ -1063,7 +1063,13 @@ npm run test:live
 | `student.test.js` | 60 | Attendance & bunk maths, marks → SGPA/CGPA, monthly/yearly repeats |
 | `codeask.test.js` | 58 | Coding-AI phrases, safe command building |
 | `skills-page.test.js` | 79 | Website / coach / viva conversations, and skill packs on the page (`/name`, "use the X skill", trigger phrases not hijacking commands, research / files / plan skills, list / reload) |
-| `skillpack.test.js` | 58 | `SKILL.md` parsing (block and wrapped descriptions, bad names, oversize, cut-off), Hermes- and Codex-style skills loading unchanged, bundled vs yours, symlinks skipped, the shipped four, the three routes with a fake model |
+| `skillpack.test.js` | — | `SKILL.md` parsing and loading, symlink rejection, bundled vs personal skills, enable/disable persistence, disabled-run rejection, and routes exercised with a fake model |
+| `skillrouter.test.js` | — | Context-aware skill ranking, exact triggers, ambiguous requests, cooldowns, and ordinary conversation that must not trigger a skill |
+| `skill-hub-quality.test.js` | — | All newly bundled skills are discoverable, metadata is valid, intended requests select the right skill, and ordinary messages are not routed |
+| `skill-hub-ui.test.js` | — | Main-page and PWA wiring, management endpoints, safe manual browser restore, and workflow prompts not auto-submitted |
+| `workflow-memory.test.js` | — | Explicit local workflow save/update/reload/delete, validation, and bounded prompt size |
+| `browser-recovery.test.js` | — | URL validation, sensitive query redaction, persistent history, explicit reopen, and clearing |
+| `diagnostics.test.js` | — | Read-only checks, missing-provider reporting, recommendations, and no repair execution |
 | `extras-page.test.js` | 603 | The eight tools in chat: every phrase that is taken, and a long list of ordinary sentences that must not be ("watch youtube", "open marks.csv", "draw a graph", "split the bill"…) |
 | `aihealth.test.js` | 68 | Error classes from the real `llm.js` messages, the history (ring buffer, saving, hand-edited files), the report and its fixes, the hook with a faked network (nothing secret recorded, cancelled calls not counted) |
 | `watchdog.test.js` | 82 | What may be watched (no `file:`, no passwords), when an alert is worth sending, the probes against real local servers, saving and loading, laptop-only changes |
