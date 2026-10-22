@@ -2,7 +2,7 @@
 
 ## Current implementation stage
 
-phonehub-auth.js contains dependency-free pairing/session primitives. `phonehub-gateway.js` now contains a separate HTTPS-only, allowlisted route handler and explicit-private-IP server factory. Neither module is wired into `server.js` yet; no gateway starts automatically. That boundary is deliberate: JARVIS's existing HTTP server binds to loopback and has strict host/origin checks. The Android feature must not weaken those protections by exposing the full laptop-control API on the LAN.
+phonehub-auth.js contains dependency-free pairing/session primitives. `phonehub-gateway.js` now contains a separate HTTPS-only, allowlisted route handler and explicit-private-IP server factory. The modules are now wired into `server.js` behind an explicit opt-in environment configuration; no gateway starts automatically unless `JARVIS_PHONEHUB_HOST` is set. That boundary is deliberate: JARVIS's existing HTTP server binds to loopback and has strict host/origin checks. The Android feature must not weaken those protections by exposing the full laptop-control API on the LAN.
 
 ## Security contract for the gateway
 
@@ -22,7 +22,9 @@ The future Phone Gateway must:
 
 `phonehub-gateway.js` exports `createPhoneHubRequestHandler()` and `createPhoneHubHttpsServer()`. The HTTPS factory requires a private IPv4 RFC1918 or IPv6 ULA bind address and both TLS key and certificate; it refuses wildcard, loopback, public, or plaintext binds. The handler accepts only `/health`, `POST /v1/pair`, `GET /v1/status`, and `GET /v1/notifications`. It independently rejects plaintext requests (even if accidentally mounted on an HTTP server), public peers, unexpected Host/Origin values, non-JSON pairing bodies, oversized bodies, unknown paths, and replayed or unauthorized requests. It never proxies to existing JARVIS API routes. Defaults use a 4 KiB request-body cap and TLS 1.2 minimum.
 
-Run the focused test cases with `npm run test:phonehub-gateway` (not executed as part of this implementation pass). The gateway factory does not generate certificates or select a LAN interface automatically. A future opt-in startup integration must present a trusted certificate to the Android client and must not weaken the existing loopback-only web server.
+Configure the optional listener with `JARVIS_PHONEHUB_HOST` (an explicit private LAN IP), `JARVIS_PHONEHUB_PORT` (optional, default 18443), `JARVIS_PHONEHUB_TLS_KEY` and `JARVIS_PHONEHUB_TLS_CERT` (file paths), and optionally `JARVIS_PHONEHUB_ALLOWED_ORIGINS` (comma-separated exact origins). Without a host, the gateway remains off. If TLS material is missing or invalid, startup logs the failure and leaves the gateway disabled; it never falls back to HTTP. The local-only owner API currently provides `/api/phonehub/status`, `POST /api/phonehub/pairing`, `POST /api/phonehub/devices/:id/grant`, and `DELETE /api/phonehub/devices/:id`. These APIs do not yet have a dedicated laptop UI.
+
+Run the focused test cases with `npm run test:phonehub-gateway` (not executed as part of this implementation pass). The gateway factory does not generate certificates or select a LAN interface automatically. Current status output is intentionally minimal, and notifications return an empty list until a notification provider is integrated. Device records and nonce replay state remain in memory and are lost on restart; do not treat this stage as production-ready. A future opt-in startup integration must present a trusted certificate to the Android client and must not weaken the existing loopback-only web server.
 
 ## Module API
 
