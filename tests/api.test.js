@@ -471,7 +471,7 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
     }
     r = await post('/api/skill/viva/questions', { topic: 'DBMS' });
     check('Skills', 'viva questions with the AI offline: a clean error, not a crash', r.status >= 400 && typeof r.json.error === 'string', r.status + ' ' + r.text);
-    // Skill packs (SKILL.md folders): the four shipped skills load from skills-bundled; instructions are never sent to the page.
+    // Skill packs (SKILL.md folders): bundled and personal skills load from the existing loader; instructions are never sent to the page.
     r = await get('/api/skills');
     check('Skill packs', 'the shipped skills are listed', r.json.success && ['code-review', 'plan-then-act', 'quick', 'research'].every(n => r.json.skills.some(s => s.name === n)), r.text.slice(0, 300));
     check('Skill packs', 'the list has hints and uses but never the instructions', r.json.skills.every(s => s.hint && !('body' in s)) && !/Never add facts from memory|Answer in at most three/.test(r.text));
