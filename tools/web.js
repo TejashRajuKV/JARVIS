@@ -4,6 +4,30 @@
    (callTool, toolStep, settings, todos…) come from script.js at call time. An intent that is not this area's returns ToolHandlers.NONE. */
 ToolHandlers.add('web', async function (p, raw, s, a) {
   switch (p.intent) {
+    case 'COMMERCE_COMPARE': {
+      const type = a.type === 'bus' ? 'bus' : 'product';
+      const payload = type === 'bus'
+        ? { type, from: String(a.from || '').slice(0, 100), to: String(a.to || '').slice(0, 100), date: String(a.date || '').slice(0, 40), provider: String(a.provider || 'all').slice(0, 20) }
+        : { type, query: String(a.query || s || '').slice(0, 160), provider: String(a.provider || 'all').slice(0, 20) };
+      if ((type === 'bus' && (!payload.from || !payload.to)) || (type === 'product' && !payload.query)) return { text: type === 'bus' ? 'Tell me the departure city and destination city so I can compare bus options.' : 'Which exact product or model should I compare?' };
+      const r = await callTool('/commerce/compare', payload);
+      if (!r || !r.success) return { text: 'I could not retrieve comparison results right now. ' + ((r && r.error) || 'Try again in a moment.'), error: true };
+      const lines = [];
+      lines.push(type === 'bus' ? '**Live bus-search comparison**' : '**Live product-search comparison**');
+      lines.push(type === 'bus' ? 'Route: **' + payload.from + ' → ' + payload.to + '**' + (payload.date ? ' · ' + payload.date : '') : 'Product: **' + payload.query + '**');
+      for (const provider of (r.providers || [])) {
+        lines.push('\n**' + provider.name + '**');
+        if (!provider.results || !provider.results.length) { lines.push('- No matching public listing found in this search.'); continue; }
+        for (const item of provider.results.slice(0, 3)) {
+          const price = item.priceCandidates && item.priceCandidates.length ? ' · observed price candidate: **' + item.priceCandidates[0].display + '**' : ' · no reliable price found in the accessible listing';
+          lines.push('- [' + item.title + '](' + item.url + ')' + price);
+        }
+      }
+      if (r.lowestObserved) lines.push('\n**Lowest observed listing candidate:** ' + r.lowestObserved.display + ' on ' + r.lowestObserved.provider + '. This is not a confirmed checkout total; verify exact model/route, date, availability, fees and offers before deciding.');
+      lines.push('\nPrices are live search/page observations, not guaranteed checkout totals. JARVIS does not book or purchase automatically.');
+      return { text: lines.join('\n'), tool: 'commerceCompare', suggestions: type === 'bus' ? ['Compare another date', 'Show government buses'] : ['Compare a different model', 'Check another budget'] };
+    }
+
     /* ---- web ---- */
     case 'OPEN_URL': {
       const m = (a.url || s).match(/(https?:\/\/)?(([a-z0-9-]+\.)+[a-z]{2,})(\/\S*)?/i);
