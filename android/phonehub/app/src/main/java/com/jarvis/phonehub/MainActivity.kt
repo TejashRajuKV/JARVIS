@@ -1,6 +1,6 @@
 package com.jarvis.phonehub
 
-import android.os.Bundle
+import android.os.Bundle\nimport android.content.Intent\nimport com.google.zxing.integration.android.IntentIntegrator
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
                         OutlinedTextField(endpoint, { endpoint = it }, label = { Text("Laptop HTTPS address") },
                             placeholder = { Text("https://192.168.1.10:18443") }, modifier = Modifier.fillMaxWidth(),
                             singleLine = true)
-                        OutlinedTextField(pairingId, { pairingId = it.trim() }, label = { Text("Pairing ID") },
+                        Button(onClick = { IntentIntegrator(this@MainActivity).setDesiredBarcodeFormats(IntentIntegrator.QR_CODE).setPrompt("Scan the one-time JARVIS Phone Hub QR").setBeepEnabled(false).setOrientationLocked(false).initiateScan() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Scan pairing QR") }\n                        OutlinedTextField(pairingId, { pairingId = it.trim() }, label = { Text("Pairing ID") },
                             modifier = Modifier.fillMaxWidth(), singleLine = true)
                         OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6) }, label = { Text("6-digit pairing code") },
                             modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -92,6 +92,38 @@ class MainActivity : ComponentActivity() {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
         }
         if (!TokenVault.load(this).isNullOrBlank()) PhoneHubNotificationWorker.schedule(this)
+    }
+
+
+    @Deprecated("Deprecated in Android API; ZXing's embedded scanner uses this callback")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        val result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
+        if (result != null) {
+            val contents = result.contents
+            if (contents.isNullOrBlank()) {
+                setUi { status = "QR scan cancelled." }
+            } else {
+                try {
+                    val payload = JSONObject(contents)
+                    require(payload.optInt("version") == 1) { "Unsupported pairing QR version" }
+                    val scannedEndpoint = payload.optString("endpoint")
+                    val scannedId = payload.optString("pairingId")
+                    val scannedCode = payload.optString("code")
+                    require(scannedEndpoint.startsWith("https://") && scannedId.matches(Regex("[a-fA-F0-9]{24}")) &&
+                        scannedCode.matches(Regex("[0-9]{6}"))) { "QR is not a valid JARVIS Phone Hub pairing code" }
+                    setUi {
+                        endpoint = scannedEndpoint
+                        pairingId = scannedId
+                        code = scannedCode
+                        status = "QR scanned. Confirm the laptop address, then tap Pair device."
+                    }
+                } catch (e: Exception) {
+                    setUi { status = "Invalid Phone Hub QR: " + safeMessage(e) }
+                }
+            }
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     private fun pair() = runOnIo {
