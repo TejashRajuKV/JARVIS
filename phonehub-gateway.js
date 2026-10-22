@@ -9,6 +9,7 @@ const net = require('node:net');
 const DEFAULT_MAX_BODY_BYTES = 4096;
 const DEFAULT_PORT = 18443;
 const CAPABILITY_ROUTES = new Set(['/v1/status', '/v1/notifications']);
+const STREAM_ROUTE = '/v1/events';
 
 function isPrivateLanAddress(value) {
   let address = String(value || '').split('%')[0];
@@ -79,6 +80,7 @@ function createPhoneHubRequestHandler(options = {}) {
     ? Math.min(options.maxBodyBytes, 16 * 1024) : DEFAULT_MAX_BODY_BYTES;
   const getStatus = typeof options.getStatus === 'function' ? options.getStatus : async () => ({ available: true });
   const getNotifications = typeof options.getNotifications === 'function' ? options.getNotifications : async () => [];
+  const subscribeNotifications = typeof options.subscribeNotifications === 'function' ? options.subscribeNotifications : null;
 
   return async function phoneHubRequestHandler(req, res) {
     try {
@@ -104,6 +106,42 @@ function createPhoneHubRequestHandler(options = {}) {
         return json(res, result.ok ? 200 : result.error === 'DEVICE_CAPACITY' ? 429 : 401, result.ok
           ? { ok: true, device: result.device, token: result.token }
           : { ok: false, error: result.error });
+      }
+      if (req.method === 'GET' && req.url === STREAM_ROUTE) {
+        const tokenHeader = String(req.headers.authorization || '');
+        const tokenMatch = /^Bearer ([A-Za-z0-9_-]{32,128})$/.exec(tokenHeader);
+        const nonce = String(req.headers['x-jarvis-nonce'] || '');
+        const result = auth.authorize({ token: tokenMatch ? tokenMatch[1] : '', nonce }, 'notifications');
+        if (!result.ok) return json(res, result.error === 'CAPABILITY_DENIED' ? 403 : 401, { error: result.error });
+        if (!subscribeNotifications) return json(res, 501, { error: 'EVENT_STREAM_UNAVAILABLE' });
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store, no-transform');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        if (res.flushHeaders) res.flushHeaders();
+        res.write(': connected\\n\\n');
+        let closed = false;
+        let unsubscribe = () => {};
+        const close = () => {
+          if (closed) return;
+          closed = true;
+          clearInterval(heartbeat);
+          unsubscribe();
+        };
+        unsubscribe = subscribeNotifications(item => {
+          if (closed || res.destroyed || res.writableEnded) return;
+          try { res.write('event: notification\\ndata: ' + JSON.stringify(item) + '\\n\\n'); }
+          catch { close(); }
+        });
+        const heartbeat = setInterval(() => {
+          if (closed || res.destroyed || res.writableEnded) return close();
+          try { res.write(': keepalive\\n\\n'); } catch { close(); }
+        }, 25_000);
+        if (heartbeat.unref) heartbeat.unref();
+        req.on('close', close);
+        res.on('close', close);
+        return;
       }
       if (req.method === 'GET' && CAPABILITY_ROUTES.has(req.url)) {
         const capability = req.url === '/v1/status' ? 'status' : 'notifications';
