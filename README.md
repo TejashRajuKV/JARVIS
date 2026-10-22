@@ -95,8 +95,10 @@ Everything below works today. The phrases are examples you can type or say; the 
 
 **🌐 Web & the world**
 - **Fresh facts:** it searches the web and the local AI answers **only from the pages it fetched**, with sources ("what's the latest Node.js version", "today's AI news", "price of RTX 5060 in India").
+- **Two research modes:** **Search Mode** retrieves and ranks web evidence and shows extracted passages with source links using zero LLM calls; **AI Research Mode** searches first, then synthesizes the retrieved evidence with a local Ollama model and inline citations. Research mode persists between turns; say “turn on Search Mode”, “switch to AI Research Mode”, or “what research mode is active?”
 - **Places:** "nearest restaurants to Kodigehalli, Bengaluru" → Google Maps with the category, location and sort worked out.
 - **Open or search:** "search google for…", "find react documentation" (opens the page), sites it knows, YouTube, weather, directions and distance, units and conversions, CS calculators (binary, hex, xor, complexity).
+- **Research mode controls:** “turn on Search Mode” (no LLM calls), “switch to AI Research Mode” (web evidence + local model), “what research mode is active?”, and “turn off Search Mode” (returns to AI Research Mode).
 - **Study-related web:** upcoming contests (Codeforces / LeetCode / CodeChef), hackathons, "research…" with sources.
 - **Honest when offline:** if the answer needs the web and Online tools is off, it says so and offers to turn it on — it never passes off old memory as current news.
 
