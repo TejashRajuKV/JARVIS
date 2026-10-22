@@ -117,6 +117,7 @@ class MainActivity : ComponentActivity() {
     private fun forgetPhone() {
         TokenVault.clear(this)
         PhoneHubNotificationWorker.cancel(this)
+        getSharedPreferences("phonehub_notifications", MODE_PRIVATE).edit().remove("last_seen_id").apply()
         setUi {
             status = "Phone token removed from this device. Revoke the paired device on the laptop too if needed."
             statusJson = ""
