@@ -62,7 +62,7 @@ There is also a **cinematic landing page** that introduces JARVIS: open `http://
 | ⌨ **JARVIS Code** | A coding chat of its own (**JARVIS CODE** button): pick a project folder in the Windows folder picker, choose **Build / Plan / Ask** and a model, describe what you want — JARVIS writes real files into the folder, opens the page, and **undo** takes it back. |
 | 🛠 **Coding** | Write → save → run code, **EXPLAIN & FIX** crashes in one click, **DSA coach** (hints before solutions), **website generator**, "open VS Code in *folder* and tell Copilot to…", and **dev environments that recover from failures** (missing dependencies → install → restart → verify). |
 | ⚡ **Automation** | Multi-step commands, **routines**, **triggers** ("when I plug in my charger…"), a **global hotkey** for any selected text, reminders that fire even with the tab closed. |
-| 📱 **Phone** | Current: ntfy reminders + authenticator-protected commands. In progress: Android-first secure local-Wi-Fi Phone Hub. Pairing/session primitives (`phonehub-auth.js`), a separate HTTPS gateway (`phonehub-gateway.js`), and loopback-only laptop pairing/device APIs are implemented behind opt-in configuration. The laptop pairing/device management page is available at `/phonehub.html`. An early native Android companion source scaffold now lives in `android/phonehub/` (manual pairing, Keystore-backed token encryption, status and notification fetch); it has not been built or run yet. The gateway now exposes a bounded recent-event feed populated by server-side reminders, deadline alerts, charger alerts, and trigger events; the Android app fetches it on demand and uses WorkManager for battery-aware background polling (not instant push). See `docs/PHONE-HUB.md` and `android/phonehub/README.md`. |
+| 📱 **Phone & calling** | Pair the Android companion through the separate HTTPS Phone Hub gateway. View device pairing and permissions at `/phonehub.html`; receive reminder/deadline notifications, use the Android speech → JARVIS reply → speech flow, and explicitly request a real outbound phone announcement call. The gateway is off by default and exposes only allowlisted routes. Remote Phone Hub access can use an explicitly configured Tailscale interface; see [Phone Hub setup](docs/PHONE-HUB.md) and [Calling setup](docs/CALLING.md). Android background notifications currently use WorkManager polling; physical-device end-to-end testing is still required. |
 | 🔐 **Safe & private** | Local-only server, permission tiers, Windows Hello approvals, **undo**, encrypted backups, keys that never leave the laptop. |
 
 
@@ -1256,6 +1256,13 @@ node -e "const D=require('./decider.js'); console.log(D.decide(D.signals('neares
 MIT — see `package.json`. Third-party: Express, unpdf (Mozilla pdf.js), qrcode-generator (MIT), Google Fonts via Fontsource.
 
 
-### Calling feature
+## Calling & Android voice
 
-The optional calling module and Android voice UI are documented in [docs/CALLING.md](docs/CALLING.md). Open `/calling.html` on the local JARVIS server to place an explicitly requested outbound announcement call after configuring server-side Twilio environment variables.
+JARVIS now includes an **opt-in outbound phone announcement** flow and an initial Android in-app voice flow:
+
+- **Outbound phone call:** configure Twilio credentials on the JARVIS server, then open `/calling.html` or issue the explicit desktop command “JARVIS, call me.” The call speaks a short message to your configured number; it is **not yet a two-way conversational cellular call**.
+- **Android voice:** the companion app captures one utterance, sends it through the capability-protected Phone Hub gateway, then speaks JARVIS's text reply. This is turn-based speech, not continuous full-duplex audio.
+- **Reminder calls:** off by default. Enable only if wanted with `JARVIS_CALL_ON_REMINDERS=true`; reminder calls also respect the JARVIS Alerts and panic switches and the configured quiet hours.
+- **Security:** calling credentials stay server-side. The Phone Hub gateway is separately configured, HTTPS-only, disabled unless explicitly enabled, and grants `voice` and `calls` capabilities separately. For away-from-home in-app voice, connect both devices to Tailscale and bind the gateway to the laptop's Tailscale IP; do not expose the general JARVIS server or forward gateway ports publicly.
+
+Start with [Calling setup](docs/CALLING.md), [Phone Hub setup and security](docs/PHONE-HUB.md), and the [Android companion guide](android/phonehub/README.md). This is an initial implementation: Twilio credentials, provider account restrictions, Android certificate trust, physical-device pairing, and real call delivery must be configured and verified by the operator. CI/build checks do not prove a real call or phone-network setup works.
