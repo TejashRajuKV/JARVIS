@@ -48,6 +48,10 @@ check('rank: an exact trigger phrase beats loose words', R.rank('give me a quick
 R.reset(); const none = R.pick('look into the latest news with sources and also review my code for bugs', skills);
 check('pick: two skills fitting about equally → say nothing rather than guess (unless one of its own phrases was used)', none === null || none.phrase === true, none);
 check('stemming: reviewing / reviews / reviewed meet "review"; sources meets source', R.stem('reviewing') === R.stem('review') + '' || R.content('reviewing reviews reviewed').length === 1);
+R.reset(); const explicit = R.pick('please research this topic with sources and evidence', skills);
+R.reset(); const buried = R.pick('I was talking about how to research this topic with sources and evidence', skills);
+check('an explicit trigger after a polite lead-in is recognized', explicit && explicit.name === 'research' && explicit.phrase === true, explicit);
+check('a trigger phrase buried in a sentence is not marked explicit for auto-run', buried && buried.name === 'research' && buried.phrase === false, buried);
 check('stop words and short words are dropped', R.content('what is the best way to do it').join() === 'best');
 check('words keep # and + (c++, c#) and hyphens split', R.content('c++ and c# step-by-step').includes('c++') && R.content('step-by-step').includes('step'));
 
