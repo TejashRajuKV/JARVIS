@@ -13,21 +13,20 @@ const cases = [
   ['', 'neutral']
 ];
 let failures = 0;
-for (const [input, expected] of cases) {
-  const got = EmotionIntelligence.detect(input);
-  if (got.mood !== expected) {
-    failures++;
-    console.error('FAIL', JSON.stringify(input), 'expected', expected, 'got', got.mood);
-  } else console.log('PASS', expected, JSON.stringify(input));
+function check(ok, label) {
+  if (!ok) { failures++; console.error('FAIL', label); }
+  else console.log('PASS', label);
 }
-const sad = EmotionIntelligence.detect("I'm feeling sad today");
-if (!EmotionIntelligence.instruction(sad).includes('warmly')) {
-  failures++;
-  console.error('FAIL sad cue should return gentle response guidance');
-} else console.log('PASS mood-specific response guidance');
-if (EmotionIntelligence.instruction(EmotionIntelligence.detect('open chrome')) !== '') {
-  failures++;
-  console.error('FAIL neutral input should not add emotional guidance');
-} else console.log('PASS neutral input adds no guidance');
-console.log((12 - failures) + '/12 emotional intelligence checks passed');
+for (const [input, expected] of cases) check(EmotionIntelligence.detect(input).mood === expected, 'mood: ' + expected + ' / ' + input);
+check(EmotionIntelligence.instruction(EmotionIntelligence.detect("I'm feeling sad today")).includes('warmly'), 'sad guidance');
+check(EmotionIntelligence.instruction(EmotionIntelligence.detect('open chrome')) === '', 'neutral adds no guidance');
+check(EmotionIntelligence.analyze('I am frustrated with your answer', []).target === 'jarvis', 'distinguishes frustration with JARVIS');
+check(EmotionIntelligence.analyze('I am stressed about my exam', []).target === 'college', 'distinguishes college stress');
+check(EmotionIntelligence.analyze('I am frustrated debugging this function', []).target === 'coding', 'distinguishes coding frustration');
+const inherited = EmotionIntelligence.analyze('what should I do next about it?', [{role:'user',text:'I am overwhelmed by my assignment',t:1}]);
+check(inherited.mood === 'anxious' && inherited.inherited, 'tentative emotional continuity for a follow-up');
+check(EmotionIntelligence.continuity('continue with that', [{role:'user',text:'help me debug this',t:1}]).length > 0, 'continuity hint on follow-up');
+check(EmotionIntelligence.continuity('open Chrome', [{role:'user',text:'help me debug this',t:1}]) === '', 'no continuity hint for unrelated command');
+check(EmotionIntelligence.instruction(EmotionIntelligence.detect('I am overwhelmed and stressed')).includes('one practical next action'), 'concise next-step guidance');
+console.log((19 - failures) + '/19 emotional intelligence checks passed');
 process.exitCode = failures ? 1 : 0;
