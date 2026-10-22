@@ -139,6 +139,7 @@
     try {
       const data = await api('/api/phonehub/pairing', { method: 'POST', body: '{}' });
       $('pairing-code').textContent = data.code;
+      $('pairing-id').textContent = data.pairingId;
       $('pairing-result').hidden = false;
       state.expiresAt = data.expiresAt;
       if (state.pairingTimer) clearInterval(state.pairingTimer);
