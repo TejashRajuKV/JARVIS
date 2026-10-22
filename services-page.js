@@ -36,10 +36,10 @@ const Services = (() => {
     const textOut = action.kind === 'whatsapp'
       ? 'WhatsApp opened with a **draft only**. Check the recipient and message, then press **Send** yourself. JARVIS did not send it.'
       : action.kind === 'movie'
-        ? prepared.summary + '\\n\\nI opened BookMyShow; choose the exact movie, cinema, showtime and seats, then review the total before confirming.'
+        ? prepared.summary + '\n\nI opened BookMyShow; choose the exact movie, cinema, showtime and seats, then review the total before confirming.'
         : action.kind === 'bus'
-          ? prepared.summary + '\\n\\nI opened redBus; verify the route/date and select your operator and seats yourself.'
-          : prepared.summary + '\\n\\nI opened the search page. Review the seller and final checkout details yourself; no order or payment was made.';
+          ? prepared.summary + '\n\nI opened redBus; verify the route/date and select your operator and seats yourself.'
+          : prepared.summary + '\n\nI opened the search page. Review the seller and final checkout details yourself; no order or payment was made.';
     return say(textOut, { tool: 'serviceHandoff', service: action.kind });
   }
   return { intercept, match };
