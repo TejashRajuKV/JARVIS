@@ -104,24 +104,49 @@ function loadAll(bundledDir, userDir) {
 }
 
 // The part of a skill the page needs (never the instructions themselves).
-const publicView = s => ({ name: s.name, label: s.name, hint: s.description, triggers: s.triggers, keywords: s.keywords, auto: !!s.auto, suggest: s.suggest !== false, uses: s.uses, source: s.source, truncated: s.truncated });
+const publicView = (s, enabled = true) => ({ name: s.name, label: s.name, hint: s.description, triggers: s.triggers, keywords: s.keywords, auto: !!s.auto, suggest: s.suggest !== false, uses: s.uses, source: s.source, truncated: s.truncated, enabled: enabled !== false });
 
 /* ---------- routes ---------- */
 module.exports = function setupSkillPacks(app, { llm, DEFAULT_MODEL, SANDBOX, bundledDir }) {
   const userDir = path.join(SANDBOX, 'Skills');
   const bundled = bundledDir || path.join(__dirname, 'skills-bundled');
+  const settingsFile = path.join(SANDBOX, '.skillpack-settings.json');
+  let settings = {};
+  try { const saved = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); if (saved && typeof saved === 'object' && !Array.isArray(saved)) settings = saved; } catch {}
+  const isEnabled = name => settings[name] !== false;
+  const saveSettings = () => {
+    fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+    const tmp = settingsFile + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(settings, null, 2), { mode: 0o600 });
+    fs.renameSync(tmp, settingsFile);
+  };
   let cache = loadAll(bundled, userDir);
   const reload = () => (cache = loadAll(bundled, userDir));
   const model = req => String((req.body && req.body.model) || DEFAULT_MODEL);
 
-  app.get('/api/skills', (req, res) => res.json({ success: true, skills: cache.skills.map(publicView), skipped: cache.skipped, folder: userDir }));
-  app.post('/api/skills/reload', (req, res) => { reload(); res.json({ success: true, count: cache.skills.length, skipped: cache.skipped }); });
+  app.get('/api/skills', (req, res) => {
+    const all = String(req.query && req.query.all || '') === '1';
+    const skills = cache.skills.filter(s => all || isEnabled(s.name)).map(s => publicView(s, isEnabled(s.name)));
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, skills, skipped: cache.skipped, folder: userDir });
+  });
+  app.post('/api/skills/reload', (req, res) => { reload(); res.json({ success: true, count: cache.skills.length, enabled: cache.skills.filter(s => isEnabled(s.name)).length, skipped: cache.skipped }); });
+  app.post('/api/skills/:name/enabled', (req, res) => {
+    const name = String(req.params.name || '').toLowerCase();
+    if (!NAME_RE.test(name) || !cache.skills.some(s => s.name === name)) return res.status(404).json({ error: 'SKILL_NOT_FOUND' });
+    if (!req.body || typeof req.body.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
+    const previous = isEnabled(name);
+    if (req.body.enabled) delete settings[name]; else settings[name] = false;
+    try { saveSettings(); } catch (e) { if (previous) delete settings[name]; else settings[name] = false; return res.status(500).json({ error: 'Could not save skill settings.' }); }
+    res.json({ success: true, name, enabled: isEnabled(name) });
+  });
 
   // Runs one skill: its instructions are the system prompt, the user's words (plus anything the page fetched) are the input.
   app.post('/api/skill/run', async (req, res) => {
     const b = req.body || {};
     const skill = cache.skills.find(s => s.name === String(b.skill || '').toLowerCase());
     if (!skill) return res.status(404).json({ error: 'I don’t have a skill called "' + String(b.skill || '').slice(0, 40) + '".' });
+    if (!isEnabled(skill.name)) return res.status(403).json({ error: 'That skill is disabled. Enable it in the Skill Hub first.' });
     const input = String(b.input || '').trim().slice(0, MAX_INPUT);
     if (!input) return res.status(400).json({ error: 'What should the ' + skill.name + ' skill work on?' });
     try {
