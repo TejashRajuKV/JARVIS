@@ -139,8 +139,16 @@ function createPhoneHubRequestHandler(options = {}) {
         const body = await readJsonBody(req, maxBodyBytes);
         const message = String(body.message || '').replace(/[\\u0000-\\u001f\\u007f]/g, ' ').trim().slice(0, 600);
         if (!message) return json(res, 400, { error: 'CALL_MESSAGE_REQUIRED' });
-        const call = await makeCall({ message }, { source: 'phone' });
-        return json(res, 202, { ok: true, call });
+        try {
+          const call = await makeCall({ message }, { source: 'phone' });
+          return json(res, 202, { ok: true, call });
+        } catch (error) {
+          const code = error.code || 'CALL_PROVIDER_FAILED';
+          const status = code === 'CALLING_NOT_CONFIGURED' ? 503 : code === 'CALL_RATE_LIMITED' ? 429 :
+            code === 'PHONE_NUMBER_MUST_BE_E164' || code === 'CALL_MESSAGE_REQUIRED' ? 400 :
+            code === 'CALL_QUIET_HOURS' || code === 'REMINDER_CALLS_DISABLED' ? 403 : 502;
+          return json(res, status, { error: code, retryAfterMs: error.retryAfterMs });
+        }
       }
       if (req.method === 'GET' && req.url === STREAM_ROUTE) {
         const tokenHeader = String(req.headers.authorization || '');
