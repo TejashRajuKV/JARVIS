@@ -20,3 +20,9 @@ tests/quality-report*.json
 
 # Offline speech (whisper.cpp program + model), installed by install-whisper.ps1 — large, not part of the source
 .whisper/
+
+# Android Studio / Gradle local build outputs
+android/phonehub/.gradle/
+android/phonehub/**/build/
+android/phonehub/local.properties
+android/phonehub/.idea/
