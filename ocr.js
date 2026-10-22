@@ -69,6 +69,50 @@ module.exports = function setupOCR(app, { IS_WIN, IS_MAC }) {
     return { text: String(data.text || ''), lines: (data.text || '').split('\n').filter(Boolean).length, engine: 'tesseract' };
   }
 
+  // Shared in-process image OCR for screenshot indexing and saved-photo analysis.
+  // Earlier callers looked for app.locals.ocrWords, but this module never registered it;
+  // consequently screenshot indexing and photo OCR silently reported that no reader existed.
+  app.locals.ocrWords = async function readImageText(input) {
+    const buffer = Buffer.isBuffer(input) ? input : Buffer.from(input || []);
+    if (!buffer.length || buffer.length > 12 * 1024 * 1024) return { error: 'Image is empty or too large (12 MB maximum).' };
+    let ext = null;
+    if (buffer.subarray(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]))) ext = 'png';
+    else if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) ext = 'jpg';
+    else if (buffer.length >= 12 && buffer.subarray(0,4).toString('ascii') === 'RIFF' && buffer.subarray(8,12).toString('ascii') === 'WEBP') ext = 'webp';
+    if (!ext) return { error: 'Unsupported image format. Use PNG, JPEG, or WEBP.' };
+    const file = path.join(os.tmpdir(), 'jarvis_ocr_shared_' + process.pid + '_' + crypto.randomBytes(8).toString('hex') + '.' + ext);
+    try { fs.writeFileSync(file, buffer, { flag: 'wx', mode: 0o600 }); }
+    catch { return { error: 'Could not create a temporary image for OCR.' }; }
+    try {
+      if (IS_WIN) {
+        const script = `
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+function Await($op, [Type]$type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
+[void][Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]
+[void][Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
+[void][Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime]
+$file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($env:JARVIS_OCR_IMAGE)) ([Windows.Storage.StorageFile])
+$stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+$dec = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+$sb = Await ($dec.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+$eng = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+if (-not $eng) { [Console]::Out.WriteLine((@{ error = 'No Windows OCR language is installed.' } | ConvertTo-Json -Compress)); return }
+$res = Await ($eng.RecognizeAsync($sb)) ([Windows.Media.Ocr.OcrResult])
+$lines = @($res.Lines | ForEach-Object { $_.Text })
+[Console]::Out.WriteLine((@{ text = ($lines -join "`n"); lines = $lines.Count; engine = 'winrt' } | ConvertTo-Json -Compress))
+`;
+        const result = await ps(script, { JARVIS_OCR_IMAGE: file }, 30000);
+        if (!result.error) return { text: String(result.text || '').slice(0, 20000), lines: Number(result.lines) || 0, engine: 'winrt' };
+        // On Windows, fall back to Tesseract if the language pack or WinRT path is unavailable.
+      }
+      const result = await ocrWithTesseract(file);
+      return result.error ? result : { ...result, text: String(result.text || '').slice(0, 20000) };
+    } catch (error) {
+      return { error: 'Image text recognition failed: ' + String(error.message || error).slice(0, 120) };
+    } finally { fs.unlink(file, () => {}); }
+  };
+
   // ---- screenshot cleanup (deletes PNGs older than 1 hour) ----
   function cleanupOldScreenshots() {
     const desktop = path.join(os.homedir(), 'Desktop');
