@@ -1,4 +1,7 @@
 'use strict';
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { createPhoneHubAuth, DEFAULT_CAPABILITIES, PAIRING_CAPABILITIES, DEFAULT_MAX_ACTIVE_PAIRINGS, DEFAULT_MAX_USED_NONCES } = require('../phonehub-auth.js');
 
 let now = 1_800_000_000_000;
@@ -70,5 +73,33 @@ const lp = limited.beginPairing();
 const ld = limited.completePairing({ pairingId: lp.pairingId, code: lp.code });
 check('first nonce accepted when replay cache has room', limited.authenticate(req(ld.token, 'limited_nonce_001')).ok);
 check('new nonce rejected at replay-cache capacity', limited.authenticate(req(ld.token, 'limited_nonce_002')).error === 'NONCE_CAPACITY');
+// Persistence regression coverage: sessions, permissions, revocation and nonce replay survive restart.
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-phonehub-'));
+const stateFile = path.join(tempDir, 'state.json');
+try {
+  const persistent = createPhoneHubAuth({ now: () => now, stateFile });
+  const pp = persistent.beginPairing();
+  const pd = persistent.completePairing({ pairingId: pp.pairingId, code: pp.code, deviceName: 'Persisted Android' });
+  persistent.authenticate(req(pd.token, 'persisted_nonce_001'));
+  const restored = createPhoneHubAuth({ now: () => now, stateFile });
+  check('paired device survives restart', restored.listDevices().some(d => d.id === pd.device.id));
+  check('bearer token remains valid after restart', restored.authenticate(req(pd.token, 'persisted_nonce_002')).ok);
+  check('nonce replay is rejected across restart', restored.authenticate(req(pd.token, 'persisted_nonce_001')).error === 'REPLAYED_NONCE');
+  restored.grant(pd.device.id, ['status', 'contacts.read']);
+  check('granted capabilities survive restart', createPhoneHubAuth({ now: () => now, stateFile }).listDevices()
+    .some(d => d.id === pd.device.id && d.capabilities.includes('contacts.read')));
+  const revoker = createPhoneHubAuth({ now: () => now, stateFile });
+  revoker.revoke(pd.device.id);
+  check('device revocation survives restart', createPhoneHubAuth({ now: () => now, stateFile })
+    .listDevices().find(d => d.id === pd.device.id).revoked);
+  check('state file uses owner-only permissions where supported', (fs.statSync(stateFile).mode & 0o777) === 0o600);
+  const corruptFile = path.join(tempDir, 'corrupt.json');
+  fs.writeFileSync(corruptFile, '{not-json');
+  let rejected = false;
+  try { createPhoneHubAuth({ stateFile: corruptFile }); } catch { rejected = true; }
+  check('corrupt state fails closed instead of silently forgetting paired devices', rejected);
+} finally {
+  fs.rmSync(tempDir, { recursive: true, force: true });
+}
 console.log('phonehub-auth: ' + (total - failures) + '/' + total);
 process.exitCode = failures ? 1 : 0;
