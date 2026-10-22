@@ -632,7 +632,11 @@ const Agent = (() => {
   // plan: { goal, steps:[step] } · opts: { source:'split'|'planner'|'chat'|'routine', unattended, stopOnFail, ms_route, ms_plan }
   async function execute(plan, opts) {
     opts = opts || {};
-    await registry();
+    try { await registry(); } catch (error) {
+      const why = String(error && error.message || error || 'unknown error').split('\n')[0].slice(0, 140);
+      log('err', 'agent registry unavailable: ' + why);
+      return { runStatus: 'failed', text: 'I couldn’t start this task because the permission registry could not be loaded. Nothing was changed.' + (why ? '\n\nDetails: ' + why : ''), intent: 'AGENT_RUN', noPersona: true };
+    }
     const run = { id: newId(), goal: plan.goal || '', source: opts.source || 'split', steps: plan.steps, unattended: !!opts.unattended, t0: performance.now(),
       ms_route: Math.round(opts.ms_route || 0), ms_plan: Math.round(opts.ms_plan || 0), previewAccepted: false, cancelled: false, notes: opts.notes || [] };
     // Preview (dry run): any plan the model helped build with 2+ steps, or one that needs permission — so a
@@ -667,7 +671,17 @@ const Agent = (() => {
       const s = run.steps[i];
       const unmet = (s.needs || []).map(id => run.steps.find(x => x.id === id)).filter(d => d && ['failed', 'declined', 'blocked', 'notrun'].includes(d.status));
       if (unmet.length) { s.status = 'notrun'; s.note = 'skipped — step ' + (run.steps.indexOf(unmet[0]) + 1) + ' (' + unmet[0].label + ') didn’t complete'; continue; }
-      await runStep(run, s, i === 0 && !!opts.preApproved);
+      // A failed status probe, verification call, or unexpected handler exception must not strand the
+      // execution record as RUNNING. Convert step-level exceptions into explicit failures and let the
+      // normal dependency/stopOnFail logic decide what may run next.
+      try { await runStep(run, s, i === 0 && !!opts.preApproved); }
+      catch (error) {
+        const why = String(error && error.message || error || 'unknown error').split('\n')[0].replace(/[<>]/g, '').slice(0, 140);
+        s.status = 'failed';
+        s.note = 'execution error: ' + why;
+        s.ms_execute = s.ms_execute == null ? 0 : s.ms_execute;
+        log('err', run.id + ' · ' + s.id + ' failed safely: ' + why);
+      }
       saveRun(recOf(run, true));
       if (!run.unattended && run.steps.length > 1) setState('EXECUTING', run.id + ' · ' + (i + 1) + '/' + run.steps.length);
       if (s.status === 'declined' || (s.status === 'failed' && opts.stopOnFail)) {

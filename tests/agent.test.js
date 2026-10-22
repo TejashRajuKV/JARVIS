@@ -407,6 +407,27 @@ for (const t of ['create a project', 'create a new folder called notes', 'what i
     SAFETY.push(['interrupted: INSPECT shows it as INTERRUPTED', { status: (String(card).match(/STATUS: \w+/) || [card])[0] }, x => x.status === 'STATUS: INTERRUPTED']);
     SAFETY.push(['interrupted: a second sweep finds nothing new', { n: Agent.sweepInterrupted().length }, x => x.n === 0]);
   }
+  // An exception in a preflight/status probe used to escape the executor before finish(), leaving the
+  // task marked RUNNING forever. It must now become a failed step, persist a final record, and obey stopOnFail.
+  {
+    const previousCallTool = global.callTool, previousExecuteTool = global.executeTool;
+    let toolCalls = 0;
+    global.callTool = async url => {
+      if (url === '/tool/runningApps') throw new Error('simulated status probe failure');
+      return {};
+    };
+    global.executeTool = async () => { toolCalls++; return { text: 'should not run' }; };
+    const result = await Agent.execute({ goal: 'preflight exception recovery', steps: [
+      { id: 'step_1', tool: 'open_app', intent: 'OPEN_APPLICATION', args: { app: 'chrome' }, text: 'open chrome', tier: 'safe', reason: '', label: 'Open Chrome' },
+      { id: 'step_2', tool: 'add_todo', intent: 'ADD_TODO', args: { text: 'follow up' }, text: 'add follow up', tier: 'safe', reason: '', label: 'Add follow up' },
+    ] }, { source: 'split', stopOnFail: true });
+    const rec = Agent.lastRuns(1)[0];
+    SAFETY.push(['preflight exception is recorded as a failed step, not an unhandled rejection', result, x => x.runStatus === 'failed' && /execution error: simulated status probe failure/.test(x.text)]);
+    SAFETY.push(['preflight exception finalizes the run and stops later dependent work', { toolCalls, active: Agent.active().length, running: rec.running, first: rec.steps[0].status, second: rec.steps[1].status }, x => x.toolCalls === 0 && x.active === 0 && !x.running && x.first === 'failed' && x.second === 'notrun']);
+    global.callTool = previousCallTool;
+    global.executeTool = previousExecuteTool;
+  }
+
   let sfail = 0;
   for (const [d, r, ok] of SAFETY) if (!ok(r)) { sfail++; console.log('SAFETY FAIL  ' + d + ' → ' + JSON.stringify(r)); }
   console.log(`safety: ${SAFETY.length - sfail}/${SAFETY.length}`);
