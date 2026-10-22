@@ -994,6 +994,7 @@ When **Settings → Show how I understood you** is on (or you ask "how did you u
 | `chatarchive.js` | The monthly chat archive, date phrases (“last week”), search, forget |
 | `ttparse.js`, `student-page.js`, `studyserver.js` | Timetable reading (text, `.ics`, OCR word boxes) · timetable import, bunk-tomorrow, lecture and exam mode · lecture notes and exam questions (server) |
 | `lifeparse.js`, `life-page.js` | Expense, habit and quick-capture sentences (pure) · the chat side of expenses, habits, capture, keep-alive, drive backup and screenshot search |
+| `services-page.js`, `commerce.js` | Explicit WhatsApp draft, movie/bus ticket and shopping hand-offs; provider URLs are validated server-side and never send/pay/book automatically |
 | `keepalive.js`, `keepalive.ps1/.vbs`, `mirror.js`, `shotindex.js` | Keep-alive scheduled task and its checker · the plain drive backup · the screenshot text index (all laptop-page-only routes) |
 | `assignparse.js`, `traceparse.js` | Assignment sheet text → title/due/questions · error text → error type and your own file:line frames (pure) |
 | `csp.js`, `cdnpins.js`, `lock-page.js` | The page's Content-Security-Policy · fingerprints of the camera libraries fetched from the CDN · the unlock page's script (it used to be inline) |
@@ -1093,6 +1094,9 @@ npm run test:live
 | `lifeparse.test.js` · `life-page.test.js` | 166 · 149 | Expense, habit, streak and capture sentences (and ordinary sentences that must not be taken) · keep-alive, drive backup, expenses, habits, capture and screenshot-search flows with fake servers: confirmations, undo, phone refusal |
 | `keepalive.test.js` · `mirror.test.js` · `regen.test.js` | 21 · 36 · 23 | The scheduled-task checker and its states · the drive backup on temp folders (changed files, kept versions, never deleting, markers, full drive) · regenerable-folder cleanup |
 | `shotindex.test.js` | 38 | Screenshot text index on temp folders with a fake reader: depth, changes, deletions, budgets, forgetting, `open` only for indexed files |
+| `commerce.test.js` | — | WhatsApp draft links, phone validation, movie/bus ticket hand-offs, shopping searches and manual-purchase safeguards |
+| `services-page.test.js` | — | Explicit command parsing for WhatsApp, movies, buses and shopping; ordinary conversation must not match |
+| `saved-vision.test.js` | — | Saved-image analysis refuses cross-site requests and paths outside approved screenshot folders before calling the model |
 | `assigntrace.test.js` · `studyplus.test.js` | 52 · 43 | Assignment sheets (day-first dates, times, questions) and stack traces (Node, Python, Java, gcc, TypeScript) · classes that just ended, free gaps, plan fitting, end-sem marks |
 | `devtools.test.js` · `dev-page.test.js` | 42 · 96 | Real temp git repositories: summary windows, my commits only, secret files kept out of the diff, error frames read only inside project folders · the chat side with a fake AI |
 | `whisper.test.js` · `stt-page.test.js` | 36 · 16 | WAV conversion and checks, finding the program and model, silence skipping, one-at-a-time, with a fake program · the page recorder with a fake microphone: cuts at pauses, ordered pieces, error reporting, release |
