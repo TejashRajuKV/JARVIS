@@ -20,9 +20,9 @@ The future Phone Gateway must:
 
 ## Gateway module
 
-`phonehub-gateway.js` exports `createPhoneHubRequestHandler()` and `createPhoneHubHttpsServer()`. The HTTPS factory requires a private IPv4 RFC1918 or IPv6 ULA bind address and both TLS key and certificate; it refuses wildcard, loopback, public, or plaintext binds. The handler accepts only `/health`, `POST /v1/pair`, `GET /v1/status`, and `GET /v1/notifications`. It rejects public peers, unexpected Host/Origin values, non-JSON pairing bodies, oversized bodies, unknown paths, and replayed or unauthorized requests. It never proxies to existing JARVIS API routes. Defaults use a 4 KiB request-body cap and TLS 1.2 minimum.
+`phonehub-gateway.js` exports `createPhoneHubRequestHandler()` and `createPhoneHubHttpsServer()`. The HTTPS factory requires a private IPv4 RFC1918 or IPv6 ULA bind address and both TLS key and certificate; it refuses wildcard, loopback, public, or plaintext binds. The handler accepts only `/health`, `POST /v1/pair`, `GET /v1/status`, and `GET /v1/notifications`. It independently rejects plaintext requests (even if accidentally mounted on an HTTP server), public peers, unexpected Host/Origin values, non-JSON pairing bodies, oversized bodies, unknown paths, and replayed or unauthorized requests. It never proxies to existing JARVIS API routes. Defaults use a 4 KiB request-body cap and TLS 1.2 minimum.
 
-The gateway factory does not generate certificates or select a LAN interface automatically. A future opt-in startup integration must present a trusted certificate to the Android client and must not weaken the existing loopback-only web server.
+Run the focused test cases with `npm run test:phonehub-gateway` (not executed as part of this implementation pass). The gateway factory does not generate certificates or select a LAN interface automatically. A future opt-in startup integration must present a trusted certificate to the Android client and must not weaken the existing loopback-only web server.
 
 ## Module API
 
