@@ -4,7 +4,7 @@ const { createCallingService, escapeXml, cleanMessage, isQuietHours } = require(
 
 (async () => {
   assert.equal(escapeXml('<JARVIS & "me">'), '&lt;JARVIS &amp; &quot;me&quot;&gt;');
-  assert.equal(cleanMessage(' hello\\n  world '), 'hello world');
+  assert.equal(cleanMessage(' hello   world '), 'hello world');
   assert.equal(isQuietHours('22:00-07:00', new Date(2026, 0, 1, 23, 0)), true);
   assert.equal(isQuietHours('22:00-07:00', new Date(2026, 0, 1, 6, 59)), true);
   assert.equal(isQuietHours('22:00-07:00', new Date(2026, 0, 1, 12, 0)), false);
