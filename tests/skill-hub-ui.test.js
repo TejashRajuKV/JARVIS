@@ -19,6 +19,6 @@ const server=fs.readFileSync(path.join(root,'server.js'),'utf8');
 check('screenshot image endpoint restricts files to known screenshot folders and local page',server.includes('screenshotLocalOnly')&&server.includes("/api/tool/screenshots/:id")&&server.includes('JARVIS_screenshot_'));
 const script=fs.readFileSync(path.join(root,'script.js'),'utf8');
 check('fuzzy skill match cannot auto-run a skill without an explicit trigger phrase',script.includes('if (skillHint && skillHint.auto && skillHint.phrase)'));
-check('shopping comparison opens Amazon, Flipkart and Google Shopping without inventing a cheapest-price claim',hub.includes('amazon.in/s?k=')&&hub.includes('flipkart.com/search?q=')&&hub.includes('tbm=shop')&&hub.includes('will not name a cheapest seller')||hub.includes('does not name a cheapest seller'));
+check('shopping comparison opens Amazon, Flipkart and Google Shopping without inventing a cheapest-price claim',hub.includes('amazon.in/s?k=')&&hub.includes('flipkart.com/search?q=')&&hub.includes('tbm=shop')&&(hub.includes('will not name a cheapest seller')||hub.includes('does not name a cheapest seller')));
 check('bus comparison supports AbhiBus, redBus and official-government portal discovery',hub.includes('site:abhibus.com')&&hub.includes('site:redbus.in')&&hub.includes('official government bus booking'));
 console.log('skill-hub-ui: '+(total-fail)+'/'+total);process.exitCode=fail?1:0;
