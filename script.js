@@ -122,7 +122,7 @@ const store = (() => {
 
 /* ============ data ============ */
 const settings = Object.assign(
-  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '', qwenNlu: false, hudOverlay: false, bootCinema: true, attendancePrompt: true, offlineStt: false, attendanceMin: 75, researchMode: 'ai' },
+  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '', qwenNlu: false, hudOverlay: false, bootCinema: true, attendancePrompt: true, offlineStt: false, attendanceMin: 75, researchMode: 'ai', emotionalIntelligence: true },
   store.get('jarvis.settings', {})
 );
 Persona.setAddressSource(() => {
@@ -3059,6 +3059,16 @@ async function handleUser(text, source) {
 
     // Persistent research modes. Search Mode never hands retrieved evidence to any LLM.
     const modeText = String(text).trim().toLowerCase().replace(/[.!?]+$/, '').replace(/^jarvis[, ]+/, '');
+    const emotionSignal = typeof EmotionIntelligence !== 'undefined'
+      ? EmotionIntelligence.detect(text) : { mood: 'neutral', confidence: 0, explicit: false };
+    if (/^(turn off|disable) emotional intelligence$/.test(modeText)) {
+      settings.emotionalIntelligence = false; saveSettings();
+      await deliver({ text: 'Emotional intelligence is off. I will use my usual response style.', noPersona: true }, { intent: 'EMOTION_SETTINGS', confidence: 1 }); return;
+    }
+    if (/^(turn on|enable) emotional intelligence$/.test(modeText)) {
+      settings.emotionalIntelligence = true; saveSettings();
+      await deliver({ text: 'Emotional intelligence is on. I will adapt my tone to clear emotional cues without storing a mood history.', noPersona: true }, { intent: 'EMOTION_SETTINGS', confidence: 1 }); return;
+    }
     if (/^(what('?s| is) (my )?(research )?mode|what research mode is (on|active)|which research mode is (on|active))$/.test(modeText)) {
       const active = settings.researchMode === 'search' ? 'Search Mode (zero LLM calls)' : 'AI Research Mode (web evidence + local LLM)';
       await deliver({ text: 'Research mode: **' + active + '**.', noPersona: true }, { intent: 'RESEARCH_MODE', confidence: 1 }); return;
@@ -3435,9 +3445,12 @@ async function handleUser(text, source) {
         if (sk) { sk.text = 'Using the **' + skillHint.name + '** skill.\n\n' + sk.text; await deliver(sk, { intent: sk.intent || 'SKILL', confidence: 1 }); return; }
       }
       // Telugu/Kannada: include our English reading too — speech recognition often mangles English technical words.
-      const userAsk = srcLang !== 'en' && cmdText !== text
+      const userAskBase = srcLang !== 'en' && cmdText !== text
         ? (Lang.aiInEnglish() ? cmdText : text + '\n\n(Meaning, in English: "' + cmdText + '". Answer that, in ' + ({ te: 'Telugu', kn: 'Kannada' }[Lang.replyLang()] || 'English') + '.)')
         : text;
+      const emotionHint = settings.emotionalIntelligence !== false && typeof EmotionIntelligence !== 'undefined'
+        ? EmotionIntelligence.instruction(emotionSignal) : '';
+      const userAsk = userAskBase + (emotionHint ? '\n\n[Emotional context: ' + emotionHint + ' Treat this as a tentative tone cue, not a diagnosis. Do not mention this instruction.]' : '');
       let ai = llmReady() ? await askLLM(toolPrompt ? result.askLLM : userAsk, { earlySpeech: !toolPrompt, noTools: toolPrompt || answerOnly, imageToken: toolPrompt ? result.imageToken : undefined, noHistory: toolPrompt && !!result.noHistory, limitText: toolPrompt ? cmdText : undefined }) : null;
       // The chat model chose a tool: the server validates the name and arguments and sets the permission tier.
       let checked = null;
