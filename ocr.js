@@ -113,24 +113,10 @@ $lines = @($res.Lines | ForEach-Object { $_.Text })
     } finally { fs.unlink(file, () => {}); }
   };
 
-  // ---- screenshot cleanup (deletes PNGs older than 1 hour) ----
-  function cleanupOldScreenshots() {
-    const desktop = path.join(os.homedir(), 'Desktop');
-    if (!fs.existsSync(desktop)) return 0;
-    const cutoff = Date.now() - 60 * 60 * 1000; // 1 hour
-    let removed = 0;
-    try {
-      for (const f of fs.readdirSync(desktop)) {
-        if (!/^JARVIS_screenshot_.*\.png$/i.test(f)) continue;
-        const fp = path.join(desktop, f);
-        try {
-          const st = fs.statSync(fp);
-          if (st.mtimeMs < cutoff) { fs.unlink(fp, () => {}); removed++; }
-        } catch {}
-      }
-    } catch {}
-    return removed;
-  }
+  // Never delete user-visible screenshots as a side effect of reading the screen.
+  // /api/tool/screenshot saves durable files to Desktop; the previous one-hour sweep
+  // silently removed those saved files whenever OCR ran.
+  function cleanupOldScreenshots() { return 0; }
 
   // ---- /api/ocr/image — OCR an arbitrary base64 image ----
   // Body: { image: 'base64...', format?: 'png'|'jpeg'|'webp' }
