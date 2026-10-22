@@ -2,6 +2,12 @@ package com.jarvis.phonehub
 
 import android.os.Bundle
 import android.content.Intent
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.RecognitionListener
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import com.google.zxing.integration.android.IntentIntegrator
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -38,6 +44,9 @@ class MainActivity : ComponentActivity() {
     private var statusJson by mutableStateOf("")
     private var notificationText by mutableStateOf("No notifications loaded")
     private var busy by mutableStateOf(false)
+    private var callMessage by mutableStateOf("JARVIS is calling to remind you to check in.")
+    private var voiceReply by mutableStateOf("")
+    private var tts: TextToSpeech? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,6 +77,10 @@ class MainActivity : ComponentActivity() {
                             Button(onClick = { refreshStatus() }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("Refresh status") }
                             Button(onClick = { refreshNotifications() }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("Notifications") }
                         }
+                        Button(onClick = { startVoiceSession() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Speak to JARVIS") }
+                        if (voiceReply.isNotBlank()) Card(modifier = Modifier.fillMaxWidth()) { Text(voiceReply, modifier = Modifier.padding(14.dp)) }
+                        OutlinedTextField(callMessage, { callMessage = it.take(600) }, label = { Text("Message for a real phone call") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                        Button(onClick = { callMe() }, enabled = !busy && callMessage.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Call my phone") }
                         Button(onClick = { forgetPhone() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                             Text("Forget this phone")
                         }
@@ -94,6 +107,7 @@ class MainActivity : ComponentActivity() {
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
         }
+        tts = TextToSpeech(this) { result -> if (result == TextToSpeech.SUCCESS) tts?.language = Locale.getDefault() }
         if (!TokenVault.load(this).isNullOrBlank()) PhoneHubNotificationWorker.schedule(this)
     }
 
@@ -127,6 +141,66 @@ class MainActivity : ComponentActivity() {
             return
         }
         super.onActivityResult(requestCode, resultCode, data)
+    }
+
+
+    private fun startVoiceSession() {
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 1002)
+            setUi { status = "Allow microphone access, then tap Speak to JARVIS again." }
+            return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            setUi { status = "Speech recognition is unavailable on this device." }
+            return
+        }
+        val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to JARVIS")
+        }
+        recognizer.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) { setUi { status = "Listening…" } }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { setUi { status = "Thinking…" } }
+            override fun onError(error: Int) {
+                recognizer.destroy()
+                setUi { status = "Speech recognition failed (code $error). Check microphone and speech service." }
+            }
+            override fun onResults(results: Bundle?) {
+                recognizer.destroy()
+                val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
+                if (spoken.isBlank()) { setUi { status = "I did not catch that. Try again." }; return }
+                runWithToken { client, token ->
+                    setUi { status = "You: " + spoken.take(180) }
+                    val reply = client.voiceReply(token, spoken)
+                    setUi {
+                        voiceReply = reply
+                        status = if (reply.isBlank()) "JARVIS returned an empty reply." else "JARVIS replied."
+                        if (reply.isNotBlank()) tts?.speak(reply, TextToSpeech.QUEUE_FLUSH, null, "jarvis-voice-reply")
+                    }
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        recognizer.startListening(intent)
+    }
+
+    private fun callMe() = runWithToken { client, token ->
+        val response = client.callJarvis(token, callMessage)
+        val call = response.optJSONObject("call")
+        setUi { status = "Call requested. Provider status: " + (call?.optString("status") ?: "queued") }
+    }
+
+    override fun onDestroy() {
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
+        super.onDestroy()
     }
 
     private fun pair() = runOnIo {
