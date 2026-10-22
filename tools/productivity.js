@@ -4,6 +4,17 @@
    (callTool, toolStep, settings, todos…) come from script.js at call time. An intent that is not this area's returns ToolHandlers.NONE. */
 ToolHandlers.add('productivity', async function (p, raw, s, a) {
   switch (p.intent) {
+    case 'CALL_PHONE': {
+      const message = String(a.message || 'JARVIS is calling because you asked it to.').trim().slice(0, 600);
+      try {
+        const response = await fetch('/api/calling/call', { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) });
+        const data = await response.json();
+        if (!response.ok) return { text: 'I could not place the call: ' + String(data.error || 'calling unavailable') + '.', error: data.error || 'call_failed', tool: 'calling' };
+        return { text: 'I have requested the phone call. Provider status: ' + String(data.status || 'queued') + '.', tool: 'calling', op: { kind: 'phone-call', status: data.status || 'queued' } };
+      } catch (error) {
+        return { text: 'I could not reach the calling service. Check the calling configuration and try again.', error: 'calling_unreachable', tool: 'calling' };
+      }
+    }
     /* ---- productivity ---- */
     case 'BLOCK_DISTRACTIONS': {
       const DISTRACTORS = Agent.DISTRACTORS;
