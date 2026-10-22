@@ -21,9 +21,10 @@ internal class PhoneHubClient(baseUrl: String) {
             "URL must not contain credentials, a query, or a fragment"
         }
         require(uri.path.isNullOrEmpty() || uri.path == "/") { "Enter only the gateway origin, not an API path" }
-        require(uri.port in 1..65535 && !uri.host.isNullOrBlank()) { "Enter an HTTPS IP address and port" }
-        require(isPrivateAddress(uri.host)) { "Use the laptop's private LAN IP address" }
-        root = "https://" + (if (uri.host.contains(':')) "[${uri.host}]" else uri.host) + ":" + uri.port
+        val host = uri.host?.removePrefix("[")?.removeSuffix("]") ?: ""
+        require(uri.port in 1..65535 && host.isNotBlank()) { "Enter an HTTPS IP address and port" }
+        require(isPrivateAddress(host)) { "Use the laptop's private LAN IP address" }
+        root = "https://" + (if (host.contains(':')) "[$host]" else host) + ":" + uri.port
     }
 
     fun pair(pairingId: String, code: String, deviceName: String): JSONObject {
