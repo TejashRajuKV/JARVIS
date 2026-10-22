@@ -87,3 +87,14 @@ The HTTPS gateway now exposes an authenticated Server-Sent Events endpoint at `G
 The optional Twilio calling service uses server-side environment variables only. Set `JARVIS_CALLING_ENABLED=true`, `JARVIS_TWILIO_ACCOUNT_SID`, `JARVIS_TWILIO_AUTH_TOKEN`, `JARVIS_TWILIO_FROM_NUMBER`, and `JARVIS_CALL_TO_NUMBER` (both numbers in E.164 format). The calling service uses inline TwiML so Twilio does not need a webhook into the laptop for a one-way spoken announcement. It enforces a limit of three attempted calls per ten minutes. Never put provider credentials in the Android app or frontend. Reminder calls are disabled unless `JARVIS_CALL_ON_REMINDERS=true` is explicitly set. Check local telephony laws, provider rules, and verified-number requirements before use.
 
 The Android app now has a speech-recognition → JARVIS text reply → text-to-speech conversation flow over the capability-protected Phone Hub gateway, plus an explicit outbound-call action. Grant the paired device the `voice` capability to use voice replies and the `calls` capability to request a real phone call. This in-app voice MVP requires the gateway to be reachable. The current private-LAN gateway is not an anywhere-access relay, so in-app voice while away from the laptop still needs a separately secured remote relay or a Twilio Voice SDK/TwiML application. Real cellular outbound calls can reach the configured phone number from anywhere when the JARVIS host has internet and Twilio is configured.
+
+
+## Remote Phone Hub over Tailscale
+
+For access away from the home LAN without exposing the general JARVIS server, use the Phone Hub gateway bound only to the laptop's Tailscale IPv4 address. Install and connect the Tailscale app on the phone and laptop. Generate a certificate whose IP SAN matches the laptop's Tailscale address:
+
+```powershell
+node scripts/phonehub-cert.js --host 100.100.10.20 --allow-tailscale --out "$HOME/jarvis/phonehub-certs-tailscale"
+```
+
+Replace the example with the actual Tailscale IP. Set the printed TLS variables, set `JARVIS_PHONEHUB_HOST` to that same 100.64.0.0/10 address, and set `JARVIS_PHONEHUB_ALLOW_TAILSCALE=true`. The gateway then binds to that specific tailnet interface and accepts peer addresses from the Tailscale CGNAT range only while this explicit opt-in is enabled. Do not bind it to `0.0.0.0` or forward its port on your router. Install the generated CA on Android as described above. Tailscale must be connected on both devices for in-app voice to work away from the local LAN; cellular calls use Twilio and do not require the phone to be on the tailnet.
