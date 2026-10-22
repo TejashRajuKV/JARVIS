@@ -38,6 +38,8 @@ internal class PhoneHubClient(baseUrl: String) {
     }
 
     fun status(token: String): JSONObject = request("/v1/status", "GET", null, token)
+    fun voiceReply(token: String, text: String): String = request("/v1/voice/respond", "POST", JSONObject().put("text", text.take(1000)), token).optString("reply")
+    fun callJarvis(token: String, message: String): JSONObject = request("/v1/call", "POST", JSONObject().put("message", message.take(600)), token)
     fun notifications(token: String): JSONArray = request("/v1/notifications", "GET", null, token)
         .optJSONArray("data") ?: JSONArray()
 
