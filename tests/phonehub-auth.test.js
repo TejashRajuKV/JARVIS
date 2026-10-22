@@ -1,5 +1,5 @@
 'use strict';
-const { createPhoneHubAuth, DEFAULT_CAPABILITIES, PAIRING_CAPABILITIES, DEFAULT_MAX_ACTIVE_PAIRINGS } = require('../phonehub-auth.js');
+const { createPhoneHubAuth, DEFAULT_CAPABILITIES, PAIRING_CAPABILITIES, DEFAULT_MAX_ACTIVE_PAIRINGS, DEFAULT_MAX_USED_NONCES } = require('../phonehub-auth.js');
 
 let now = 1_800_000_000_000;
 const auth = createPhoneHubAuth({ now: () => now, pairingTtlMs: 300_000, sessionTtlMs: 86_400_000, maxAttempts: 3 });
@@ -16,6 +16,7 @@ check('pair code format', /^\d{6}$/.test(p.code));
 check('pair id is unpredictable-looking', /^[a-f0-9]{24}$/.test(p.pairingId));
 check('sensitive scopes are known but not granted by pairing', DEFAULT_CAPABILITIES.includes('sms.send') && PAIRING_CAPABILITIES.join(',') === 'status,notifications');
 check('active pairing challenges are bounded by default', DEFAULT_MAX_ACTIVE_PAIRINGS === 5);
+check('nonce replay cache has a conservative default bound', DEFAULT_MAX_USED_NONCES === 10_000);
 const bounded = createPhoneHubAuth({ now: () => now, maxActivePairings: 2 });
 const oldChallenge = bounded.beginPairing();
 bounded.beginPairing();
@@ -62,5 +63,12 @@ const expPair = auth.completePairing({ pairingId: session.pairingId, code: sessi
 now += 86_400_001;
 check('expired session cannot authenticate', auth.authenticate(req(expPair.token, '6')).error === 'SESSION_EXPIRED');
 auth.sweep();
+
+// A hostile client cannot grow the in-memory replay cache without limit during the nonce TTL.
+const limited = createPhoneHubAuth({ now: () => now, maxUsedNonces: 1 });
+const lp = limited.beginPairing();
+const ld = limited.completePairing({ pairingId: lp.pairingId, code: lp.code });
+check('first nonce accepted when replay cache has room', limited.authenticate(req(ld.token, 'limited_nonce_001')).ok);
+check('new nonce rejected at replay-cache capacity', limited.authenticate(req(ld.token, 'limited_nonce_002')).error === 'NONCE_CAPACITY');
 console.log('phonehub-auth: ' + (total - failures) + '/' + total);
 process.exitCode = failures ? 1 : 0;
