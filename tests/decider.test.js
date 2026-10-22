@@ -168,5 +168,17 @@ for (const t of ['search for my notes', 'explain deadlock according to my notes'
 {
   const d = route('check the latest git commit in my project');
   check('Policy', '“latest” about my project stays local and is flagged for review', d.route === 'LOCAL' && d.needsReview && !d.policy.needsOnline, d.route + ' ' + d.needsReview);
+  const conflict = route('open the nearest restaurant to kodigehalli');
+  check('Policy', 'conflicting action/place requests require review', conflict.needsReview && conflict.decisionSignals.hasConflictingSignals, JSON.stringify({ route: conflict.route, needsReview: conflict.needsReview, signals: conflict.decisionSignals }));
+  const clearAction = route('open chrome');
+  check('Policy', 'unambiguous safe commands do not trigger review', !clearAction.needsReview && clearAction.route === 'TOOL', JSON.stringify({ route: clearAction.route, needsReview: clearAction.needsReview }));
+}
+// Regression guard: the UI execution path must consume Decider.needsReview before executeTool.
+// This catches accidental removal of the enforcement gate even when routing unit tests still pass.
+{
+  const script = fs.readFileSync(path.join(__dirname, '..', 'script.js'), 'utf8');
+  check('Execution gate', 'risky actions are held for confirmation when decision.needsReview is true',
+    /decision\.needsReview[\s\S]{0,500}Agent\.tierFor[\s\S]{0,500}await deliver\([\s\S]{0,700}return;[\s\S]{0,180}Medium confidence on something SPOKEN/.test(script),
+    'expected policy review gate before tool execution');
 }
 done();
