@@ -132,7 +132,37 @@ Persona.setAddressSource(() => {
 const saveSettings = () => store.set('jarvis.settings', settings);
 // The attendance percentage your college asks for (75 unless you changed it: "my college needs 80% attendance" or Settings).
 const attMin = () => Math.min(95, Math.max(40, Math.round(+settings.attendanceMin) || 75));
-let memory = store.get('jarvis.memory', []);        // [{id,key,value,ts}]
+// Durable personal memory is deliberately bounded and normalized at the storage boundary.
+// Notes may repeat different facts; named fields (e.g. "name") have one current value.
+const MEMORY_MAX_ITEMS = 300;
+const MEMORY_MAX_KEY = 80;
+const MEMORY_MAX_VALUE = 500;
+function normalizeMemoryRecords(input) {
+  const rows = Array.isArray(input) ? input : [];
+  const out = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const key = String(row.key == null ? '' : row.key).trim().replace(/\\s+/g, ' ').slice(0, MEMORY_MAX_KEY);
+    const value = String(row.value == null ? '' : row.value).trim().slice(0, MEMORY_MAX_VALUE);
+    if (!key || !value) continue;
+    const normalizedKey = key.toLocaleLowerCase();
+    const isNote = normalizedKey === 'note';
+    const duplicate = isNote
+      ? out.findIndex(m => m.key.toLocaleLowerCase() === normalizedKey && m.value.toLocaleLowerCase() === value.toLocaleLowerCase())
+      : out.findIndex(m => m.key.toLocaleLowerCase() === normalizedKey);
+    const item = {
+      id: String(row.id || ('memory-' + (Number(row.ts) || 0) + '-' + i)).slice(0, 80),
+      key: isNote ? 'note' : key,
+      value,
+      ts: Number.isFinite(Number(row.ts)) && Number(row.ts) > 0 ? Number(row.ts) : 0
+    };
+    if (duplicate >= 0) out.splice(duplicate, 1);
+    out.push(item);
+  }
+  return out.slice(-MEMORY_MAX_ITEMS);
+}
+let memory = normalizeMemoryRecords(store.get('jarvis.memory', [])); // [{id,key,value,ts}]
 let todos = store.get('jarvis.todos', []);          // [{id,text,done,ts}]
 let reminders = store.get('jarvis.reminders', []);  // [{id,text,at,fired}]
 let deadlines = store.get('jarvis.deadlines', []);  // [{id,title,due,done}]
@@ -173,12 +203,28 @@ const saveTasks = () => {
   if (typeof Routines !== 'undefined') Routines.render();
 };
 function memSet(key, value) {
-  const ex = memory.find(m => m.key === key);
-  if (ex) { ex.value = value; ex.ts = Date.now(); } else memory.push({ id: rid(), key, value, ts: Date.now() });
+  const k = String(key == null ? '' : key).trim().replace(/\\s+/g, ' ').slice(0, MEMORY_MAX_KEY);
+  const v = String(value == null ? '' : value).trim().slice(0, MEMORY_MAX_VALUE);
+  if (!k || !v) return false;
+  const ex = memory.find(m => m.key.toLocaleLowerCase() === k.toLocaleLowerCase());
+  if (ex) { ex.value = v; ex.ts = Date.now(); }
+  else memory.push({ id: rid(), key: k, value: v, ts: Date.now() });
+  memory = normalizeMemoryRecords(memory);
   store.set('jarvis.memory', memory); renderMemory(); pulse('mem');
+  return true;
 }
-function memAdd(key, value) { memory.push({ id: rid(), key, value, ts: Date.now() }); store.set('jarvis.memory', memory); renderMemory(); pulse('mem'); }
-function memGet(key) { const m = memory.find(m => m.key === key); return m ? m.value : null; }
+function memAdd(key, value) {
+  const k = String(key == null ? '' : key).trim().replace(/\\s+/g, ' ').slice(0, MEMORY_MAX_KEY);
+  const v = String(value == null ? '' : value).trim().slice(0, MEMORY_MAX_VALUE);
+  if (!k || !v) return false;
+  const isNote = k.toLocaleLowerCase() === 'note';
+  if (isNote && memory.some(m => m.key.toLocaleLowerCase() === 'note' && m.value.toLocaleLowerCase() === v.toLocaleLowerCase())) return false;
+  memory.push({ id: rid(), key: isNote ? 'note' : k, value: v, ts: Date.now() });
+  memory = normalizeMemoryRecords(memory);
+  store.set('jarvis.memory', memory); renderMemory(); pulse('mem');
+  return true;
+}
+function memGet(key) { const m = memory.find(m => m.key.toLocaleLowerCase() === String(key || '').trim().toLocaleLowerCase()); return m ? m.value : null; }
 // Undo helpers: put removed list items back where they were (skipping any that are back already).
 function undoRemoved(label, getList, setList, save, removed) {
   if (!removed.length) return;
