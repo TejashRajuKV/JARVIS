@@ -33,4 +33,4 @@ Open the laptop management page at `http://localhost:<JARVIS_PORT>/phonehub.html
 
 ## Current limitations
 
-This is a starter companion app, not a release build. The gateway's notification provider is not integrated yet, so the notifications screen may be empty. QR scanning, push notifications, offline queueing, biometric re-authentication, and automated certificate onboarding are not implemented. The Android app has not been built or run as part of this code-writing pass.
+This is a starter companion app, not a release build. The gateway exposes a bounded recent-event feed for reminders, deadline alerts, charger alerts, and trigger events. The feed is in-memory and clears when JARVIS restarts; the Android app refreshes it on demand, not via background push. QR scanning, push notifications, offline queueing, biometric re-authentication, and automated certificate onboarding are not implemented. The Android app has not been built or run as part of this code-writing pass.
