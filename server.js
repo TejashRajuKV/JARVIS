@@ -2473,6 +2473,37 @@ app.post('/api/tool/screenshot', (req, res) => {
   else execFile('scrot', [out], done);
 });
 
+// Recent JARVIS screenshots: list only files created by this app in its known output folders.
+app.get('/api/tool/screenshots', (req, res) => {
+  const dirs = [...new Set([path.join(os.homedir(), 'Desktop'), SANDBOX, path.join(SANDBOX, 'Screenshots')])];
+  const items = [];
+  for (const dir of dirs) {
+    let names = []; try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const name of names) {
+      if (!/^JARVIS_screenshot_[\w.-]+\.png$/i.test(name)) continue;
+      const full = path.join(dir, name);
+      try {
+        const st = fs.statSync(full);
+        if (!st.isFile() || st.size < 8 || st.size > 30 * 1024 * 1024) continue;
+        items.push({ id: Buffer.from(full).toString('base64url'), name, modified: st.mtimeMs, bytes: st.size });
+      } catch {}
+    }
+  }
+  items.sort((a,b) => b.modified-a.modified);
+  res.json({ success: true, screenshots: items.slice(0, 40) });
+});
+app.get('/api/tool/screenshots/:id', (req, res) => {
+  let full = '';
+  try { full = Buffer.from(String(req.params.id || ''), 'base64url').toString('utf8'); } catch {}
+  const dirs = [...new Set([path.join(os.homedir(), 'Desktop'), SANDBOX, path.join(SANDBOX, 'Screenshots')])].map(d => path.resolve(d));
+  const resolved = path.resolve(full);
+  if (!dirs.some(d => path.dirname(resolved) === d) || !/^JARVIS_screenshot_[\w.-]+\.png$/i.test(path.basename(resolved))) return res.status(400).json({ error: 'Invalid screenshot reference' });
+  try {
+    const st = fs.statSync(resolved);
+    if (!st.isFile() || st.size > 30 * 1024 * 1024) return res.status(404).json({ error: 'Screenshot not found or too large' });
+  } catch { return res.status(404).json({ error: 'Screenshot not found' }); }
+  res.type('png').sendFile(resolved, err => { if (err && !res.headersSent) res.status(404).end(); });
+});
 app.post('/api/tool/readClipboard', (req, res) => {
   const [cmd, args] = IS_WIN ? ['powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Raw']]
     : IS_MAC ? ['pbpaste', []] : ['xclip', ['-selection', 'clipboard', '-o']];
