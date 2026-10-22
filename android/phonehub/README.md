@@ -33,13 +33,13 @@ Open the laptop management page at `http://localhost:<JARVIS_PORT>/phonehub.html
 
 ## Current limitations
 
-This is a starter companion app, not a release build. The gateway exposes a bounded recent-event feed for reminders, deadline alerts, charger alerts, and trigger events. The feed is in-memory and clears when JARVIS restarts; the Android app refreshes it on demand and also polls in the background through WorkManager (Android may defer the 15-minute minimum interval to preserve battery). This is periodic polling, not instant push. QR scanning, instant push notifications, offline queueing, biometric re-authentication, and automated certificate onboarding are not implemented. The Android app has not been built or run as part of this code-writing pass.
+This is a starter companion app, not a release build. The gateway exposes a bounded recent-event feed for reminders, deadline alerts, charger alerts, and trigger events. The feed is in-memory and clears when JARVIS restarts; the Android app refreshes it on demand and also polls in the background through WorkManager (Android may defer the 15-minute minimum interval to preserve battery). This is periodic polling, not instant push. The laptop can generate a QR locally and the Android app can scan it. The gateway has an authenticated SSE stream, but the Android client still relies on WorkManager polling for background alerts. Offline queueing and biometric re-authentication are not implemented.
 
 ## Automated local TLS material
 
 From the JARVIS repository root, run `node scripts/phonehub-cert.js --host <private-laptop-ip> --out <directory>` (requires OpenSSL). This creates a local CA and an IP-SAN gateway certificate. Install only `phonehub-ca.crt` on the Android device through Android settings; never copy the CA private key. See [the certificate onboarding guide](../../docs/PHONE-HUB.md#certificate-onboarding-helper).
 
-QR pairing and true instant background push are still release gates. The current app uses manual pairing and WorkManager polling; the successful CI build does not imply physical-device validation.
+True instant background delivery and physical-device end-to-end verification remain release gates. Manual pairing remains available if QR scanning is unavailable. A successful CI build does not imply physical-device validation.
 
 
 The gateway has an authenticated server-sent events endpoint for low-latency notifications, but the current Android client does not yet maintain a live stream; background alerts still use periodic WorkManager polling. QR pairing and physical-device end-to-end checks remain outstanding.
