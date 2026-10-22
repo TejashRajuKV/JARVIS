@@ -4,10 +4,15 @@ let fail=0,total=0;const check=(n,ok)=>{total++;if(!ok){fail++;console.log('FAIL
 const root=path.join(__dirname,'..'),html=fs.readFileSync(path.join(root,'index.html'),'utf8'),sw=fs.readFileSync(path.join(root,'sw.js'),'utf8'),hub=fs.readFileSync(path.join(root,'skill-hub.js'),'utf8');
 check('Skill Hub is loaded by the main application',html.includes('skill-hub.js'));
 check('Skill Hub is included in the PWA shell and cache version is bumped',sw.includes("'skill-hub.js'")&&/jarvis-v42/.test(sw));
-for(const api of ['/api/skills?all=1','/api/skills/reload','/api/browser-recovery','/api/workflows','/api/diagnostics'])check('UI uses '+api,hub.includes(api));
+for(const api of ['/api/skills?all=1','/api/skills/reload','/api/browser-recovery','/api/workflows','/api/diagnostics','/api/tool/screenshots'])check('UI uses '+api,hub.includes(api));
 check('workflow reuse fills the chat box but does not auto-submit',hub.includes("input.value=w.prompt")&&!/input\.value\s*=\s*w\.prompt;[^\n]*sendBtn/.test(hub));
 check('browser shortcut is documented but never injected globally',hub.includes('Ctrl+Shift+T')&&!/key(?:down|up).*Ctrl\+Shift\+T/i.test(hub));
 check('search, enable/disable, run and diagnostics controls exist',hub.includes('jhSearch')&&hub.includes('data-enabled=')&&hub.includes('run-skill')&&hub.includes('diagnose'));
+check('screenshot gallery renders saved image previews and can refresh/take screenshots',hub.includes('screenshotView')&&hub.includes('/api/tool/screenshots')&&hub.includes('refresh-shots')&&hub.includes('take-shot'));
+check('quick actions include WhatsApp draft, movie tickets, bus tickets and shopping',hub.includes('jhWhatsAppForm')&&hub.includes('jhMovieForm')&&hub.includes('jhBusForm')&&hub.includes('jhShopForm'));
+check('WhatsApp action prepares a draft but never sends automatically',hub.includes('wa.me/')&&hub.includes('press Send yourself')&&!/\.click\(\).*send/i.test(hub));
+const server=fs.readFileSync(path.join(root,'server.js'),'utf8');
+check('screenshot image endpoint restricts files to known screenshot folders and local page',server.includes('screenshotLocalOnly')&&server.includes("/api/tool/screenshots/:id")&&server.includes('JARVIS_screenshot_'));
 const script=fs.readFileSync(path.join(root,'script.js'),'utf8');
 check('fuzzy skill match cannot auto-run a skill without an explicit trigger phrase',script.includes('if (skillHint && skillHint.auto && skillHint.phrase)'));
 console.log('skill-hub-ui: '+(total-fail)+'/'+total);process.exitCode=fail?1:0;
