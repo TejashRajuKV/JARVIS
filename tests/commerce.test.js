@@ -21,7 +21,7 @@ check('phone normalization only accepts phone-like input', phoneDigits('+91 (987
 check('city aliases normalize known routes', slugCity('Bengaluru') === 'bangalore' && slugCity('Mysuru') === 'mysore');
 
 const { parsePriceCandidates, comparisonPlan, comparePublicListings, providerMatch } = require('../commerce');
-check('price parser extracts rupee amounts without treating ordinary numbers as prices', parsePriceCandidates('Price ₹1,299 only').some(p => p.amount === 1299) && parsePriceCandidates('2026 model with 8GB RAM').length === 0);
+check('price parser extracts rupee amounts without treating ordinary numbers as prices', parsePriceCandidates('Price ₹ 1,299 only').some(p => p.amount === 1299) && parsePriceCandidates('2026 model with 8GB RAM').length === 0);
 check('product comparison fans out to Amazon, Flipkart and Shopping discovery', comparisonPlan({type:'product',query:'wireless mouse'}).entries.map(p=>p.key).join(',') === 'amazon,flipkart,googleShopping');
 check('bus comparison fans out to AbhiBus, redBus and government services', comparisonPlan({type:'bus',from:'Bengaluru',to:'Mysuru',provider:'all'}).entries.map(p=>p.key).join(',') === 'abhibus,redbus,government');
 check('provider filtering rejects unrelated seller domains', !providerMatch('amazon','https://example.com/product'));
