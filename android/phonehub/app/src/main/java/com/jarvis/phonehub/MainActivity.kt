@@ -65,6 +65,9 @@ class MainActivity : ComponentActivity() {
                             Button(onClick = { refreshStatus() }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("Refresh status") }
                             Button(onClick = { refreshNotifications() }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("Notifications") }
                         }
+                        Button(onClick = { forgetPhone() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                            Text("Forget this phone")
+                        }
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Connection", style = MaterialTheme.typography.titleMedium)
@@ -101,6 +104,13 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             status = safeMessage(e)
         }
+    }
+
+    private fun forgetPhone() {
+        TokenVault.clear(this)
+        status = "Phone token removed from this device. Revoke the paired device on the laptop too if needed."
+        statusJson = ""
+        notificationText = "No notifications loaded"
     }
 
     private fun refreshStatus() = runWithToken { client, token ->
