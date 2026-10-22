@@ -327,6 +327,11 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
       const tabs = clients.size;
       if (tabs) broadcast(ev); else await toast(title, body);
       await phonePush(settings, title, body);
+      // Outbound calls are an explicit opt-in, never enabled just by installing Phone Hub.
+      if ((ev.type === 'reminder' || ev.type === 'deadline') && process.env.JARVIS_CALL_ON_REMINDERS === 'true' && app.locals && typeof app.locals.jarvisCall === 'function') {
+        try { await app.locals.jarvisCall({ message: title + '. ' + body }, { source: 'reminder' }); }
+        catch (callError) { log('optional reminder call skipped:', callError.code || callError.message); }
+      }
       log(`${ev.type} fired: ${body} → ${tabs ? tabs + ' tab(s)' : 'Windows toast'}${settings.phonePush ? ' + phone' : ''}`);
     } catch (e) { log(`${ev.type} delivery failed: ${body} (${e && e.message})`); }
   }
