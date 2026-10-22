@@ -59,7 +59,7 @@
   async function loadSkills(){const r=await json('/api/skills?all=1');skills=r.skills||[];}
   async function loadPages(){const r=await json('/api/browser-recovery');pages=r.pages||[];}
   async function loadWorkflows(){const r=await json('/api/workflows');workflows=r.workflows||[];}
-  function skillView(){const filtered=skills.filter(s=>(s.name+' '+s.hint+' '+(s.keywords||[]).join(' ')).toLowerCase().includes(search.toLowerCase()));
+  function skillView(){const filtered=skills.filter(s=>(s.name+' '+s.hint+' '+(s.triggers||[]).join(' ')+' '+(s.keywords||[]).join(' ')).toLowerCase().includes(search.toLowerCase()));
     return `<div class="jh-muted">Skills are prompt instructions, not executable plugins. Disabled skills are excluded from routing and cannot be run. Changes persist locally.</div>
       <input class="jh-field" id="jhSearch" aria-label="Search skills" placeholder="Search skills by name, purpose, or keyword…" value="${esc(search)}">
       <div class="jh-actions" style="justify-content:flex-start;margin-bottom:12px"><button class="jh-btn" data-action="reload-skills">↻ Rescan skills</button><span class="jh-badge">${skills.filter(s=>s.enabled!==false).length} ENABLED / ${skills.length} TOTAL</span></div>
