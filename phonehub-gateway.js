@@ -40,7 +40,6 @@ function readJsonBody(req, maxBytes) {
       size += chunk.length;
       if (size > maxBytes) {
         fail(Object.assign(new Error('Request body too large'), { statusCode: 413 }));
-        if (typeof req.destroy === 'function') req.destroy();
         return;
       }
       chunks.push(chunk);
@@ -92,7 +91,7 @@ function createPhoneHubRequestHandler(options = {}) {
       if (req.method === 'OPTIONS') return json(res, 405, { error: 'METHOD_NOT_ALLOWED' });
       if (req.method === 'GET' && req.url === '/health') return json(res, 200, { ok: true });
       if (req.method === 'POST' && req.url === '/v1/pair') {
-        if (!/^application\\/json(?:\\s*;|$)/i.test(String(req.headers['content-type'] || ''))) {
+        if (String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase() !== 'application/json') {
           return json(res, 415, { error: 'JSON_REQUIRED' });
         }
         const body = await readJsonBody(req, maxBodyBytes);
