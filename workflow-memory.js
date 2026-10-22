@@ -23,7 +23,7 @@ function createWorkflowMemory({ file }) {
     const x = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (!Array.isArray(x)) throw new Error('invalid workflow memory');
     items = x.filter(v => v && typeof v === 'object' && /^[a-z0-9-]{1,40}$/i.test(String(v.id || '')) && typeof v.name === 'string' && typeof v.prompt === 'string').map(cleanItem).slice(0, MAX_ITEMS);
-  } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  } catch (e) { items = []; /* corrupt local workflow data fails closed; it never blocks JARVIS startup */ }
   function persist() {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const tmp = file + '.tmp';
