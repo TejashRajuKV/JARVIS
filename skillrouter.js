@@ -48,7 +48,14 @@ const SkillRouter = (() => {
       let score = 0;
       for (const w of msg) { const wt = v.get(w); if (wt) { matched.push(w); score += wt; } }
       // one of the skill's own phrases ("quick answer", "look into") written out: a much stronger signal than loose words
-      const phrase = (skill.triggers || []).some(tr => tr.length >= 4 && low.includes(' ' + words(tr).join(' ') + ' '));
+      // A trigger is explicit only at the beginning (optionally after a short polite lead-in).
+      // Mentioning a trigger phrase halfway through a story must not auto-run an action skill.
+      const phraseText = low.trim().replace(/^(?:(?:please|jarvis|hey jarvis|can you|could you|would you|help me|give me(?: a| an| the)?|i need you to|use(?: the)?|do)\\s+)+/, '');
+      const phrase = (skill.triggers || []).some(tr => {
+        if (tr.length < 4) return false;
+        const p = words(tr).join(' ');
+        return !!p && (phraseText === p || phraseText.startsWith(p + ' '));
+      });
       if (phrase) score += 6;
       if (!phrase && matched.length < 2) continue;
       if (score < 4.5) continue;
