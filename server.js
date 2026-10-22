@@ -882,7 +882,7 @@ app.post('/api/tool/youtubeTop', async (req, res) => {
       signal: AbortSignal.timeout(8000),
     });
     const html = await r.text();
-    const m = html.match(/"videoRenderer":\{"videoId":"([\w-]{11})".*?"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/);
+    const m = html.match(/"videoRenderer":\{"videoId":"([\w-]{11})".*?"title":\{"runs":\[\{"text":"((?:[^"\\]|\.)*)"/);
     if (!m) return res.json({ success: false, error: 'No video found' });
     let title = m[2];
     try { title = JSON.parse('"' + m[2] + '"'); } catch {}
@@ -2475,7 +2475,7 @@ app.post('/api/tool/screenshot', (req, res) => {
 
 // Recent JARVIS screenshots: list only files created by this app in its known output folders.
 const screenshotLocalOnly = (req, res) => {
-  if (req.headers['sec-fetch-site'] === 'same-origin' && /^(localhost|127\\.0\\.0\\.1):/.test(String(req.headers.host || ''))) return true;
+  if (req.headers['sec-fetch-site'] === 'same-origin' && /^(localhost|127\.0\.0\.1):/.test(String(req.headers.host || ''))) return true;
   res.status(403).json({ error: 'Screenshot gallery is available only from JARVIS on this laptop.' }); return false;
 };
 app.get('/api/tool/screenshots', (req, res) => {
