@@ -108,6 +108,10 @@ const call = async (table, p, body, extra = {}) => { let out, code = 200; await 
   check('GET /api/skills: reports the skipped ones', list.skipped.some(s => s.folder === 'broken'));
   const off = await call(routes, '/api/skills/:name/enabled', { enabled: false }, { params: { name: 'alpha' } });
   check('management: can disable an installed skill', off.success && off.enabled === false, off);
+  const restartedApp = { post: (p,h) => { routes[p] = h; }, get: (p,h) => { gets[p] = h; } };
+  P(restartedApp, { llm, DEFAULT_MODEL: 'm0', SANDBOX: sandbox, bundledDir: bundled });
+  const persisted = await call(gets, '/api/skills', {}, { query: { all: '1' } });
+  check('management: disabled state persists after the loader is restarted', persisted.skills.some(s => s.name === 'alpha' && s.enabled === false));
   check('management: disabled skills are omitted from normal routing list', !(await call(gets, '/api/skills', {}, {})).skills.some(s => s.name === 'alpha'));
   const all = await call(gets, '/api/skills', {}, { query: { all: '1' } });
   check('management: Skill Hub can still see disabled skills and their state', all.skills.some(s => s.name === 'alpha' && s.enabled === false));
