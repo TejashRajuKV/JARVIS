@@ -73,7 +73,7 @@ function createPhoneHubRequestHandler(options = {}) {
   }
   const port = Number.isInteger(options.port) ? options.port : DEFAULT_PORT;
   const host = String(options.host || '');
-  const allowedHost = host + ':' + port;
+  const allowedHost = net.isIP(host) === 6 ? '[' + host + ']:' + port : host + ':' + port;
   const allowedOrigins = new Set((options.allowedOrigins || []).map(String));
   const maxBodyBytes = Number.isSafeInteger(options.maxBodyBytes) && options.maxBodyBytes > 0
     ? Math.min(options.maxBodyBytes, 16 * 1024) : DEFAULT_MAX_BODY_BYTES;
@@ -82,6 +82,7 @@ function createPhoneHubRequestHandler(options = {}) {
 
   return async function phoneHubRequestHandler(req, res) {
     try {
+      if (!req.socket || req.socket.encrypted !== true) return json(res, 426, { error: 'HTTPS_REQUIRED' });
       if (!isPrivateLanAddress(req.socket && req.socket.remoteAddress)) {
         return json(res, 403, { error: 'PRIVATE_LAN_PEER_REQUIRED' });
       }
