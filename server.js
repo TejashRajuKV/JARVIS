@@ -2702,7 +2702,8 @@ async function startConfiguredPhoneHubGateway() {
       cert: process.env.JARVIS_PHONEHUB_TLS_CERT,
       allowedOrigins: String(process.env.JARVIS_PHONEHUB_ALLOWED_ORIGINS || '').split(',').map(v => v.trim()).filter(Boolean),
       getStatus: async () => ({ online: true, platform: process.platform, uptimeSeconds: Math.floor(process.uptime()) }),
-      getNotifications: async () => phoneHubNotifications.list(50)
+      getNotifications: async () => phoneHubNotifications.list(50),
+      subscribeNotifications: listener => phoneHubNotifications.subscribe(listener)
     });
     const address = await phoneHubGateway.listen();
     console.log(`[Phone Hub] HTTPS gateway listening on ${address.address}:${address.port}`);
