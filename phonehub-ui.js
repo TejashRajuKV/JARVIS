@@ -124,6 +124,8 @@
         ? 'HTTPS gateway active at ' + data.host + ':' + data.port
         : 'Gateway disabled — laptop pairing and device management are available locally, but a phone cannot connect yet.';
       showError($('gateway-error'), data.gatewayError ? 'Gateway startup error: ' + data.gatewayError : '');
+      const gatewayHost = String(data.host || '');
+      state.gatewayOrigin = data.gateway && gatewayHost ? 'https://' + (gatewayHost.includes(':') ? '[' + gatewayHost + ']' : gatewayHost) + ':' + Number(data.port || 18443) : '';
       renderDevices(data);
     } catch (error) {
       $('gateway-status').textContent = 'Could not load Phone Hub status.';
@@ -141,6 +143,15 @@
       $('pairing-code').textContent = data.code;
       $('pairing-id').textContent = data.pairingId;
       $('pairing-result').hidden = false;
+      const qrRoot = $('pairing-qr');
+      qrRoot.replaceChildren();
+      if (state.gatewayOrigin && typeof QRCode === 'function') {
+        const payload = JSON.stringify({ version: 1, endpoint: state.gatewayOrigin, pairingId: data.pairingId, code: data.code });
+        new QRCode(qrRoot, { text: payload, width: 240, height: 240, colorDark: '#111827', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+        $('pairing-qr-help').textContent = 'The QR contains only the short-lived pairing code, pairing ID and gateway address. It does not contain a device token.';
+      } else {
+        $('pairing-qr-help').textContent = 'QR unavailable until the HTTPS gateway is active. Use manual pairing fields below.';
+      }
       state.expiresAt = data.expiresAt;
       if (state.pairingTimer) clearInterval(state.pairingTimer);
       updatePairingCountdown();
