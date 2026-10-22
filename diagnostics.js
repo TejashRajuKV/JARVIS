@@ -20,11 +20,12 @@ async function runDiagnostics({ root, sandbox, ollamaUrl, defaultModel, fetchImp
     {name:'JARVIS data folder',group:'storage',ok:fs.existsSync(sandbox),detail:fs.existsSync(sandbox)?'Data folder exists':'Data folder will be created when needed'},
     {name:'Memory availability',group:'runtime',ok:os.freemem()>256*1024*1024,detail:Math.round(os.freemem()/1024/1024)+' MB free RAM reported by the OS'}
   ];
+  const skillRecommendations = [];
   try {
     const skillpack = require(path.join(root, 'skillpack.js'));
     const loaded = skillpack.loadAll(path.join(root, 'skills-bundled'), path.join(sandbox, 'Skills'));
     checks.push({name:'Skill loader discovery',group:'skills',ok:loaded.skills.length>0,detail:loaded.skills.length+' skill(s) discovered; '+loaded.skipped.length+' invalid/unreadable skill folder(s) skipped'});
-    for (const skipped of loaded.skipped.slice(0,8)) recommendations.push({name:'Skill '+skipped.folder,action:'Fix the skill metadata or file: '+skipped.reason+'. Then rescan skills in the Skill Hub.'});
+    for (const skipped of loaded.skipped.slice(0,8)) skillRecommendations.push({name:'Skill '+skipped.folder,action:'Fix the skill metadata or file: '+skipped.reason+'. Then rescan skills in the Skill Hub.'});
   } catch (e) {
     checks.push({name:'Skill loader discovery',group:'skills',ok:false,detail:'Could not scan skill packs: '+String(e.message||e).slice(0,140)});
   }
@@ -45,6 +46,7 @@ async function runDiagnostics({ root, sandbox, ollamaUrl, defaultModel, fetchImp
       x.group==='automation'?'Restore the missing automation module and run the relevant automated tests.':
       x.group==='storage'?'Restart JARVIS and check the configured local data directory.':'Review this diagnostic finding.'
   }));
+  recommendations.push(...skillRecommendations);
   if(ai.ok===false) recommendations.push({name:'Local AI provider',action:'Start Ollama and confirm the configured model is installed; rerun diagnostics.'});
   if(ai.ok===true && ai.models && !ai.defaultModelInstalled) recommendations.push({name:'Default model',action:'Install '+defaultModel+' or select an installed model in JARVIS Settings.'});
   return {success:true,checkedAt:now,checks,summary:{total:checks.length,passed:checks.length-failed.length,failed:failed.length},recommendations};
