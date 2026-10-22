@@ -1,0 +1,22 @@
+'use strict';
+const fs = require('fs'), os = require('os'), path = require('path');
+const setupScan = require('../scan');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-saved-vision-test-'));
+const sandbox = path.join(tmp, 'jarvis'); fs.mkdirSync(sandbox);
+const routes = new Map(), app = { locals: {}, post: (...args) => routes.set(args[0], args[args.length - 1]), get: (...args) => routes.set('GET ' + args[0], args[args.length - 1]) };
+let visionCalls = 0;
+const llm = { hasVision: async () => { visionCalls++; return true; }, complete: async () => 'should not be reached', isCloud: () => false };
+setupScan(app, { SANDBOX: sandbox, llm, DEFAULT_MODEL: 'test-vision', rel: p => p, openPath: () => {}, IS_WIN: false });
+const outside = path.join(tmp, 'outside.png');
+fs.writeFileSync(outside, Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]), Buffer.alloc(32)]));
+const handler = routes.get('/api/vision/saved-image');
+let status = 200, body = null;
+const res = { status(n) { status = n; return this; }, json(v) { body = v; return this; }, setHeader() {} };
+(async () => {
+  await handler({ headers: { 'sec-fetch-site': 'same-origin', host: 'localhost:3002' }, body: { path: outside } }, res);
+  if (status !== 403 || !body || !/privacy/i.test(body.error) || visionCalls !== 0) throw new Error('outside image paths must be refused before model access: ' + JSON.stringify({ status, body, visionCalls }));
+  status = 200; body = null;
+  await handler({ headers: { 'sec-fetch-site': 'cross-site', host: 'localhost:3002' }, body: { path: outside } }, res);
+  if (status !== 403 || !body) throw new Error('cross-site image analysis must be refused');
+  console.log('PASS saved-vision.test.js — 2/2');
+})().catch(e => { console.error('FAIL saved-vision.test.js — ' + e.message); process.exitCode = 1; }).finally(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} });
