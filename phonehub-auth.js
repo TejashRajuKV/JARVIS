@@ -13,6 +13,7 @@ const PAIRING_CAPABILITIES = Object.freeze(['status', 'notifications']);
 const DEFAULT_PAIRING_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_ATTEMPTS = 5;
+const DEFAULT_MAX_ACTIVE_PAIRINGS = 5;
 const NONCE_TTL_MS = 2 * 60 * 1000;
 
 const randomId = (bytes = 16) => crypto.randomBytes(bytes).toString('hex');
@@ -29,12 +30,20 @@ function createPhoneHubAuth(options = {}) {
   const pairingTtlMs = Number.isSafeInteger(options.pairingTtlMs) && options.pairingTtlMs > 0 ? options.pairingTtlMs : DEFAULT_PAIRING_TTL_MS;
   const sessionTtlMs = Number.isSafeInteger(options.sessionTtlMs) && options.sessionTtlMs > 0 ? options.sessionTtlMs : DEFAULT_SESSION_TTL_MS;
   const maxAttempts = Number.isSafeInteger(options.maxAttempts) && options.maxAttempts > 0 ? options.maxAttempts : DEFAULT_MAX_ATTEMPTS;
+  const maxActivePairings = Number.isSafeInteger(options.maxActivePairings) && options.maxActivePairings > 0 ? options.maxActivePairings : DEFAULT_MAX_ACTIVE_PAIRINGS;
   const allowed = new Set(DEFAULT_CAPABILITIES);
   const pairings = new Map();
   const devices = new Map();
   const usedNonces = new Map();
 
   function beginPairing() {
+    // Bound memory even if the laptop UI is repeatedly asked to create pairing sessions.
+    sweep();
+    while (pairings.size >= maxActivePairings) {
+      const oldest = pairings.keys().next().value;
+      if (oldest === undefined) break;
+      pairings.delete(oldest);
+    }
     const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
     const id = randomId(12);
     const createdAt = nowFn();
@@ -148,4 +157,4 @@ function createPhoneHubAuth(options = {}) {
   return Object.freeze({ beginPairing, completePairing, authenticate, authorize, grant, revoke, listDevices, sweep });
 }
 
-module.exports = { createPhoneHubAuth, DEFAULT_CAPABILITIES, PAIRING_CAPABILITIES };
+module.exports = { createPhoneHubAuth, DEFAULT_CAPABILITIES, PAIRING_CAPABILITIES, DEFAULT_MAX_ACTIVE_PAIRINGS };
