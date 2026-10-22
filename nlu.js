@@ -946,13 +946,14 @@ const NLU = (() => {
     if (ctx.lastIntent === 'COMMERCE_COMPARE' && ctx.lastCmd && /^(?:and |also |what about |how about |now |then )?(?:amazon|flipkart|abhibus|red ?bus|government buses|state buses|cheaper|the cheapest|compare again|same route)\b/i.test(s)) {
       const previous = String(ctx.lastCmd.text || '');
       const mode = /\b(bus|buses|bus ticket|bus fare|from .+ to .+)\b/i.test(previous) ? 'bus' : 'product';
-      const provider = (s.match(/\b(amazon|flipkart|abhibus|red ?bus|government buses|state buses)\b/i) || [])[1] || '';
+      const providerRaw = (s.match(/\b(amazon|flipkart|abhibus|red ?bus|government buses|state buses)\b/i) || [])[1] || '';
+      const provider = /government|state buses/i.test(providerRaw) ? 'government' : providerRaw.replace(/\s+/g, '').toLowerCase();
       if (mode === 'bus') {
         const route = previous.match(/\bfrom\s+(.+?)\s+to\s+(.+?)(?:\s+(?:on|tomorrow|today|tonight|next)\b|$)/i);
         if (route) return { intent: 'COMMERCE_COMPARE', confidence: .94, tool: 'web', args: { type: 'bus', from: route[1].trim(), to: route[2].trim(), date: (previous.match(/\b(?:today|tomorrow|tonight|\d{4}-\d{2}-\d{2})\b/i)||[])[0] || '', provider: provider || 'all' }, text: previous };
       } else {
         const query = previous.replace(/^(?:please )?(?:compare|find|search|look for|show me|get me|buy|shop for)\s+/i, '').trim();
-        if (query) return { intent: 'COMMERCE_COMPARE', confidence: .94, tool: 'web', args: { type: 'product', query, provider }, text: previous };
+        if (query) return { intent: 'COMMERCE_COMPARE', confidence: .94, tool: 'web', args: { type: 'product', query, provider: provider || 'all' }, text: previous };
       }
     }
     // Resolve natural follow-ups against the last successful command, without asking users to repeat names.
