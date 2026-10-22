@@ -952,6 +952,21 @@ const NLU = (() => {
         if (query) return { intent: 'COMMERCE_COMPARE', confidence: .94, tool: 'web', args: { type: 'product', query, provider }, text: previous };
       }
     }
+    // Resolve natural follow-ups against the last successful command, without asking users to repeat names.
+    // Only replay low-risk navigation commands; never repeat purchases, messages, deletes, or system changes.
+    const follow = s.match(/^(?:open|launch|show|bring up|go to)\s+(?:it|that|there|the same one|the same page)$/i);
+    const last = ctx.lastCmd && typeof ctx.lastCmd === 'object' && Date.now() - Number(ctx.lastCmd.t || 0) < 15 * 60 * 1000 ? String(ctx.lastCmd.text || '') : '';
+    if (follow && /^(OPEN_APPLICATION|OPEN_SITE|OPEN_URL|OPEN_WEB|YOUTUBE|SITE_SEARCH)$/.test(String(ctx.lastIntent || '')) && last) {
+      const replay = classify(normalize(last, norm.wake || 'jarvis'), {});
+      if (/^(OPEN_APPLICATION|OPEN_SITE|OPEN_URL|OPEN_WEB|YOUTUBE|SITE_SEARCH)$/.test(replay.intent || '')) {
+        replay.text = replay.text || last; replay.contextResolved = true; replay.contextSource = 'last successful navigation'; return replay;
+      }
+    }
+    if (/^(?:do that again|repeat that|repeat the last command|run that again)$/i.test(s) && last
+        && /^(OPEN_APPLICATION|OPEN_SITE|OPEN_URL|OPEN_WEB|YOUTUBE|SITE_SEARCH|WEATHER|SYS_CPU|SYS_RAM|SYS_DISK|SYS_BATTERY|SYS_ALL|SYS_OS)$/.test(String(ctx.lastIntent || ''))) {
+      const replay = classify(normalize(last, norm.wake || 'jarvis'), {});
+      if (replay.intent !== 'CONVERSATION') { replay.contextResolved = true; replay.contextSource = 'repeat last safe command'; return replay; }
+    }
     // Short follow-ups that only make sense with context.
     if (ctx.lastIntent && /^(and|also|what about|how about|now|then)\b/.test(s)) {
       const rest = s.replace(/^(and|also|what about|how about|now|then)\s+/, '').replace(/\btoo$|\bas well$/, '').trim();
