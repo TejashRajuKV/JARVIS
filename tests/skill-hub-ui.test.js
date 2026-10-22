@@ -10,6 +10,10 @@ check('browser shortcut is documented but never injected globally',hub.includes(
 check('search, enable/disable, run and diagnostics controls exist',hub.includes('jhSearch')&&hub.includes('data-enabled=')&&hub.includes('run-skill')&&hub.includes('diagnose'));
 check('screenshot gallery renders saved image previews and can refresh/take screenshots',hub.includes('screenshotView')&&hub.includes('/api/tool/screenshots')&&hub.includes('refresh-shots')&&hub.includes('take-shot'));
 check('quick actions include WhatsApp draft, movie tickets, bus tickets and shopping',hub.includes('jhWhatsAppForm')&&hub.includes('jhMovieForm')&&hub.includes('jhBusForm')&&hub.includes('jhShopForm'));
+const systemTools=fs.readFileSync(path.join(root,'tools','system.js'),'utf8');
+check('screen object inspection gives uncertainty-aware object/location guidance',systemTools.includes('OBJECT-DETECTION MODE')&&systemTools.includes('approximate location')&&systemTools.includes('Never invent objects'));
+const nlu=fs.readFileSync(path.join(root,'nlu.js'),'utf8');
+check('WhatsApp, movie, bus and train booking sites are discoverable by name',nlu.includes("names: ['whatsapp web', 'whatsapp']")&&nlu.includes("names: ['bookmyshow', 'book my show', 'movie tickets']")&&nlu.includes("names: ['redbus', 'red bus', 'bus tickets']")&&nlu.includes("names: ['irctc', 'train tickets', 'rail tickets']"));
 check('WhatsApp action prepares a draft but never sends automatically',hub.includes('wa.me/')&&hub.includes('press Send yourself')&&!/\.click\(\).*send/i.test(hub));
 const server=fs.readFileSync(path.join(root,'server.js'),'utf8');
 check('screenshot image endpoint restricts files to known screenshot folders and local page',server.includes('screenshotLocalOnly')&&server.includes("/api/tool/screenshots/:id")&&server.includes('JARVIS_screenshot_'));
