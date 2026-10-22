@@ -428,7 +428,7 @@ const Life = (() => {
   async function shotFind(m, source) {
     const st = await getJSON('/shots/status');
     if (st.error) return say('I could not check the screenshots: ' + st.error);
-    if (!st.total) return say('I found no screenshots to search. I look in `Pictures\\Screenshots`. Say **“add D:\\Shots to my screenshot folders”** to add another folder.');
+    if (!st.total) return say('I found no screenshots to search. I look in Desktop, Pictures\\Screenshots, OneDrive screenshot folders and the JARVIS folder. Say **“add D:\\Shots to my screenshot folders”** to add another folder.');
     if (!st.indexed) {
       if (source === 'phone') return say('I have not read your screenshots yet. Ask me again at the laptop.');
       const mins = Math.max(1, Math.round(Math.min(st.total, 150) * 2.5 / 60));
@@ -463,7 +463,7 @@ const Life = (() => {
         if (source === 'phone') return say(PHONE_NO);
         const s = await getJSON('/shots/status'); if (s.error) return say('I could not check: ' + s.error);
         if (s.running) return say('Already reading your screenshots.');
-        if (!s.total) return say('I found no screenshots. I look in `Pictures\\Screenshots`; say **“add D:\\Shots to my screenshot folders”** to add another.');
+        if (!s.total) return say('I found no screenshots. I look in Desktop, Pictures\\Screenshots, OneDrive screenshot folders and the JARVIS folder; say **“add D:\\Shots to my screenshot folders”** to add another.');
         if (!s.pending) return say('All **' + pl(s.total, 'screenshot') + '** are already read.');
         const r = await callTool('/shots/update', { max: 150 }); if (r.error) return say(r.error);
         watchShots(s2 => jarvisSay(say('✓ Screenshots read: **' + s2.indexed + '** of ' + s2.total + (s2.pending ? ' (' + s2.pending + ' left — say “index my screenshots” again)' : '') + '. Try **“find the screenshot with …”**.', { speak: 'Your screenshots are read.' })));
