@@ -7,7 +7,14 @@ const { createPhoneHubNotifications } = require('../phonehub-notifications');
 
 let now = 1_800_000_000_000;
 const feed = createPhoneHubNotifications({ now: () => now, maxItems: 3, maxAgeMs: 1000 });
-let liveEvent = null;\nconst unsubscribe = feed.subscribe(item => { liveEvent = item; });\nconst first = feed.publish({ type: 'reminder', title: '  Assignment due ', body: 'Submit DBMS notes', sourceId: 'r-1' });\nassert.equal(liveEvent.id, first.id, 'subscribers receive published events immediately');\nunsubscribe();\nliveEvent = null;\nfeed.publish({ title: 'After unsubscribe', body: 'Must not reach listener' });\nassert.equal(liveEvent, null);
+let liveEvent = null;
+const unsubscribe = feed.subscribe(item => { liveEvent = item; });
+const first = feed.publish({ type: 'reminder', title: '  Assignment due ', body: 'Submit DBMS notes', sourceId: 'r-1' });
+assert.equal(liveEvent.id, first.id, 'subscribers receive published events immediately');
+unsubscribe();
+liveEvent = null;
+feed.publish({ title: 'After unsubscribe', body: 'Must not reach listener' });
+assert.equal(liveEvent, null);
 assert.equal(first.title, 'Assignment due');
 assert.equal(feed.list()[0].id, first.id);
 assert.equal(feed.publish({ title: '', body: 'No title' }), null);
