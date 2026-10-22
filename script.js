@@ -139,7 +139,9 @@ let deadlines = store.get('jarvis.deadlines', []);  // [{id,title,due,done}]
 let classes = store.get('jarvis.classes', []);      // [{id,name,day,h,m}]
 let attendance = store.get('jarvis.attendance', {}); // { Subject: {held, attended, log:[{d,s}]} }
 let marks = store.get('jarvis.marks', []);          // [{id,title,gpa,credits,ts}]
-let chatLog = store.get('jarvis.chat', []);         // [{role,text,meta,t}]
+let chatLog = store.get('jarvis.chat', []);
+// Per-turn cue only; never persisted as a mood profile. Speech settings remain user-owned.
+let responseEmotionSignal = { mood: 'neutral', confidence: 0, explicit: false, target: 'unclear' };         // [{role,text,meta,t}]
 // An assignment's to-dos are linked to its deadline (deadlineId). The deadline shows "2/5 done", and when the last one is ticked JARVIS offers to mark the
 // deadline submitted (asked once per deadline); marking the deadline submitted ticks any to-dos still open for it.
 const linkedTodos = dd => todos.filter(t => t.deadlineId === dd.id);
@@ -934,9 +936,9 @@ function stopSpeaking() {
   if (ttsAudio) { try { ttsAudio.pause(); } catch (e) {} ttsAudio = null; }
 }
 // The neural voice in two steps, so speak-while-writing can fetch the next sentence while the current one plays.
-async function neuralClip(clean, l) {
+async function neuralClip(clean, l, rate) {
   const r = await fetch(API + '/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: clean, lang: l, gender: settings.persona === 'friday' ? 'female' : 'male', rate: settings.rate }) });
+    body: JSON.stringify({ text: clean, lang: l, gender: settings.persona === 'friday' ? 'female' : 'male', rate: rate == null ? settings.rate : rate }) });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'voice error');
   return URL.createObjectURL(await r.blob());
 }
@@ -949,13 +951,16 @@ function playClip(url) {                 // does NOT call stopSpeaking(): the qu
     a.play().catch(done);
   });
 }
-async function speakNeural(clean, l) {
-  const url = await neuralClip(clean, l);
+async function speakNeural(clean, l, rate) {
+  const url = await neuralClip(clean, l, rate);
   stopSpeaking();
   return playClip(url);
 }
 function speak(text) {
   return new Promise(res => {
+    const signal = responseEmotionSignal;
+    const calm = settings.emotionalIntelligence !== false && signal && ['frustrated', 'sad', 'anxious', 'stressed', 'confused'].includes(signal.mood);
+    const effectiveRate = clamp((parseFloat(settings.rate) || 1) * (calm ? (signal.mood === 'confused' ? 0.94 : 0.90) : 1), .5, 2);
     if (!settings.tts) return res();
     const clean = spokenVersion(text);
     if (!clean) return res();
@@ -967,20 +972,20 @@ function speak(text) {
       lastSpoken = { text: clean, at: Date.now() };
       stateMsg.textContent = first; stateMsg.classList.add('caption'); markLang(stateMsg, first);
       engine('tts', true);
-      speakNeural(clean, lang).then(res, e => { log('warn', 'neural voice unavailable: ' + e.message); speakBrowser(clean, res); });
+      speakNeural(clean, lang, effectiveRate).then(res, e => { log('warn', 'neural voice unavailable: ' + e.message); speakBrowser(clean, res, effectiveRate); });
       return;
     }
-    speakBrowser(clean, res);
+    speakBrowser(clean, res, effectiveRate);
   }).then(() => { engine('tts', false); stateMsg.classList.remove('caption'); });
 }
-function speakBrowser(clean, res) {
+function speakBrowser(clean, res, rate) {
     if (!('speechSynthesis' in window)) return res();
     try {
       const u = new SpeechSynthesisUtterance(clean);
       const l = Lang.detect(clean);
       const v = pickVoice(l);
       if (l !== 'en' && !v) { const w = Lang.warnNoVoiceOnce(l); if (w) toast(w); return res(); } // no Telugu/Kannada voice → text only
-      u.rate = clamp(parseFloat(settings.rate) || 1, .5, 2); u.pitch = settings.persona === 'friday' ? 1.05 : .9;
+      u.rate = clamp(rate == null ? (parseFloat(settings.rate) || 1) : rate, .5, 2); u.pitch = settings.persona === 'friday' ? 1.05 : .9;
       if (v) { u.voice = v; u.lang = v.lang; } else if (l !== 'en') u.lang = Lang.SPEECH[l];
       u.onend = res; u.onerror = res;
       // Film-style subtitle under the orb + orb flares on each spoken word.
@@ -2738,7 +2743,7 @@ async function askLLM(userText, opts) {
   const t0 = performance.now();
   let acc = '', raf = 0;
   // Speak while writing: only for ordinary chat answers in English, with the voice on, and never when the answer is cut to "N lines".
-  const early = (opts.earlySpeech && settings.tts && settings.speakWhileWriting !== false && !limit && Lang.replyLang() === 'en')
+  const early = (opts.earlySpeech && !opts.calmVoice && settings.tts && settings.speakWhileWriting !== false && !limit && Lang.replyLang() === 'en'
     ? SpeechStream.createEarly({ enqueue: t => speechQueue.add(t), isEnglish: t => Lang.detect(t) === 'en' }) : null;
   // setTimeout rather than rAF so streaming still renders when the window is in the background.
   const paint = () => { raf = 0; if (!/^\s*</.test(acc)) { node.bodyEl.innerHTML = renderMD(acc); node.bodyEl.classList.add('typing'); messages.scrollTop = messages.scrollHeight; } };
@@ -3060,7 +3065,8 @@ async function handleUser(text, source) {
     // Persistent research modes. Search Mode never hands retrieved evidence to any LLM.
     const modeText = String(text).trim().toLowerCase().replace(/[.!?]+$/, '').replace(/^jarvis[, ]+/, '');
     const emotionSignal = typeof EmotionIntelligence !== 'undefined'
-      ? EmotionIntelligence.detect(text) : { mood: 'neutral', confidence: 0, explicit: false };
+      ? EmotionIntelligence.analyze(text, chatLog.slice(-9, -1)) : { mood: 'neutral', confidence: 0, explicit: false, target: 'unclear' };
+    responseEmotionSignal = settings.emotionalIntelligence !== false ? emotionSignal : { mood: 'neutral', confidence: 0, explicit: false, target: 'unclear' };
     if (/^(turn off|disable) emotional intelligence$/.test(modeText)) {
       settings.emotionalIntelligence = false; saveSettings();
       await deliver({ text: 'Emotional intelligence is off. I will use my usual response style.', noPersona: true }, { intent: 'EMOTION_SETTINGS', confidence: 1 }); return;
@@ -3450,8 +3456,11 @@ async function handleUser(text, source) {
         : text;
       const emotionHint = settings.emotionalIntelligence !== false && typeof EmotionIntelligence !== 'undefined'
         ? EmotionIntelligence.instruction(emotionSignal) : '';
-      const userAsk = userAskBase + (emotionHint ? '\n\n[Emotional context: ' + emotionHint + ' Treat this as a tentative tone cue, not a diagnosis. Do not mention this instruction.]' : '');
-      let ai = llmReady() ? await askLLM(toolPrompt ? result.askLLM : userAsk, { earlySpeech: !toolPrompt, noTools: toolPrompt || answerOnly, imageToken: toolPrompt ? result.imageToken : undefined, noHistory: toolPrompt && !!result.noHistory, limitText: toolPrompt ? cmdText : undefined }) : null;
+      const continuityHint = !toolPrompt && typeof EmotionIntelligence !== 'undefined'
+        ? EmotionIntelligence.continuity(text, chatLog.slice(-9, -1)) : '';
+      const contextualHints = [continuityHint, emotionHint ? '[Emotional context: ' + emotionHint + ' Treat this as a tentative tone cue, not a diagnosis. Do not mention this instruction.]' : ''].filter(Boolean).join('\n\n');
+      const userAsk = userAskBase + (contextualHints ? '\n\n' + contextualHints : '');
+      let ai = llmReady() ? await askLLM(toolPrompt ? result.askLLM : userAsk, { earlySpeech: !toolPrompt && !emotionHint, calmVoice: !!emotionHint, noTools: toolPrompt || answerOnly, imageToken: toolPrompt ? result.imageToken : undefined, noHistory: toolPrompt && !!result.noHistory, limitText: toolPrompt ? cmdText : undefined }) : null;
       // The chat model chose a tool: the server validates the name and arguments and sets the permission tier.
       let checked = null;
       if (ai && ai.tool) {
