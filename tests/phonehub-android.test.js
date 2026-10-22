@@ -28,7 +28,7 @@ const checks = [
   ['client sends bearer token and nonce on authenticated requests', /Authorization", "Bearer \$token"/.test(client) && /X-Jarvis-Nonce/.test(client)],
   ['token encryption uses Android Keystore AES-GCM', /AndroidKeyStore/.test(vault) && /AES\/GCM\/NoPadding/.test(vault)],
   ['token storage uses randomized encryption', /setRandomizedEncryptionRequired\(true\)/.test(vault)],
-  ['app supports QR scanning and pairing payload validation', /IntentIntegrator/.test(activity) && /optString\("endpoint"\)/.test(activity) && /version\) == 1/.test(activity)],
+  ['app supports QR scanning and pairing payload validation', /IntentIntegrator/.test(activity) && /optString\("endpoint"\)/.test(activity) && /optInt\("version"\) == 1/.test(activity)],
   ['app surfaces pairing, status and notifications', /fun pair\(/.test(client) && /fun status\(/.test(client) && /fun notifications\(/.test(client) && /refreshNotifications/.test(activity) && /forgetPhone\(\)/.test(activity)],
   ['Android TLS trusts system and user-installed CA roots without disabling verification', manifest.includes('@xml/network_security_config') && /certificates src="system"/.test(networkSecurity) && /certificates src="user"/.test(networkSecurity) && /cleartextTrafficPermitted="false"/.test(networkSecurity)],
   ['UI state updates are marshalled to the Android main thread', activity.includes('private fun setUi(block: () -> Unit)') && activity.includes('runOnUiThread(block)')],
