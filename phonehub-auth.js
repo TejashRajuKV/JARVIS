@@ -9,6 +9,7 @@ const DEFAULT_CAPABILITIES = Object.freeze([
   'status', 'notifications', 'sms.read', 'sms.send', 'contacts.read',
   'calls', 'photos.read', 'clipboard.read', 'app.launch'
 ]);
+const PAIRING_CAPABILITIES = Object.freeze(['status', 'notifications']);
 const DEFAULT_PAIRING_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_MAX_ATTEMPTS = 5;
@@ -34,7 +35,6 @@ function createPhoneHubAuth(options = {}) {
   const usedNonces = new Map();
 
   function beginPairing() {
-    // Six digits are easy to type, so they are short-lived and aggressively rate-limited.
     const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
     const id = randomId(12);
     const createdAt = nowFn();
@@ -46,8 +46,8 @@ function createPhoneHubAuth(options = {}) {
     const id = String(input.pairingId || '');
     const pairing = pairings.get(id);
     const now = nowFn();
-    if (!pairing || pairing.consumed || now > pairing.expiresAt) {
-      if (pairing && now > pairing.expiresAt) pairings.delete(id);
+    if (!pairing || pairing.consumed || now >= pairing.expiresAt) {
+      if (pairing && now >= pairing.expiresAt) pairings.delete(id);
       return { ok: false, error: 'PAIRING_EXPIRED' };
     }
     if (pairing.attempts >= maxAttempts) {
@@ -61,9 +61,9 @@ function createPhoneHubAuth(options = {}) {
       return { ok: false, error: pairing.attempts >= maxAttempts ? 'PAIRING_LOCKED' : 'PAIRING_CODE_INVALID' };
     }
 
-    const requested = Array.isArray(input.capabilities) ? input.capabilities : ['status', 'notifications'];
-    const capabilities = [...new Set(requested.map(v => String(v)).filter(v => allowed.has(v)))];
-    // Pairing with no privileges is allowed; the laptop owner can grant more later.
+    // Pairing grants only low-risk baseline capabilities. Sensitive scopes must be
+    // granted later through the trusted laptop-side management UI.
+    const capabilities = [...PAIRING_CAPABILITIES];
     const deviceId = randomId(16);
     const token = crypto.randomBytes(32).toString('base64url');
     const device = {
@@ -97,7 +97,7 @@ function createPhoneHubAuth(options = {}) {
     for (const device of devices.values()) {
       if (!safeEqual(device.tokenHash, tokenHash)) continue;
       if (device.revokedAt) return { ok: false, error: 'DEVICE_REVOKED' };
-      if (now > device.expiresAt) return { ok: false, error: 'SESSION_EXPIRED' };
+      if (now >= device.expiresAt) return { ok: false, error: 'SESSION_EXPIRED' };
       const nonce = String(input.nonce || '');
       if (!/^[a-zA-Z0-9_-]{16,128}$/.test(nonce)) return { ok: false, error: 'NONCE_REQUIRED' };
       for (const [key, expiry] of usedNonces) if (expiry <= now) usedNonces.delete(key);
@@ -130,7 +130,6 @@ function createPhoneHubAuth(options = {}) {
     const device = devices.get(String(deviceId || ''));
     if (!device) return false;
     device.revokedAt = nowFn();
-    device.tokenHash = hash(randomId(32)); // invalidate the stored credential immediately
     return true;
   }
 
@@ -149,4 +148,4 @@ function createPhoneHubAuth(options = {}) {
   return Object.freeze({ beginPairing, completePairing, authenticate, authorize, grant, revoke, listDevices, sweep });
 }
 
-module.exports = { createPhoneHubAuth, DEFAULT_CAPABILITIES };
+module.exports = { createPhoneHubAuth, DEFAULT_CAPABILITIES, PAIRING_CAPABILITIES };
