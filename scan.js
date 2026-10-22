@@ -230,7 +230,8 @@ module.exports = function setupScan(app, { SANDBOX, llm, DEFAULT_MODEL, rel, ope
       if (!answer) return res.status(502).json({ error: 'The vision model returned no answer.' });
       return res.json({ success: true, answer: String(answer).slice(0, 6000), model, cloud: !!(llm.isCloud && llm.isCloud(model)), usedOcr: !!hint, file: path.basename(target) });
     } catch (error) {
-      return res.status(500).json({ error: 'Could not analyze that saved screenshot: ' + String(error.message || error).slice(0, 160) });
+      const status = error && error.code === 'ENOENT' ? 404 : 500;
+      return res.status(status).json({ error: 'Could not analyze that saved screenshot: ' + String(error.message || error).slice(0, 160) });
     }
   });
 
