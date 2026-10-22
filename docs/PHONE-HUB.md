@@ -36,17 +36,21 @@ Run the focused test cases with `npm run test:phonehub`, `npm run test:phonehub-
 - listDevices() → public records only; never includes the bearer token.
 - sweep() → removes expired pairing/nonces and marks expired sessions revoked.
 
-The caller must generate a cryptographically random nonce (at least 16 URL-safe characters) per request. Nonce tracking is in-memory and capped in this first stage, so a gateway restart clears replay history; the long-lived token still remains revocable only while its device record persists. Before production use, persist device records securely and either persist nonce history or use a short-lived signed-request protocol that makes restart replay harmless.
+The caller must generate a cryptographically random nonce (at least 16 URL-safe characters) per request. The nonce cache is persisted with device state and capped at 10,000 active entries. The default device registry allows 50 active devices; revoked devices free a slot. The state file defaults to `~/jarvis/.phonehub-state.json` and can be overridden with `JARVIS_PHONEHUB_STATE_FILE`. Writes are atomic and use owner-only file permissions where supported. Device bearer tokens are not stored, only SHA-256 token hashes. If the state file is corrupt, startup of the network gateway fails closed. The state file is not encrypted at rest, so the operating-system account and disk must be protected.
 
 ## Integration checkpoints
 
-- [x] Add isolated pairing/session primitives and deterministic unit tests.
-- [x] Add isolated HTTPS gateway factory and strict request handler (not yet started by the application).
-- [ ] Wire gateway startup into a dedicated opt-in process/configuration with explicit TLS material and selected private IP.
-- [ ] Add laptop UI for QR/code pairing, capability grants, active devices and revoke.
-- [ ] Add Android companion app with encrypted token storage and pinned certificate fingerprint.
-- [ ] Add phone-side notification, status and permission-aware command flows.
-- [ ] Add end-to-end tests against the actual gateway; test on a physical Android device.
+- [x] Add pairing/session primitives, persistent device records, permissions, revocation and replay protection.
+- [x] Add an isolated HTTPS gateway with strict host/origin, LAN peer, body-size and capability checks.
+- [x] Wire opt-in gateway startup into the main server using explicit private-IP and TLS configuration; the default remains disabled.
+- [x] Add laptop pairing/device management UI at `/phonehub.html`.
+- [x] Add an initial native Android app at `android/phonehub/` with manual pairing, Android Keystore token encryption, status/notification fetch, and local token removal.
+- [x] Connect scheduler reminders, deadline alerts, charger alerts and trigger events to a bounded Phone Hub notification feed.
+- [x] Add regression test files and a GitHub Actions Android debug-build workflow.
+- [ ] Run the Android build in GitHub Actions and resolve any build errors reported by CI.
+- [ ] Configure and verify a trusted TLS certificate on a real Android phone and exercise pairing/revocation end to end.
+- [ ] Add QR scanning, automated certificate onboarding, background push delivery and biometric re-authentication.
+- [ ] Add persistent notification history if notifications must survive JARVIS restarts.
 - [ ] Consider iOS only after Android pairing, revocation and permission behavior are verified.
 
 **Verification note:** A passing unit suite only proves this module's logic. It does not prove HTTPS setup, LAN isolation, Android storage, or physical-device behavior.
