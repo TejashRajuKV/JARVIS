@@ -12,6 +12,7 @@ const vault = read('app/src/main/java/com/jarvis/phonehub/TokenVault.kt');
 const activity = read('app/src/main/java/com/jarvis/phonehub/MainActivity.kt');
 const workflow = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'phonehub-android.yml'), 'utf8');
 const worker = read('app/src/main/java/com/jarvis/phonehub/PhoneHubNotificationWorker.kt');
+const networkSecurity = read('app/src/main/res/xml/network_security_config.xml');
 
 const checks = [
   ['Android manifest denies cleartext HTTP', /usesCleartextTraffic="false"/.test(manifest)],
@@ -24,6 +25,7 @@ const checks = [
   ['token encryption uses Android Keystore AES-GCM', /AndroidKeyStore/.test(vault) && /AES\/GCM\/NoPadding/.test(vault)],
   ['token storage uses randomized encryption', /setRandomizedEncryptionRequired\(true\)/.test(vault)],
   ['app surfaces pairing, status and notifications', /fun pair\(/.test(client) && /fun status\(/.test(client) && /fun notifications\(/.test(client) && /refreshNotifications/.test(activity) && /forgetPhone\(\)/.test(activity)],
+  ['Android TLS trusts system and user-installed CA roots without disabling verification', manifest.includes('@xml/network_security_config') && /certificates src="system"/.test(networkSecurity) && /certificates src="user"/.test(networkSecurity) && /cleartextTrafficPermitted="false"/.test(networkSecurity)],
   ['UI state updates are marshalled to the Android main thread', activity.includes('private fun setUi(block: () -> Unit)') && activity.includes('runOnUiThread(block)')],
   ['background notifications use a network-constrained 15-minute worker', /PeriodicWorkRequestBuilder<PhoneHubNotificationWorker>\\(15, TimeUnit.MINUTES\\)/.test(worker) && /NetworkType.CONNECTED/.test(worker)],
   ['background worker suppresses initial historical notification spam', /if \\(previous == null\\)/.test(worker) && /if \\(!foundPrevious\\)/.test(worker)],
