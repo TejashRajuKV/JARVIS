@@ -234,7 +234,10 @@ ToolHandlers.add('system', async function (p, raw, s, a) {
       const text = (r.text || '').trim();
       const where = clip ? 'copied image' : 'screen';
       const titleNote = r.title ? ' The captured window is titled "' + r.title + '".' : '';
-      const honest = '\nDescribe only what is actually visible. If you do not know what a site or app is, say so instead of guessing, and do not offer actions you cannot do.';
+      const objectRequest = /\b(object|objects|item|items|thing|things|person|people|identify|detect|recognise|recognize|count|locate|where is|where are)\b/i.test(raw);
+      const honest = objectRequest
+        ? '\nOBJECT-DETECTION MODE: inspect the image itself, not just OCR. List each clearly visible object/person/UI element, give its approximate location (top-left/top-right/centre/bottom-left/bottom-right), and distinguish certain observations from uncertain guesses. If the image is blank, blocked, too dark, or only shows JARVIS, say that. Never invent objects, identities, text, or coordinates. Do not claim pixel-perfect bounding boxes; this is visual description, not a dedicated object-detection model.'
+        : '\nDescribe only what is actually visible. If you do not know what a site or app is, say so instead of guessing, and do not offer actions you cannot do.';
       // With vision, the local model sees the screenshot itself (charts, UI, images), and the OCR text is added
       // as a hint for exact wording. Without vision (or text-only models), it's the OCR text alone, as before.
       if (wantVision && r.imageToken) return { askLLM: raw + '\n\nThe attached image is a screenshot of my ' + where + '.' + titleNote +
