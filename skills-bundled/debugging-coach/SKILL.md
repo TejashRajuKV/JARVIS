@@ -1,8 +1,8 @@
 ---
 name: debugging-coach
 description: Diagnose a bug systematically from symptoms, logs, and code, then propose a minimal fix and regression tests.
-triggers: [debug this error, help me fix this bug, why is this crashing, diagnose this issue]
-keywords: [debug, error, crash, logs, regression]
+triggers: [debug this error, debug this stack trace, find the root cause, help me fix this bug, why is this crashing, diagnose this issue]
+keywords: [debug, error, crash, logs, regression, stack trace, root cause, diagnose]
 uses: files
 max_tokens: 1000
 ---
