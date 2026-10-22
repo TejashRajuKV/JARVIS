@@ -328,7 +328,7 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
       if (tabs) broadcast(ev); else await toast(title, body);
       await phonePush(settings, title, body);
       // Outbound calls are an explicit opt-in, never enabled just by installing Phone Hub.
-      if ((ev.type === 'reminder' || ev.type === 'deadline') && process.env.JARVIS_CALL_ON_REMINDERS === 'true' && app.locals && typeof app.locals.jarvisCall === 'function') {
+      if ((ev.type === 'reminder' || ev.type === 'deadline') && !ev.panic && settings.alerts !== false && getState()['jarvis.panic'] !== true && process.env.JARVIS_CALL_ON_REMINDERS === 'true' && app.locals && typeof app.locals.jarvisCall === 'function') {
         try { await app.locals.jarvisCall({ message: title + '. ' + body }, { source: 'reminder' }); }
         catch (callError) { log('optional reminder call skipped:', callError.code || callError.message); }
       }
