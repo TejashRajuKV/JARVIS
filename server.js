@@ -26,6 +26,7 @@ const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
 const { createPhoneHubAuth, DEFAULT_CAPABILITIES } = require('./phonehub-auth');
 const { createPhoneHubHttpsServer, DEFAULT_PORT: PHONEHUB_DEFAULT_PORT } = require('./phonehub-gateway');
+const { createPhoneHubNotifications } = require('./phonehub-notifications');
 const phoneHubStateFile = process.env.JARVIS_PHONEHUB_STATE_FILE || path.join(os.homedir(), 'jarvis', '.phonehub-state.json');
 let phoneHubAuth;
 let phoneHubAuthError = null;
@@ -37,6 +38,8 @@ try {
   phoneHubAuth = createPhoneHubAuth();
   console.error('[Phone Hub] persistent auth disabled: ' + error.message);
 }
+const phoneHubNotifications = createPhoneHubNotifications();
+app.locals.phoneHubNotify = event => phoneHubNotifications.publish(event);
 let phoneHubGateway = null;
 let phoneHubGatewayError = null;
 
@@ -2699,7 +2702,7 @@ async function startConfiguredPhoneHubGateway() {
       cert: process.env.JARVIS_PHONEHUB_TLS_CERT,
       allowedOrigins: String(process.env.JARVIS_PHONEHUB_ALLOWED_ORIGINS || '').split(',').map(v => v.trim()).filter(Boolean),
       getStatus: async () => ({ online: true, platform: process.platform, uptimeSeconds: Math.floor(process.uptime()) }),
-      getNotifications: async () => []
+      getNotifications: async () => phoneHubNotifications.list(50)
     });
     const address = await phoneHubGateway.listen();
     console.log(`[Phone Hub] HTTPS gateway listening on ${address.address}:${address.port}`);
