@@ -10,6 +10,10 @@ const CASES = [
   // explicit outbound call requests only
   ['call me', 'CALL_PHONE'], ['Jarvis, call my phone now', 'CALL_PHONE'], ['ring my mobile', 'CALL_PHONE'],
   ['identify objects on my screen', 'SCREEN_EXPLAIN'], ['what objects are visible on my screen', 'SCREEN_EXPLAIN'], ['count the items in this window', 'SCREEN_EXPLAIN'],
+  // context-aware commerce requests
+  ['compare the cheapest wireless mouse on Amazon and Flipkart', 'COMMERCE_COMPARE'],
+  ['find bus tickets from Bengaluru to Hyderabad tomorrow', 'COMMERCE_COMPARE'],
+  ['what is the cheapest laptop under 50000 on Amazon and Flipkart', 'COMMERCE_COMPARE'],
   // core commands
   ['yo can u fire up crome pls', 'OPEN_APPLICATION'], ['ogoen YouTube', 'OPEN_APPLICATION'], ['ogone youtube', 'OPEN_APPLICATION'], ['opne youtube', 'OPEN_APPLICATION'], ['hey jarvis open spotfy', 'OPEN_APPLICATION'], ['close it', 'CONTEXT_CLOSE'],
   ["how's my battery doing", 'SYS_BATTERY'], ["what's thirty times 12", 'CALCULATE'], ['set a timer for half a minute', 'SET_TIMER'],
