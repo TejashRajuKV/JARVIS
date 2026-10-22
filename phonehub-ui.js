@@ -2,7 +2,7 @@
 
 (() => {
   const $ = id => document.getElementById(id);
-  const state = { pairingTimer: null, expiresAt: 0 };
+  const state = { pairingTimer: null, expiresAt: 0, gatewayOrigin: '' };
   const CAPABILITY_LABELS = {
     status: 'Device status',
     notifications: 'Notifications',
