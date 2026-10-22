@@ -102,7 +102,7 @@ function createShotIndex({ SANDBOX, ocr, folders = () => [], now = Date.now, sta
 /* ---------- routes (laptop page only) ---------- */
 module.exports = function setupShots(app, { SANDBOX, IS_WIN }) {
   const home = os.homedir();
-  const defaults = () => [path.join(home, 'Pictures', 'Screenshots'), path.join(home, 'OneDrive', 'Pictures', 'Screenshots'), path.join(home, 'OneDrive', 'Screenshots'), path.join(SANDBOX, 'Screenshots')];
+  // Include the actual JARVIS screenshot destination (Desktop, or SANDBOX when no Desktop exists), not only the Windows Pictures\\Screenshots convention.\n  const defaults = () => [path.join(home, 'Desktop'), path.join(home, 'Pictures', 'Screenshots'), path.join(home, 'OneDrive', 'Pictures', 'Screenshots'), path.join(home, 'OneDrive', 'Screenshots'), SANDBOX, path.join(SANDBOX, 'Screenshots')];
   const ocr = async buf => (app.locals.ocrWords ? app.locals.ocrWords(buf) : { error: 'The text reader is not available.' });
   const idx = createShotIndex({ SANDBOX, ocr, folders: defaults });
   const fromLaptopPage = req => req.headers['sec-fetch-site'] === 'same-origin' && /^(localhost|127\.0\.0\.1):/.test(String(req.headers.host || ''));
@@ -113,7 +113,7 @@ module.exports = function setupShots(app, { SANDBOX, IS_WIN }) {
     const st = await idx.status();
     if (!IS_WIN) return res.status(501).json({ error: 'Reading screenshots needs Windows’ text recogniser, which this computer does not have.' });
     if (st.running) return res.json({ success: true, started: false, running: true });
-    if (!st.total) return res.status(404).json({ error: 'I found no screenshots. I look in Pictures\\Screenshots; say “add D:\\Shots to my screenshot folders” to add another.' });
+    if (!st.total) return res.status(404).json({ error: 'I found no images to index in Desktop, Pictures\\Screenshots, OneDrive screenshots, or the JARVIS folder. Say “add D:\\Shots to my screenshot folders” to add another.' });
     idx.update({ max: Math.min(500, Math.max(1, +(req.body && req.body.max) || 150)) }).catch(() => {});
     res.json({ success: true, started: true, pending: st.pending, total: st.total });
   }));
