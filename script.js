@@ -3059,7 +3059,7 @@ async function handleUser(text, source) {
 
     // Persistent research modes. Search Mode never hands retrieved evidence to any LLM.
     const modeText = String(text).trim().toLowerCase().replace(/[.!?]+$/, '').replace(/^jarvis[, ]+/, '');
-    if (/^(what('?s| is) (my )?(research )?mode|which research mode is (on|active))$/.test(modeText)) {
+    if (/^(what('?s| is) (my )?(research )?mode|what research mode is (on|active)|which research mode is (on|active))$/.test(modeText)) {
       const active = settings.researchMode === 'search' ? 'Search Mode (zero LLM calls)' : 'AI Research Mode (web evidence + local LLM)';
       await deliver({ text: 'Research mode: **' + active + '**.', noPersona: true }, { intent: 'RESEARCH_MODE', confidence: 1 }); return;
     }
