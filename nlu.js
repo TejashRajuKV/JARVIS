@@ -884,6 +884,11 @@ const NLU = (() => {
       return { intent: 'LOCK_JARVIS', confidence: .97, tool: 'lockJarvis', args: {}, text: 'lock jarvis' };
     let s = norm.text;
     ctx = ctx || {};
+    // Outbound calls are a consequential external action: only an explicit request to call the user's own phone
+    // triggers this intent; "call mom" and ordinary discussion remain in their existing intents.
+    if (/^(?:please )?(?:call|phone|ring) (?:me|my phone|my mobile|my cell)(?: now)?$/.test(s)) {
+      return { intent: 'CALL_PHONE', confidence: .99, tool: 'calling', args: { message: 'JARVIS is calling because you asked it to.' }, text: s };
+    }
     // ---- Negation ----
     // "don't lock the screen" / "never open chrome" / "no, don't set a timer" must NOT do the thing (and not the opposite either: this used to turn
     // "don't open chrome" into "close chrome"). Only an action verb right after the negation counts, so "don't forget to…", "never mind" and
