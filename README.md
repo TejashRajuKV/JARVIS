@@ -292,6 +292,11 @@ On first run, JARVIS shows a **guided setup** (re-open it any time: **Settings �
 - **Settings → Test my mic** — say 14 command words ("frontend", "create a folder", "VS Code"…) and see what the mic heard and what JARVIS repaired, as a score.
 - **Neural voices** for FRIDAY, Telugu and Kannada (Microsoft's neural voices, work in any browser). **Online translation** makes Telugu/Kannada answers as good as English ones. Both send the *reply text* online and can be turned off in Settings.
 
+### Recently closed apps and browser tabs
+
+- **“Open the recently closed app”** reopens the most recent app you closed through JARVIS. This recovery record persists across a JARVIS page refresh; apps closed manually outside JARVIS are not automatically tracked.
+- **Recently closed browser tabs:** use your browser's native **Ctrl+Shift+T** shortcut. JARVIS does not yet send that shortcut automatically because the OS-level keypress could go to the wrong active window.
+
 ### Laptop control
 
 - **Apps:** "open chrome", "fire up VS Code", "close it" — plus **anything in your Start menu** by name ("open canva", "open telegram", "open docker", "open mysql workbench"). Closing works for regular desktop apps; for Microsoft Store apps JARVIS won't guess which process to close and says so.
