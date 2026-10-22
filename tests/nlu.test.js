@@ -191,6 +191,12 @@ for (const [text, lang, want] of ROMAN) {
 }
 // "who is odu" may be flagged at the loose threshold, but it is not a command, so handleUser ignores it (it needs score ≥ 3 then).
 for (const text of NOT_ROMAN) if (NLU.romanLang(text, 3)) { fail++; console.log(`FAIL  ${text.padEnd(62)} wrongly read as Telugu/Kannada`); }
-const total = CASES.length + ROMAN.length + NOT_ROMAN.length + NEGATION_CASES.length + FUZZY_STRENGTHEN_CASES.length;
+
+const followOpen = NLU.classify(NLU.normalize('open it', 'jarvis'), { lastIntent: 'OPEN_SITE', lastCmd: { text: 'open YouTube', t: Date.now() } });
+if (followOpen.intent !== 'OPEN_SITE' || !followOpen.contextResolved) { fail++; console.log('FAIL  [context] open it should resolve to the last successful navigation'); }
+const repeatRisk = NLU.classify(NLU.normalize('do that again', 'jarvis'), { lastIntent: 'DELETE_FILE', lastCmd: { text: 'delete report.pdf', t: Date.now() } });
+if (repeatRisk.intent === 'DELETE_FILE') { fail++; console.log('FAIL  [context] repeating a destructive command must not be inferred'); }
+
+const total = CASES.length + 2 + ROMAN.length + NOT_ROMAN.length + NEGATION_CASES.length + FUZZY_STRENGTHEN_CASES.length;
 console.log(`${total - fail}/${total} passed`);
 process.exit(fail ? 1 : 0);
