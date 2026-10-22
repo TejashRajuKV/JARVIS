@@ -10,6 +10,7 @@ const DEFAULT_MAX_BODY_BYTES = 4096;
 const DEFAULT_PORT = 18443;
 const CAPABILITY_ROUTES = new Set(['/v1/status', '/v1/notifications']);
 const STREAM_ROUTE = '/v1/events';
+const VOICE_ROUTE = '/v1/voice/respond';
 
 function isPrivateLanAddress(value) {
   let address = String(value || '').split('%')[0];
@@ -81,6 +82,8 @@ function createPhoneHubRequestHandler(options = {}) {
   const getStatus = typeof options.getStatus === 'function' ? options.getStatus : async () => ({ available: true });
   const getNotifications = typeof options.getNotifications === 'function' ? options.getNotifications : async () => [];
   const subscribeNotifications = typeof options.subscribeNotifications === 'function' ? options.subscribeNotifications : null;
+  const respondToVoice = typeof options.respondToVoice === 'function' ? options.respondToVoice : null;
+  const makeCall = typeof options.makeCall === 'function' ? options.makeCall : null;
 
   return async function phoneHubRequestHandler(req, res) {
     try {
@@ -106,6 +109,38 @@ function createPhoneHubRequestHandler(options = {}) {
         return json(res, result.ok ? 200 : result.error === 'DEVICE_CAPACITY' ? 429 : 401, result.ok
           ? { ok: true, device: result.device, token: result.token }
           : { ok: false, error: result.error });
+      }
+      if (req.method === 'POST' && req.url === VOICE_ROUTE) {
+        if (String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase() !== 'application/json') {
+          return json(res, 415, { error: 'JSON_REQUIRED' });
+        }
+        const tokenHeader = String(req.headers.authorization || '');
+        const tokenMatch = /^Bearer ([A-Za-z0-9_-]{32,128})$/.exec(tokenHeader);
+        const nonce = String(req.headers['x-jarvis-nonce'] || '');
+        const result = auth.authorize({ token: tokenMatch ? tokenMatch[1] : '', nonce }, 'voice');
+        if (!result.ok) return json(res, result.error === 'CAPABILITY_DENIED' ? 403 : 401, { error: result.error });
+        if (!respondToVoice) return json(res, 503, { error: 'VOICE_UNAVAILABLE' });
+        const body = await readJsonBody(req, maxBodyBytes);
+        const text = String(body.text || '').replace(/[\\u0000-\\u001f\\u007f]/g, ' ').trim().slice(0, 1000);
+        if (!text) return json(res, 400, { error: 'VOICE_TEXT_REQUIRED' });
+        const reply = await respondToVoice(text);
+        return json(res, 200, { ok: true, reply: String(reply || '').slice(0, 3000) });
+      }
+      if (req.method === 'POST' && req.url === '/v1/call') {
+        if (String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase() !== 'application/json') {
+          return json(res, 415, { error: 'JSON_REQUIRED' });
+        }
+        const tokenHeader = String(req.headers.authorization || '');
+        const tokenMatch = /^Bearer ([A-Za-z0-9_-]{32,128})$/.exec(tokenHeader);
+        const nonce = String(req.headers['x-jarvis-nonce'] || '');
+        const result = auth.authorize({ token: tokenMatch ? tokenMatch[1] : '', nonce }, 'calls');
+        if (!result.ok) return json(res, result.error === 'CAPABILITY_DENIED' ? 403 : 401, { error: result.error });
+        if (!makeCall) return json(res, 503, { error: 'CALLING_UNAVAILABLE' });
+        const body = await readJsonBody(req, maxBodyBytes);
+        const message = String(body.message || '').replace(/[\\u0000-\\u001f\\u007f]/g, ' ').trim().slice(0, 600);
+        if (!message) return json(res, 400, { error: 'CALL_MESSAGE_REQUIRED' });
+        const call = await makeCall({ message }, { source: 'phone' });
+        return json(res, 202, { ok: true, call });
       }
       if (req.method === 'GET' && req.url === STREAM_ROUTE) {
         const tokenHeader = String(req.headers.authorization || '');
