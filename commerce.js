@@ -82,7 +82,11 @@ function comparisonPlan(body) {
   if (type === 'product') {
     const query = clean(b.query, 160);
     if (!query) return { error: 'Enter the product name and, if possible, the exact model or variant.' };
-    return { type, query, entries: ['amazon', 'flipkart', 'googleShopping'].map(key => ({ key, ...PROVIDERS[key], search: PROVIDERS[key].query(query) })) };
+    const requested = String(b.provider || 'all').toLowerCase().replace(/\\s+/g, '');
+    const providerKey = requested === 'googleshopping' ? 'googleShopping' : requested;
+    const keys = requested === 'all' ? ['amazon', 'flipkart', 'googleShopping'] : [providerKey];
+    if (keys.some(key => !['amazon', 'flipkart', 'googleShopping'].includes(key))) return { error: 'Unsupported product provider.' };
+    return { type, query, entries: keys.map(key => ({ key, ...PROVIDERS[key], search: PROVIDERS[key].query(query) })) };
   }
   if (type === 'bus') {
     const from = clean(b.from, 80), to = clean(b.to, 80), date = clean(b.date, 40);
