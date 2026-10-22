@@ -2728,6 +2728,7 @@ async function startConfiguredPhoneHubGateway() {
       getStatus: async () => ({ online: true, platform: process.platform, uptimeSeconds: Math.floor(process.uptime()) }),
       getNotifications: async () => phoneHubNotifications.list(50),
       subscribeNotifications: listener => phoneHubNotifications.subscribe(listener),
+      allowTailscalePeers: String(process.env.JARVIS_PHONEHUB_ALLOW_TAILSCALE || '').toLowerCase() === 'true',
       makeCall: (input, metadata) => callingService.call(input, metadata),
       respondToVoice: async text => {
         const result = await llm.complete({ messages: [
