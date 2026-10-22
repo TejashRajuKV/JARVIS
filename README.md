@@ -292,10 +292,17 @@ On first run, JARVIS shows a **guided setup** (re-open it any time: **Settings �
 - **Settings → Test my mic** — say 14 command words ("frontend", "create a folder", "VS Code"…) and see what the mic heard and what JARVIS repaired, as a score.
 - **Neural voices** for FRIDAY, Telugu and Kannada (Microsoft's neural voices, work in any browser). **Online translation** makes Telugu/Kannada answers as good as English ones. Both send the *reply text* online and can be turned off in Settings.
 
-### Recently closed apps and browser tabs
+### Skill Hub, browser recovery, diagnostics and saved workflows
 
-- **“Open the recently closed app”** reopens the most recent app you closed through JARVIS. This recovery record persists across a JARVIS page refresh; apps closed manually outside JARVIS are not automatically tracked.
-- **Recently closed browser tabs:** use your browser's native **Ctrl+Shift+T** shortcut. JARVIS does not yet send that shortcut automatically because the OS-level keypress could go to the wrong active window.
+Open **✦ SKILL HUB** from the lower-right corner of the JARVIS page.
+
+- **Skill Hub:** search bundled and personal skills, rescan the skill folders, run an enabled skill, and persistently enable/disable a skill. Disabled skills are omitted from normal skill routing and direct runs return 403. Skill files remain instruction text; they do not get operating-system permissions.
+- **Browser recovery:** JARVIS keeps a bounded local list of web URLs opened through its own “open URL” tool, so you can reopen one after a refresh or accidental tab closure. The list is saved in `~/jarvis/.browser-recovery.json`; clear it from the Hub. Sensitive query parameters (tokens, keys, codes, session IDs and similar) are stripped before a URL is saved. This is not a complete Chrome/Edge history and does not detect pages opened outside JARVIS.
+- **Restore a browser tab:** to restore a tab closed in Chrome or Edge, switch to the intended browser window and press **Ctrl+Shift+T** yourself. JARVIS deliberately does not inject that global shortcut, because it could affect the wrong active app.
+- **Self-diagnostics:** checks the Node runtime, required skill/voice/automation files, local storage and Ollama reachability. It reports recommendations only; it does not run repair commands.
+- **Workflow memory:** save a named reusable prompt/checklist and use it later from the Hub. Workflows are stored locally in `~/jarvis/.workflow-memory.json`; selecting “Use in chat” fills the chat box but never executes the workflow automatically. No mood profile is created.
+
+The original **“open the recently closed app”** command still reopens the most recent app closed through JARVIS. Apps closed manually outside JARVIS are not automatically tracked.
 
 ### Laptop control
 
