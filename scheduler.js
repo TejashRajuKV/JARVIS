@@ -320,6 +320,9 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
   // Never throws: reminders are saved as fired before they are delivered, so one failed delivery must not skip the rest.
   async function deliver(ev, title, body) {
     try {
+      if (typeof app.locals.phoneHubNotify === 'function') {
+        app.locals.phoneHubNotify({ type: ev.type, title, body, sourceId: ev.id || ev.triggerId || ev.deadlineId });
+      }
       const settings = getState()['jarvis.settings'] || {};
       const tabs = clients.size;
       if (tabs) broadcast(ev); else await toast(title, body);
@@ -401,6 +404,7 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
     const name = t.routineName || (r && r.name) || 'a routine';
     const label = t.label || Triggers.describeWhen(t.when);
     const ev = { type: 'trigger', triggerId: t.id, routineId: t.routineId, text: '⚡ ' + label + ' — running "' + name + '"' };
+    if (typeof app.locals.phoneHubNotify === 'function') app.locals.phoneHubNotify({ type: 'trigger', title: 'JARVIS trigger', body: label + ' — running ' + name, sourceId: t.id });
     if (clients.size) broadcast(ev);
     else { pendingTriggers.push({ ev, at: Date.now() }); await toast('JARVIS trigger', label + ' — open JARVIS to run "' + name + '"'); }
     log('trigger fired:', label, '→', name, clients.size ? '(' + clients.size + ' tab(s))' : '(no tab — toast, held 10 min)');
