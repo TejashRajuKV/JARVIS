@@ -6,8 +6,6 @@
 const crypto = require('crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const fs = require('node:fs');
-const path = require('node:path');
 
 const DEFAULT_CAPABILITIES = Object.freeze([
   'status', 'notifications', 'sms.read', 'sms.send', 'contacts.read',
@@ -84,8 +82,11 @@ function createPhoneHubAuth(options = {}) {
       if (p.expiresAt > nowFn() && !p.consumed && p.attempts < maxAttempts) pairings.set(id, p);
     }
     for (const [id, d] of state.devices) {
-      if (typeof id !== 'string' || !d || typeof d.tokenHash !== 'string' ||
-          !Array.isArray(d.capabilities) || !Number.isFinite(d.expiresAt)) {
+      if (typeof id !== 'string' || !/^[a-f0-9]{32}$/.test(id) || !d ||
+          typeof d.tokenHash !== 'string' || !/^[a-f0-9]{64}$/.test(d.tokenHash) ||
+          !Array.isArray(d.capabilities) || d.capabilities.some(cap => typeof cap !== 'string' || !allowed.has(cap)) ||
+          !Number.isFinite(d.expiresAt) || !Number.isFinite(d.createdAt) ||
+          (d.revokedAt !== null && !Number.isFinite(d.revokedAt))) {
         throw new Error('Phone Hub state file contains an invalid device record');
       }
       if (d.expiresAt > nowFn() && !d.revokedAt) devices.set(id, d);
@@ -94,7 +95,8 @@ function createPhoneHubAuth(options = {}) {
     for (const [key, expiry] of state.usedNonces) {
       if (typeof key === 'string' && Number.isFinite(expiry) && expiry > nowFn()) usedNonces.set(key, expiry);
     }
-    if (pairings.size > maxActivePairings || usedNonces.size > maxUsedNonces) {
+    if (pairings.size > maxActivePairings || usedNonces.size > maxUsedNonces ||
+        devices.size > maxDevices * 10 || activeDeviceCount() > maxDevices) {
       throw new Error('Phone Hub state exceeds configured safety limits; refusing to load it');
     }
   }
