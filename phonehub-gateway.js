@@ -122,7 +122,7 @@ function createPhoneHubRequestHandler(options = {}) {
         if (!result.ok) return json(res, result.error === 'CAPABILITY_DENIED' ? 403 : 401, { error: result.error });
         if (!respondToVoice) return json(res, 503, { error: 'VOICE_UNAVAILABLE' });
         const body = await readJsonBody(req, maxBodyBytes);
-        const text = String(body.text || '').replace(/[\\u0000-\\u001f\\u007f]/g, ' ').trim().slice(0, 1000);
+        const text = String(body.text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 1000);
         if (!text) return json(res, 400, { error: 'VOICE_TEXT_REQUIRED' });
         const reply = await respondToVoice(text);
         return json(res, 200, { ok: true, reply: String(reply || '').slice(0, 3000) });
