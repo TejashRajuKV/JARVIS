@@ -222,7 +222,7 @@ async function runUndoTask(id, say = true) {
 function memDel(id) { undoRemoved('deleted memory', () => memory, v => { memory = v; }, () => { store.set('jarvis.memory', memory); renderMemory(); }, removedFrom(memory, m => m.id !== id)); memory = memory.filter(m => m.id !== id); store.set('jarvis.memory', memory); renderMemory(); }
 
 // Conversation context for follow-ups ("close it", "what about RAM").
-const ctx = { lastApp: null, lastIntent: null, lastFile: null, pending: null };
+const ctx = { lastApp: null, lastIntent: null, lastFile: null, pending: null, recentlyClosedApp: store.get('jarvis.recentlyClosedApp', null) };
 // What the conversation is about right now: the folder / file JARVIS last showed, found or made, and the numbered
 // results of the last list or search — so "create a folder there", "open it" and "open the second one" mean something.
 ctx.focus = { folder: null, file: null, created: null, results: [] };
