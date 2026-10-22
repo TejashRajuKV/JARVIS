@@ -92,7 +92,7 @@
     const a=action.dataset.action;
     try{
       if(a==='close'){hide();return;}
-      if(a==='reload-skills'){await json('/api/skills/reload',{method:'POST',body:'{}'});await loadSkills();render();msg('Skills rescanned.');return;}
+      if(a==='reload-skills'){await json('/api/skills/reload',{method:'POST',body:'{}'});if(window.Skills&&typeof Skills.loadPacks==='function')await Skills.loadPacks();await loadSkills();render();msg('Skills rescanned.');return;}
       if(a==='run-skill'){
         const name=action.dataset.name,field=shade.querySelector('[data-skill-input="'+CSS.escape(name)+'"]'),out=shade.querySelector('[data-skill-output="'+CSS.escape(name)+'"]');
         const input=field&&field.value.trim();if(!input){msg('Enter a task for this skill first.',true);field&&field.focus();return;}
@@ -113,7 +113,7 @@
   shade.addEventListener('change',async e=>{
     const c=e.target.closest('[data-enabled]');if(!c)return;
     const name=c.dataset.enabled;c.disabled=true;
-    try{await json('/api/skills/'+encodeURIComponent(name)+'/enabled',{method:'POST',body:JSON.stringify({enabled:c.checked})});await loadSkills();render();msg(name+(c.checked?' enabled.':' disabled.'));}
+    try{await json('/api/skills/'+encodeURIComponent(name)+'/enabled',{method:'POST',body:JSON.stringify({enabled:c.checked})});if(window.Skills&&typeof Skills.loadPacks==='function')await Skills.loadPacks();await loadSkills();render();msg(name+(c.checked?' enabled.':' disabled.'));}
     catch(err){c.checked=!c.checked;msg(err.message,true);}finally{c.disabled=false;}
   });
   shade.addEventListener('input',e=>{if(e.target.id==='jhSearch'){const pos=e.target.selectionStart;search=e.target.value;const val=search;render();const next=document.getElementById('jhSearch');if(next){next.focus();next.setSelectionRange(pos,pos);}}});
