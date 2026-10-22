@@ -61,3 +61,6 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   .section-heading { flex-direction: row; }
   footer { flex-direction: column; }
 }
+
+.pairing-qr { display: flex; justify-content: center; width: fit-content; max-width: 100%; margin: 18px auto; padding: 10px; background: #fff; border-radius: 10px; min-height: 20px; }
+.pairing-qr img, .pairing-qr canvas { display: block; max-width: 100%; height: auto; image-rendering: pixelated; }
