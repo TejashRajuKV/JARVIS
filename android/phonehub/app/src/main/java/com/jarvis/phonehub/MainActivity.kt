@@ -1,6 +1,8 @@
 package com.jarvis.phonehub
 
-import android.os.Bundle\nimport android.content.Intent\nimport com.google.zxing.integration.android.IntentIntegrator
+import android.os.Bundle
+import android.content.Intent
+import com.google.zxing.integration.android.IntentIntegrator
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
@@ -52,7 +54,8 @@ class MainActivity : ComponentActivity() {
                         OutlinedTextField(endpoint, { endpoint = it }, label = { Text("Laptop HTTPS address") },
                             placeholder = { Text("https://192.168.1.10:18443") }, modifier = Modifier.fillMaxWidth(),
                             singleLine = true)
-                        Button(onClick = { IntentIntegrator(this@MainActivity).setDesiredBarcodeFormats(IntentIntegrator.QR_CODE).setPrompt("Scan the one-time JARVIS Phone Hub QR").setBeepEnabled(false).setOrientationLocked(false).initiateScan() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Scan pairing QR") }\n                        OutlinedTextField(pairingId, { pairingId = it.trim() }, label = { Text("Pairing ID") },
+                        Button(onClick = { IntentIntegrator(this@MainActivity).setDesiredBarcodeFormats(IntentIntegrator.QR_CODE).setPrompt("Scan the one-time JARVIS Phone Hub QR").setBeepEnabled(false).setOrientationLocked(false).initiateScan() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Scan pairing QR") }
+                        OutlinedTextField(pairingId, { pairingId = it.trim() }, label = { Text("Pairing ID") },
                             modifier = Modifier.fillMaxWidth(), singleLine = true)
                         OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6) }, label = { Text("6-digit pairing code") },
                             modifier = Modifier.fillMaxWidth(), singleLine = true)
