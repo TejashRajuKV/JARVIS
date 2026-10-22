@@ -12,14 +12,14 @@ const CAPABILITY_ROUTES = new Set(['/v1/status', '/v1/notifications']);
 const STREAM_ROUTE = '/v1/events';
 const VOICE_ROUTE = '/v1/voice/respond';
 
-function isPrivateLanAddress(value) {
+function isPrivateLanAddress(value, allowTailscale = false) {
   let address = String(value || '').split('%')[0];
   if (address.startsWith('::ffff:')) address = address.slice(7);
   const family = net.isIP(address);
   if (family === 4) {
     const octets = address.split('.').map(Number);
     const [a, b] = octets;
-    return a === 10 ||
+    return (allowTailscale && a === 100 && b >= 64 && b <= 127) || a === 10 ||
       (a === 172 && b >= 16 && b <= 31) ||
       (a === 192 && b === 168);
   }
@@ -81,6 +81,7 @@ function createPhoneHubRequestHandler(options = {}) {
     ? Math.min(options.maxBodyBytes, 16 * 1024) : DEFAULT_MAX_BODY_BYTES;
   const getStatus = typeof options.getStatus === 'function' ? options.getStatus : async () => ({ available: true });
   const getNotifications = typeof options.getNotifications === 'function' ? options.getNotifications : async () => [];
+  const allowTailscalePeers = options.allowTailscalePeers === true;
   const subscribeNotifications = typeof options.subscribeNotifications === 'function' ? options.subscribeNotifications : null;
   const respondToVoice = typeof options.respondToVoice === 'function' ? options.respondToVoice : null;
   const makeCall = typeof options.makeCall === 'function' ? options.makeCall : null;
@@ -88,7 +89,7 @@ function createPhoneHubRequestHandler(options = {}) {
   return async function phoneHubRequestHandler(req, res) {
     try {
       if (!req.socket || req.socket.encrypted !== true) return json(res, 426, { error: 'HTTPS_REQUIRED' });
-      if (!isPrivateLanAddress(req.socket && req.socket.remoteAddress)) {
+      if (!isPrivateLanAddress(req.socket && req.socket.remoteAddress, allowTailscalePeers)) {
         return json(res, 403, { error: 'PRIVATE_LAN_PEER_REQUIRED' });
       }
       if (req.headers.host !== allowedHost) return json(res, 403, { error: 'FORBIDDEN_HOST' });
@@ -211,7 +212,7 @@ function createPhoneHubRequestHandler(options = {}) {
 function createPhoneHubHttpsServer(options = {}) {
   const host = String(options.host || '');
   const port = Number.isInteger(options.port) ? options.port : DEFAULT_PORT;
-  if (!isPrivateLanAddress(host)) throw new Error('Phone Hub must bind to an explicit private LAN IP address');
+  if (!isPrivateLanAddress(host, options.allowTailscalePeers === true)) throw new Error('Phone Hub must bind to an explicit private LAN IP address (or opt-in Tailscale IP)');
   if (!options.key || !options.cert) throw new Error('Phone Hub requires an HTTPS certificate and private key; plaintext fallback is disabled');
   const key = Buffer.isBuffer(options.key) ? options.key : fs.readFileSync(options.key);
   const cert = Buffer.isBuffer(options.cert) ? options.cert : fs.readFileSync(options.cert);
