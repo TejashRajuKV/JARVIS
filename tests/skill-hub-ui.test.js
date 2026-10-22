@@ -8,4 +8,6 @@ for(const api of ['/api/skills?all=1','/api/skills/reload','/api/browser-recover
 check('workflow reuse fills the chat box but does not auto-submit',hub.includes("input.value=w.prompt")&&!/input\.value\s*=\s*w\.prompt;[^\n]*sendBtn/.test(hub));
 check('browser shortcut is documented but never injected globally',hub.includes('Ctrl+Shift+T')&&!/key(?:down|up).*Ctrl\+Shift\+T/i.test(hub));
 check('search, enable/disable, run and diagnostics controls exist',hub.includes('jhSearch')&&hub.includes('data-enabled=')&&hub.includes('run-skill')&&hub.includes('diagnose'));
+const script=fs.readFileSync(path.join(root,'script.js'),'utf8');
+check('fuzzy skill match cannot auto-run a skill without an explicit trigger phrase',script.includes('if (skillHint && skillHint.auto && skillHint.phrase)'));
 console.log('skill-hub-ui: '+(total-fail)+'/'+total);process.exitCode=fail?1:0;
