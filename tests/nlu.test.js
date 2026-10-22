@@ -9,6 +9,7 @@ const CASES = [
   ['which app did I just close', 'RECENT_CLOSED_APP_STATUS'],
   // explicit outbound call requests only
   ['call me', 'CALL_PHONE'], ['Jarvis, call my phone now', 'CALL_PHONE'], ['ring my mobile', 'CALL_PHONE'],
+  ['identify objects on my screen', 'SCREEN_EXPLAIN'], ['what objects are visible on my screen', 'SCREEN_EXPLAIN'], ['count the items in this window', 'SCREEN_EXPLAIN'],
   // core commands
   ['yo can u fire up crome pls', 'OPEN_APPLICATION'], ['hey jarvis open spotfy', 'OPEN_APPLICATION'], ['close it', 'CONTEXT_CLOSE'],
   ["how's my battery doing", 'SYS_BATTERY'], ["what's thirty times 12", 'CALCULATE'], ['set a timer for half a minute', 'SET_TIMER'],
