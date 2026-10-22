@@ -2488,8 +2488,8 @@ app.get('/api/tool/screenshots', (req, res) => {
       if (!/^JARVIS_screenshot_[\w.-]+\.png$/i.test(name)) continue;
       const full = path.join(dir, name);
       try {
-        const st = fs.statSync(full);
-        if (!st.isFile() || st.size < 8 || st.size > 30 * 1024 * 1024) continue;
+        const st = fs.lstatSync(full);
+        if (!st.isFile() || st.isSymbolicLink() || st.size < 8 || st.size > 30 * 1024 * 1024) continue;
         items.push({ id: Buffer.from(full).toString('base64url'), name, path: full, modified: st.mtimeMs, bytes: st.size });
       } catch {}
     }
@@ -2505,8 +2505,8 @@ app.get('/api/tool/screenshots/:id', (req, res) => {
   const resolved = path.resolve(full);
   if (!dirs.some(d => path.dirname(resolved) === d) || !/^JARVIS_screenshot_[\w.-]+\.png$/i.test(path.basename(resolved))) return res.status(400).json({ error: 'Invalid screenshot reference' });
   try {
-    const st = fs.statSync(resolved);
-    if (!st.isFile() || st.size > 30 * 1024 * 1024) return res.status(404).json({ error: 'Screenshot not found or too large' });
+    const st = fs.lstatSync(resolved);
+    if (!st.isFile() || st.isSymbolicLink() || st.size > 30 * 1024 * 1024) return res.status(404).json({ error: 'Screenshot not found or too large' });
   } catch { return res.status(404).json({ error: 'Screenshot not found' }); }
   res.type('png').sendFile(resolved, err => { if (err && !res.headersSent) res.status(404).end(); });
 });
