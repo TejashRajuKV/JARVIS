@@ -2474,7 +2474,12 @@ app.post('/api/tool/screenshot', (req, res) => {
 });
 
 // Recent JARVIS screenshots: list only files created by this app in its known output folders.
+const screenshotLocalOnly = (req, res) => {
+  if (req.headers['sec-fetch-site'] === 'same-origin' && /^(localhost|127\\.0\\.0\\.1):/.test(String(req.headers.host || ''))) return true;
+  res.status(403).json({ error: 'Screenshot gallery is available only from JARVIS on this laptop.' }); return false;
+};
 app.get('/api/tool/screenshots', (req, res) => {
+  if (!screenshotLocalOnly(req, res)) return;
   const dirs = [...new Set([path.join(os.homedir(), 'Desktop'), SANDBOX, path.join(SANDBOX, 'Screenshots')])];
   const items = [];
   for (const dir of dirs) {
@@ -2493,6 +2498,7 @@ app.get('/api/tool/screenshots', (req, res) => {
   res.json({ success: true, screenshots: items.slice(0, 40) });
 });
 app.get('/api/tool/screenshots/:id', (req, res) => {
+  if (!screenshotLocalOnly(req, res)) return;
   let full = '';
   try { full = Buffer.from(String(req.params.id || ''), 'base64url').toString('utf8'); } catch {}
   const dirs = [...new Set([path.join(os.homedir(), 'Desktop'), SANDBOX, path.join(SANDBOX, 'Screenshots')])].map(d => path.resolve(d));
