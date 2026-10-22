@@ -4,6 +4,8 @@ const path = require('path');
 eval(fs.readFileSync(path.join(__dirname, '..', 'nlu.js'), 'utf8') + ';global.NLU=NLU;');
 
 const CASES = [
+  ['open the recently closed app', 'REOPEN_RECENT_APP'],
+  ['reopen the last app', 'REOPEN_RECENT_APP'],
   // explicit outbound call requests only
   ['call me', 'CALL_PHONE'], ['Jarvis, call my phone now', 'CALL_PHONE'], ['ring my mobile', 'CALL_PHONE'],
   // core commands
