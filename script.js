@@ -3445,7 +3445,7 @@ async function handleUser(text, source) {
       if (!result && !toolPrompt && !answerOnly && srcLang === 'en' && typeof SkillRouter !== 'undefined' && typeof Skills !== 'undefined' && settings.skillSuggest !== false && llmReady()) {
         try { skillHint = SkillRouter.pick(cmdText, Skills.packs); } catch (e) { skillHint = null; }
       }
-      if (skillHint && skillHint.auto) {
+      if (skillHint && skillHint.auto && skillHint.phrase) {
         traceRoute('skill (auto): ' + skillHint.name);
         const sk = await Skills.intercept('/' + skillHint.name + ' ' + cmdText);
         if (sk) { sk.text = 'Using the **' + skillHint.name + '** skill.\n\n' + sk.text; await deliver(sk, { intent: sk.intent || 'SKILL', confidence: 1 }); return; }
