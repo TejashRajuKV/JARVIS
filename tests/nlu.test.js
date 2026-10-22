@@ -11,7 +11,7 @@ const CASES = [
   ['call me', 'CALL_PHONE'], ['Jarvis, call my phone now', 'CALL_PHONE'], ['ring my mobile', 'CALL_PHONE'],
   ['identify objects on my screen', 'SCREEN_EXPLAIN'], ['what objects are visible on my screen', 'SCREEN_EXPLAIN'], ['count the items in this window', 'SCREEN_EXPLAIN'],
   // core commands
-  ['yo can u fire up crome pls', 'OPEN_APPLICATION'], ['hey jarvis open spotfy', 'OPEN_APPLICATION'], ['close it', 'CONTEXT_CLOSE'],
+  ['yo can u fire up crome pls', 'OPEN_APPLICATION'], ['ogoen YouTube', 'OPEN_APPLICATION'], ['ogone youtube', 'OPEN_APPLICATION'], ['opne youtube', 'OPEN_APPLICATION'], ['hey jarvis open spotfy', 'OPEN_APPLICATION'], ['close it', 'CONTEXT_CLOSE'],
   ["how's my battery doing", 'SYS_BATTERY'], ["what's thirty times 12", 'CALCULATE'], ['set a timer for half a minute', 'SET_TIMER'],
   ['remind me to call mom at 6pm', 'REMIND'], ['remind me every day at 9pm to revise', 'REMIND'], ['add milk to my shopping list', 'ADD_TODO'],
   ["what's on my to do list", 'LIST_TODOS'], ['mark 2 as done', 'DONE_TODO'], ['add assignment DBMS lab due friday', 'ADD_DEADLINE'],
