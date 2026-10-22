@@ -97,32 +97,38 @@ class MainActivity : ComponentActivity() {
             if (token.isBlank()) throw IllegalStateException("Gateway did not return a device token")
             TokenVault.save(this, token)
             getSharedPreferences("phonehub_settings", MODE_PRIVATE).edit().putString("endpoint", endpoint).apply()
-            status = "Paired as " + response.optJSONObject("device")?.optString("name", deviceName)
-            statusJson = "Token saved in Android Keystore-encrypted storage."
-            pairingId = ""
-            code = ""
+            setUi {
+                status = "Paired as " + response.optJSONObject("device")?.optString("name", deviceName)
+                statusJson = "Token saved in Android Keystore-encrypted storage."
+                pairingId = ""
+                code = ""
+            }
         } catch (e: Exception) {
-            status = safeMessage(e)
+            setUi { status = safeMessage(e) }
         }
     }
 
     private fun forgetPhone() {
         TokenVault.clear(this)
-        status = "Phone token removed from this device. Revoke the paired device on the laptop too if needed."
-        statusJson = ""
-        notificationText = "No notifications loaded"
+        setUi {
+            status = "Phone token removed from this device. Revoke the paired device on the laptop too if needed."
+            statusJson = ""
+            notificationText = "No notifications loaded"
+        }
     }
 
     private fun refreshStatus() = runWithToken { client, token ->
         val response = client.status(token)
-        status = if (response.optBoolean("ok")) "Connected to JARVIS" else "Gateway did not confirm connection"
-        statusJson = response.optJSONObject("data")?.toString(2) ?: response.toString(2)
+        setUi {
+            status = if (response.optBoolean("ok")) "Connected to JARVIS" else "Gateway did not confirm connection"
+            statusJson = response.optJSONObject("data")?.toString(2) ?: response.toString(2)
+        }
     }
 
     private fun refreshNotifications() = runWithToken { client, token ->
         val items: JSONArray = client.notifications(token)
         notificationText = if (items.length() == 0) {
-            "No notifications available yet. JARVIS notification-provider integration is still in progress."
+            "No recent JARVIS notifications."
         } else {
             (0 until items.length()).joinToString("\n\n") { index ->
                 val item = items.optJSONObject(index) ?: JSONObject()
@@ -142,27 +148,37 @@ class MainActivity : ComponentActivity() {
     private fun runWithTokenInternal(action: PhoneHubAction) = runOnIo {
         val token = TokenVault.load(this)
         if (token.isNullOrBlank()) {
-            status = "Pair this phone first."
+            setUi { status = "Pair this phone first." }
             return@runOnIo
         }
         try {
             action.run(PhoneHubClient(endpoint), token)
             getSharedPreferences("phonehub_settings", MODE_PRIVATE).edit().putString("endpoint", endpoint).apply()
         } catch (e: Exception) {
-            status = safeMessage(e)
-            if (status.contains("UNAUTHENTICATED") || status.contains("DEVICE_REVOKED") || status.contains("SESSION_EXPIRED")) {
-                TokenVault.clear(this)
-                status += " Pair this phone again."
+            val message = safeMessage(e)
+            setUi {
+                status = message
+                if (message.contains("UNAUTHENTICATED") || message.contains("DEVICE_REVOKED") || message.contains("SESSION_EXPIRED")) {
+                    TokenVault.clear(this@MainActivity)
+                    status += " Pair this phone again."
+                }
             }
         }
     }
 
+    private fun setUi(block: () -> Unit) {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) block()
+        else runOnUiThread(block)
+    }
+
     private fun runOnIo(block: () -> Unit) {
         if (busy) return
-        busy = true
-        status = "Connecting securely…"
+        setUi {
+            busy = true
+            status = "Connecting securely…"
+        }
         Thread {
-            try { block() } finally { runOnUiThread { busy = false } }
+            try { block() } finally { setUi { busy = false } }
         }.start()
     }
 
