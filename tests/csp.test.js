@@ -15,10 +15,13 @@ check('no frames, no plugins; <base> and forms stay on this site; nobody can fra
 check('default-src is this site only (anything not listed is blocked)', dir['default-src'].join(' ') === "'self'");
 check('inline STYLES are allowed (the page sets styles from script), fonts from the CDN, pictures from https, camera frames from blob:', dir['style-src'].includes("'unsafe-inline'") && dir['font-src'].includes('https://cdn.jsdelivr.net') && dir['img-src'].includes('https:') && dir['img-src'].includes('blob:') && dir['media-src'].includes('blob:'));
 check('the policy is one line of plain ASCII with no newline (a header)', !/[\r\n]/.test(csp) && /^[\x20-\x7e]+$/.test(csp));
-check('isPagePath: the HTML pages get it; API routes, scripts and other files do not', ['/', '/index.html', '/lock.html', '/INDEX.HTML'].every(isPagePath) && ['/api/health', '/script.js', '/api/state.js', '/style.css', '/lock-client.js', '/x/index.html', ''].every(p => !isPagePath(p) || p === ''));
+check('isPagePath: the HTML pages get it; API routes, scripts and other files do not', ['/', '/index.html', '/lock.html', '/phonehub.html', '/PHONEHUB.HTML', '/INDEX.HTML'].every(isPagePath) && ['/api/health', '/script.js', '/api/state.js', '/style.css', '/lock-client.js', '/x/index.html', ''].every(p => !isPagePath(p) || p === ''));
 
 /* ---------- what the page really needs fits the policy ---------- */
 const html = fs.readFileSync(root('index.html'), 'utf8');
+const phoneHubHtml = fs.readFileSync(root('phonehub.html'), 'utf8');
+check('phonehub.html has no inline script or inline event handler', ![...phoneHubHtml.matchAll(/<script\\b([^>]*)>/gi)].some(m => !/\\bsrc\\s*=/.test(m[1])) && !/\\son[a-z]+\\s*=\\s*["']/i.test(phoneHubHtml), phoneHubHtml.match(/<script[^>]*>/gi));
+check('phonehub.html loads its scripts and styles from this origin', /<script src="\\/phonehub-ui\\.js" defer><\\/script>/.test(phoneHubHtml) && /href="\\/phonehub\\.css"/.test(phoneHubHtml));
 check('index.html has no inline <script> (they would be blocked)', ![...html.matchAll(/<script\b([^>]*)>/gi)].some(m => !/\bsrc\s*=/.test(m[1])), [...html.matchAll(/<script\b([^>]*)>/gi)].filter(m => !/\bsrc\s*=/.test(m[1])).map(m => m[0]));
 check('index.html has no inline event handlers (onclick= …), which the policy would block', !/\son[a-z]+\s*=\s*["']/i.test(html.replace(/<style[\s\S]*?<\/style>/gi, '')));
 const remote = [...html.matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="(https?:\/\/[^"/]+)/gi)].map(m => m[1]);
