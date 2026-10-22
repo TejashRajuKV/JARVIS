@@ -1162,7 +1162,7 @@ app.post('/api/summarize', async (req, res) => {
    unreachable, the page falls back to the rule-engine result unchanged. */
 // Must be exactly the keys of TOOL_BY_INTENT in nlu-qwen.js (tests/nluq.test.js checks): the model can only name intents JARVIS really runs.
 const NLU_INTENT_WHITELIST = [
-  'OPEN_APPLICATION','CLOSE_APPLICATION','OPEN_WEB','WEB_SEARCH','SITE_SEARCH','BRIGHTNESS','DARK_MODE','WEATHER','READ_FILE','LIST_FILES','SEARCH_FILES','CREATE_FOLDER','SCREENSHOT','CALCULATE','VOLUME','MUTE','BATTERY','TIME','DATE','TIMER','TASK_ADD','TASK_LIST','PLAY_MUSIC','PAUSE','NEXT_TRACK','PREV_TRACK','CONVERSATION'
+  'OPEN_APPLICATION','CLOSE_APPLICATION','OPEN_WEB','WEB_SEARCH','SITE_SEARCH','COMMERCE_COMPARE','BRIGHTNESS','DARK_MODE','WEATHER','READ_FILE','LIST_FILES','SEARCH_FILES','CREATE_FOLDER','SCREENSHOT','CALCULATE','VOLUME','MUTE','BATTERY','TIME','DATE','TIMER','TASK_ADD','TASK_LIST','PLAY_MUSIC','PAUSE','NEXT_TRACK','PREV_TRACK','CONVERSATION'
 ];
 app.post('/api/nlu/parse', async (req, res) => {
   const text = String((req.body && req.body.text) || '').slice(0, 800);
