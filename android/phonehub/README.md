@@ -43,3 +43,8 @@ True instant background delivery and physical-device end-to-end verification rem
 
 
 The gateway has an authenticated server-sent events endpoint for low-latency notifications, but the current Android client does not yet maintain a live stream; background alerts still use periodic WorkManager polling. QR pairing and physical-device end-to-end checks remain outstanding.
+
+
+## Voice and calling
+
+The app includes a basic speech-to-text / JARVIS text-response / text-to-speech session over the authenticated Phone Hub gateway and an explicit button to request an outbound Twilio announcement call. Grant `voice` and `calls` separately from the laptop owner UI. The gateway must be reachable for in-app voice; the current private-LAN listener does not provide remote access by itself. Real phone calls require server-side Twilio credentials and a verified caller number.
