@@ -122,7 +122,18 @@ async function comparePublicListings(body, deps) {
         } catch { /* public site may block bots or require JavaScript; do not treat that as a zero price */ }
       }));
     }
-    return { key: p.key, name: p.name, results, status: results.length ? 'results' : 'no_results' };
+    if (!results.length) {
+      // Always provide a useful provider-specific fallback, but never attach an invented price to it.
+      const fallbackUrl = plan.type === 'product'
+        ? (p.key === 'amazon' ? 'https://www.amazon.in/s?k=' + encodeURIComponent(plan.query)
+          : p.key === 'flipkart' ? 'https://www.flipkart.com/search?q=' + encodeURIComponent(plan.query)
+          : 'https://www.google.com/search?tbm=shop&q=' + encodeURIComponent(plan.query))
+        : 'https://www.google.com/search?q=' + encodeURIComponent(p.search);
+      results.push({ title: 'Search ' + p.name + ' for “' + plan.query + '”', url: fallbackUrl,
+        snippet: 'No matching public result with a reliable price was found. Open this provider search to check current availability and final price.',
+        relevance: 1, priceCandidates: [], priceSource: null, priceVerified: false, fallback: true });
+    }
+    return { key: p.key, name: p.name, results, status: results.some(r => !r.fallback) ? 'results' : 'provider_search_fallback' };
   }));
   const candidates = providers.flatMap(p => p.results.map(r => ({ provider: p.name, title: r.title, url: r.url, ...(r.priceCandidates[0] || {}), priceSource: r.priceSource, priceVerified: false, relevance: r.relevance })))
     .filter(x => Number.isFinite(x.amount) && x.amount > 0);
