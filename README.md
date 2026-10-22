@@ -99,6 +99,7 @@ Everything below works today. The phrases are examples you can type or say; the 
 - **Places:** "nearest restaurants to Kodigehalli, Bengaluru" → Google Maps with the category, location and sort worked out.
 - **Open or search:** "search google for…", "find react documentation" (opens the page), sites it knows, YouTube, weather, directions and distance, units and conversions, CS calculators (binary, hex, xor, complexity).
 - **Research mode controls:** “turn on Search Mode” (no LLM calls), “switch to AI Research Mode” (web evidence + local model), “what research mode is active?”, and “turn off Search Mode” (returns to AI Research Mode).
+- **Emotional intelligence controls:** “turn on emotional intelligence” / “turn off emotional intelligence” — persistent preference, enabled by default.
 - **Study-related web:** upcoming contests (Codeforces / LeetCode / CodeChef), hackathons, "research…" with sources.
 - **Honest when offline:** if the answer needs the web and Online tools is off, it says so and offers to turn it on — it never passes off old memory as current news.
 
@@ -271,6 +272,7 @@ On first run, JARVIS shows a **guided setup** (re-open it any time: **Settings �
 - JARVIS speaks like Tony Stark's JARVIS — calm, polite, dry British wit, calls you **sir** (or ma'am / boss / your name: **Settings → Address me as**).
 - "Hi Jarvis, are you there?" → "At your service, sir." · "I'm home" → "Welcome home, sir." Actions are acknowledged ("Right away, sir. Launching Notepad.").
 - **FRIDAY:** "switch to FRIDAY" / "switch to JARVIS" — different personality, voice and wake word.
+- **Emotional intelligence:** local, rule-based cues for frustration, sadness, anxiety, stress, confusion, excitement and appreciation. JARVIS adapts its response tone and gives calmer, more actionable explanations when useful. It does not call a model to classify emotion, store mood history, or diagnose anyone. Say “turn off emotional intelligence” or “turn on emotional intelligence” to control it.
 - **Answers** stream in with Markdown and code blocks. **Answer length** is set in Settings, or ask "explain recursion in 2 lines".
 - **Remembers you:** "my name is Tejas", "remember that my exam is on Friday", "what do you know about me?", "forget …".
 - **Remembers the conversation:** a rolling summary carries earlier chat into new questions, so long sessions never lose the plot. "What were we talking about?" recalls the thread.
