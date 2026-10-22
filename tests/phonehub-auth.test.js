@@ -61,6 +61,10 @@ check('device registry has a configurable hard cap', oneDevice.completePairing({
 check('device-capacity rejection does not consume the pairing challenge', oneDevice.completePairing({
   pairingId: secondPairing.pairingId, code: secondPairing.code
 }).error === 'DEVICE_CAPACITY');
+oneDevice.revoke(firstDevice.device.id);
+check('revoking a device frees an active pairing slot', oneDevice.completePairing({
+  pairingId: secondPairing.pairingId, code: secondPairing.code
+}).ok);
 
 const locked = auth.beginPairing();
 const lockedWrong = locked.code === '000000' ? '000001' : '000000';
