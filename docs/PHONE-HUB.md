@@ -75,3 +75,8 @@ Replace the example with the laptop's actual private LAN IP. Set `JARVIS_PHONEHU
 - [ ] Instant push delivery: not implemented; WorkManager is periodic polling. True background push needs a configured push transport/provider or a foreground persistent connection with lifecycle, battery, and reconnect handling.
 - [ ] Install and test on a physical Android device, including TLS trust, LAN pairing, notification permission/delivery, revocation and session expiry.
 - [ ] Device tests are not substitutable by source checks or CI compilation. No physical-device result is claimed.
+
+
+## Live notification transport status
+
+The HTTPS gateway now exposes an authenticated Server-Sent Events endpoint at `GET /v1/events`. It uses the existing notification capability, a fresh nonce, HTTPS/Host/Origin/private-peer checks, and closes the subscription when the connection ends. The in-process notification feed publishes to subscribers as soon as a reminder or other event is created. This is server-side live delivery infrastructure only: the current Android app has not yet connected to this stream, so its user-facing notification behavior remains WorkManager polling until a lifecycle-safe Android streaming client is implemented and verified. Do not describe instant push as complete yet.
