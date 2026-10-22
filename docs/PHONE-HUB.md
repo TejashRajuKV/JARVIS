@@ -71,8 +71,8 @@ Replace the example with the laptop's actual private LAN IP. Set `JARVIS_PHONEHU
 
 - [x] GitHub Actions compiled the debug APK with `assembleDebug` and reached the artifact-upload step (run `39722038932`, source revision `aa2a88f`).
 - [x] Add certificate-generation helper and source-level safety regression cases.
-- [ ] QR pairing UI/scanner: not implemented; the app still requires pairing ID and code entry.
-- [ ] Instant push delivery: not implemented; WorkManager is periodic polling. True background push needs a configured push transport/provider or a foreground persistent connection with lifecycle, battery, and reconnect handling.
+- [x] Local QR generation and Android QR scanning are implemented; manual pairing remains as a fallback.
+- [ ] Android instant delivery: the gateway now supports authenticated SSE, but the Android app has not yet connected to the stream. WorkManager remains the background fallback.
 - [ ] Install and test on a physical Android device, including TLS trust, LAN pairing, notification permission/delivery, revocation and session expiry.
 - [ ] Device tests are not substitutable by source checks or CI compilation. No physical-device result is claimed.
 
