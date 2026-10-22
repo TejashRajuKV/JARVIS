@@ -47,12 +47,12 @@
         <button class="jh-tab" data-tab="skills" aria-selected="true">Skills</button>
         <button class="jh-tab" data-tab="browser" aria-selected="false">Browser recovery</button>
         <button class="jh-tab" data-tab="workflows" aria-selected="false">Workflow memory</button>
-        <button class="jh-tab" data-tab="diagnostics" aria-selected="false">Diagnostics</button>
+        <button class="jh-tab" data-tab="screenshots" aria-selected="false">Screenshots</button>\n        <button class="jh-tab" data-tab="actions" aria-selected="false">Quick actions</button>\n        <button class="jh-tab" data-tab="diagnostics" aria-selected="false">Diagnostics</button>
       </nav>
       <div class="jh-content" id="jhContent" tabindex="0"><div class="jh-empty">Loading Skill Hub…</div></div>
     </section>`;
   document.body.append(openBtn,shade);
-  let tab='skills',skills=[],pages=[],workflows=[],search='',busy=false;
+  let tab='skills',skills=[],pages=[],workflows=[],screenshots=[],search='',busy=false;
   const content=()=>document.getElementById('jhContent');
   const setTab=t=>{tab=t;shade.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));render();};
   const msg=(text,bad=false)=>{const el=document.createElement('div');el.className='jh-note';el.style.borderLeftColor=bad?'#ff5f6b':'#54ffa8';el.textContent=text;content().prepend(el);};
@@ -79,9 +79,18 @@
       ${workflows.length?workflows.map(w=>`<article class="jh-row"><div style="flex:1;min-width:0"><div class="jh-title">${esc(w.name)}</div><div class="jh-meta">${esc(w.prompt)}<br>Saved ${esc(new Date(w.updatedAt).toLocaleString())}</div></div><div class="jh-actions"><button class="jh-btn primary" data-action="use-workflow" data-id="${esc(w.id)}">Use in chat</button><button class="jh-btn danger" data-action="delete-workflow" data-id="${esc(w.id)}">Delete</button></div></article>`).join(''):'<div class="jh-empty">No saved workflows yet. Save a repeatable process above.</div>'}
       <div class="jh-actions" style="justify-content:flex-start;margin-top:12px"><button class="jh-btn danger" data-action="clear-workflows">Delete all workflows</button></div>`;
   }
+  async function loadScreenshots(){const r=await json('/api/tool/screenshots');screenshots=r.screenshots||[];}
+  function screenshotView(){return `<div class="jh-muted">Recent screenshots saved by JARVIS. Images stay on this computer. If a screenshot is missing, check that JARVIS has permission to capture the desktop and that the file has not been moved.</div><div class="jh-actions" style="justify-content:flex-start;margin:10px 0"><button class="jh-btn" data-action="refresh-shots">↻ Refresh screenshots</button><button class="jh-btn primary" data-action="take-shot">Take screenshot now</button></div>${screenshots.length?screenshots.map(s=>`<article class="jh-row"><div style="flex:1;min-width:0"><img loading="lazy" alt="Screenshot preview: ${esc(s.name)}" src="/api/tool/screenshots/${encodeURIComponent(s.id)}" style="display:block;width:100%;max-height:240px;object-fit:contain;background:#020b12;border:1px solid #3fd9ff22;border-radius:7px;margin-bottom:8px"><div class="jh-title">${esc(s.name)}</div><div class="jh-meta">${esc(new Date(s.modified).toLocaleString())} · ${Math.round(s.bytes/1024)} KB</div></div></article>`).join(''):'<div class="jh-empty">No recent JARVIS screenshots found in Desktop or the JARVIS screenshot folders. Use Take screenshot now, then refresh.</div>'}`;
+  }
+  function actionsView(){return `<div class="jh-muted">JARVIS can prepare a message or open official booking/shopping pages. For safety, it will not press Send, purchase items, or confirm a ticket without you.</div>
+    <form class="jh-form" id="jhWhatsAppForm"><div class="jh-label">WhatsApp message</div><input class="jh-field" name="phone" inputmode="tel" maxlength="18" placeholder="Recipient number with country code, e.g. +91…" required><textarea class="jh-field" name="message" rows="3" maxlength="1500" placeholder="Message to prepare…" required></textarea><button class="jh-btn primary" type="submit">Open WhatsApp with draft</button></form>
+    <form class="jh-form" id="jhMovieForm"><div class="jh-label">Movie tickets</div><input class="jh-field" name="query" maxlength="120" placeholder="Movie or cinema / city" required><button class="jh-btn primary" type="submit">Find movie tickets</button></form>
+    <form class="jh-form" id="jhBusForm"><div class="jh-label">Bus tickets</div><input class="jh-field" name="from" maxlength="80" placeholder="From city" required><input class="jh-field" name="to" maxlength="80" placeholder="To city" required><button class="jh-btn primary" type="submit">Find buses</button></form>
+    <form class="jh-form" id="jhShopForm"><div class="jh-label">Shopping</div><input class="jh-field" name="query" maxlength="120" placeholder="What item do you want?" required><div class="jh-actions" style="justify-content:flex-start"><button class="jh-btn primary" name="site" value="amazon">Search Amazon India</button><button class="jh-btn" name="site" value="flipkart">Search Flipkart</button></div></form>`;
+  }
   function diagnosticsView(){return `<div class="jh-muted">Read-only checks of JARVIS files, runtime, voice modules, automation modules, local storage and Ollama reachability. This does not execute repair commands or change settings.</div><div class="jh-actions" style="justify-content:flex-start;margin:12px 0"><button class="jh-btn primary" data-action="diagnose">Run diagnostics</button></div><div id="jhDiagnostics"><div class="jh-empty">Press Run diagnostics to inspect the current installation.</div></div>`;}
-  function render(){if(!shade.classList.contains('open'))return;content().innerHTML=tab==='skills'?skillView():tab==='browser'?browserView():tab==='workflows'?workflowView():diagnosticsView();}
-  async function refreshCurrent(){try{if(tab==='skills')await loadSkills();if(tab==='browser')await loadPages();if(tab==='workflows')await loadWorkflows();render();}catch(e){content().innerHTML='<div class="jh-note">'+esc(e.message)+'</div>';}}
+  function render(){if(!shade.classList.contains('open'))return;content().innerHTML=tab==='skills'?skillView():tab==='browser'?browserView():tab==='workflows'?workflowView():tab==='screenshots'?screenshotView():tab==='actions'?actionsView():diagnosticsView();}
+  async function refreshCurrent(){try{if(tab==='skills')await loadSkills();if(tab==='browser')await loadPages();if(tab==='workflows')await loadWorkflows();if(tab==='screenshots')await loadScreenshots();render();}catch(e){content().innerHTML='<div class="jh-note">'+esc(e.message)+'</div>';}}
   function show(){shade.classList.add('open');document.body.style.overflow='hidden';refreshCurrent();const b=shade.querySelector('.jh-x');if(b)b.focus();}
   function hide(){shade.classList.remove('open');document.body.style.overflow='';openBtn.focus();}
   openBtn.addEventListener('click',show);
@@ -102,6 +111,8 @@
         return;
       }
       if(a==='refresh-pages'){await loadPages();render();return;}
+      if(a==='refresh-shots'){await loadScreenshots();render();return;}
+      if(a==='take-shot'){await json('/api/tool/screenshot',{method:'POST',body:'{}'});await loadScreenshots();render();msg('Screenshot saved.');return;}
       if(a==='open-page'){const r=await json('/api/browser-recovery/open/'+encodeURIComponent(action.dataset.id),{method:'POST',body:'{}'});msg('Reopen requested: '+r.url);return;}
       if(a==='clear-pages'){if(!confirm('Clear the locally saved JARVIS-opened page list? This does not close browser tabs.'))return;await json('/api/browser-recovery',{method:'DELETE'});await loadPages();render();return;}
       if(a==='use-workflow'){const w=workflows.find(x=>x.id===action.dataset.id);if(!w)throw new Error('Workflow not found');const input=document.getElementById('chatInput');if(!input)throw new Error('Chat input is unavailable');input.value=w.prompt;input.focus();hide();return;}
@@ -118,6 +129,11 @@
   });
   shade.addEventListener('input',e=>{if(e.target.id==='jhSearch'){const pos=e.target.selectionStart;search=e.target.value;const val=search;render();const next=document.getElementById('jhSearch');if(next){next.focus();next.setSelectionRange(pos,pos);}}});
   shade.addEventListener('submit',async e=>{
+    if(e.target.id==='jhWhatsAppForm'){e.preventDefault();const fd=new FormData(e.target);const phone=String(fd.get('phone')||'').replace(/[^+\\d]/g,'').replace(/^\\+/,'');const message=String(fd.get('message')||'').trim();if(!/^\\d{8,15}$/.test(phone)){msg('Enter a valid number with country code (8–15 digits).',true);return;}if(!message){msg('Enter a message first.',true);return;}window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(message),'_blank','noopener');msg('WhatsApp draft opened. Review the recipient and message, then press Send yourself.');return;}
+    if(e.target.id==='jhMovieForm'){e.preventDefault();const q=String(new FormData(e.target).get('query')||'').trim();window.open('https://in.bookmyshow.com/explore/movies-'+encodeURIComponent(q.toLowerCase().replace(/\\s+/g,'-')),'_blank','noopener');return;}
+    if(e.target.id==='jhBusForm'){e.preventDefault();const fd=new FormData(e.target);const from=String(fd.get('from')||'').trim(),to=String(fd.get('to')||'').trim();window.open('https://www.redbus.in/bus-tickets/'+encodeURIComponent(from.toLowerCase().replace(/\\s+/g,'-'))+'-to-'+encodeURIComponent(to.toLowerCase().replace(/\\s+/g,'-')),'_blank','noopener');return;}
+    if(e.target.id==='jhShopForm'){e.preventDefault();const fd=new FormData(e.target);const q=String(fd.get('query')||'').trim();const site=e.submitter&&e.submitter.value==='flipkart'?'https://www.flipkart.com/search?q=':'https://www.amazon.in/s?k=';window.open(site+encodeURIComponent(q),'_blank','noopener');return;}
+
     if(e.target.id!=='jhWorkflowForm')return;e.preventDefault();const fd=new FormData(e.target);
     try{await json('/api/workflows',{method:'POST',body:JSON.stringify({name:fd.get('name'),prompt:fd.get('prompt')})});await loadWorkflows();render();msg('Workflow saved locally. It will only run when you choose to use it and send the prompt.');}
     catch(err){msg(err.message,true);}
