@@ -26,7 +26,8 @@ function buildAction(body) {
   if (kind === 'movie') {
     const movie = clean(b.movie, 120), city = clean(b.city || 'Bengaluru', 80);
     if (!movie) return { error: 'Which movie should I look for?' };
-    return { kind, url: 'https://in.bookmyshow.com/explore/movies-' + slugCity(city), summary: 'Opening BookMyShow for movies in ' + city + '. Look for “' + movie + '”, choose the cinema and showtime, and review the total before booking.', query: movie, requiresUserAction: true, purchasesAutomatically: false };
+    const movieUrl = /^(?:bengaluru|bangalore)$/i.test(city) ? 'https://in.bookmyshow.com/explore/movies-bengaluru' : 'https://in.bookmyshow.com/';
+    return { kind, url: movieUrl, summary: 'Opening BookMyShow for movies. Select ' + city + ' if needed, then look for “' + movie + '”, choose the cinema and showtime, and review the total before booking.', query: movie, requiresUserAction: true, purchasesAutomatically: false };
   }
   if (kind === 'bus') {
     const from = clean(b.from, 80), to = clean(b.to, 80), date = clean(b.date, 40);
