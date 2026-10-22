@@ -12,7 +12,8 @@ const Services = (() => {
     ],
     movie: /^(?:please\s+)?(?:book|find|search)\s+(?:me\s+)?(?:movie|cinema|film)\s+tickets?\s+(?:for\s+)?(.+?)(?:\s+in\s+([a-z][a-z .'-]{1,50}))?$/i,
     bus: /^(?:please\s+)?(?:book|find|search)\s+(?:me\s+)?bus\s+tickets?\s+from\s+([a-z][a-z .'-]{1,50}?)\s+to\s+([a-z][a-z .'-]{1,50}?)(?:\s+on\s+(.+))?$/i,
-    shopping: /^(?:please\s+)?(?:shop\s+for|search\s+(?:for\s+)?(?:shopping\s+)?items?\s+(?:for\s+)?|find\s+(?:me\s+)?to\s+buy\s+|buy\s+|order\s+)(.+)$/i,
+    shoppingSite: /^(?:please\s+)?search\s+(amazon|flipkart|myntra)\s+for\s+(.+)$/i,
+    shopping: /^(?:please\s+)?(?:shop\s+for|search\s+(?:for\s+)?(?:shopping\s+)?items?\s+(?:for\s+)?|find\s+(?:me\s+)?to\s+buy\s+|buy\s+|order\s+)(.+?)(?:\s+on\s+(amazon|flipkart|myntra))?$/i,
   };
   function match(text) {
     const t = clean(text);
@@ -21,8 +22,10 @@ const Services = (() => {
     if (m) return { kind: 'movie', movie: m[1].trim(), city: (m[2] || 'Bengaluru').trim() };
     m = t.match(patterns.bus);
     if (m) return { kind: 'bus', from: m[1].trim(), to: m[2].trim(), date: (m[3] || '').trim() };
+    m = t.match(patterns.shoppingSite);
+    if (m) return { kind: 'shopping', shop: m[1].toLowerCase(), item: m[2].trim() };
     m = t.match(patterns.shopping);
-    if (m && m[1].trim()) return { kind: 'shopping', item: m[1].trim() };
+    if (m && m[1].trim()) return { kind: 'shopping', item: m[1].trim(), shop: (m[2] || 'amazon').toLowerCase() };
     return null;
   }
   async function intercept(text, source) {
