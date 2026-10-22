@@ -75,8 +75,11 @@ function createPhoneHubAuth(options = {}) {
       throw new Error('Phone Hub state file has an unsupported or invalid format; refusing to reset device credentials');
     }
     for (const [id, p] of state.pairings) {
-      if (typeof id !== 'string' || !p || typeof p.codeHash !== 'string' ||
-          !Number.isFinite(p.expiresAt) || !Number.isFinite(p.attempts)) {
+      if (typeof id !== 'string' || !/^[a-f0-9]{24}$/.test(id) || !p ||
+          typeof p.codeHash !== 'string' || !/^[a-f0-9]{64}$/.test(p.codeHash) ||
+          !Number.isFinite(p.createdAt) || !Number.isFinite(p.expiresAt) ||
+          !Number.isInteger(p.attempts) || p.attempts < 0 || p.attempts > maxAttempts ||
+          typeof p.consumed !== 'boolean') {
         throw new Error('Phone Hub state file contains an invalid pairing record');
       }
       if (p.expiresAt > nowFn() && !p.consumed && p.attempts < maxAttempts) pairings.set(id, p);
@@ -93,7 +96,10 @@ function createPhoneHubAuth(options = {}) {
       else if (d.revokedAt) devices.set(id, d);
     }
     for (const [key, expiry] of state.usedNonces) {
-      if (typeof key === 'string' && Number.isFinite(expiry) && expiry > nowFn()) usedNonces.set(key, expiry);
+      if (typeof key !== 'string' || !/^[a-f0-9]{32}:[a-zA-Z0-9_-]{16,128}$/.test(key) || !Number.isFinite(expiry)) {
+        throw new Error('Phone Hub state file contains an invalid nonce record');
+      }
+      if (expiry > nowFn()) usedNonces.set(key, expiry);
     }
     if (pairings.size > maxActivePairings || usedNonces.size > maxUsedNonces ||
         devices.size > maxDevices * 10 || activeDeviceCount() > maxDevices) {
