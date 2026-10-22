@@ -320,7 +320,7 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
   // Never throws: reminders are saved as fired before they are delivered, so one failed delivery must not skip the rest.
   async function deliver(ev, title, body) {
     try {
-      if (typeof app.locals.phoneHubNotify === 'function') {
+      if (app.locals && typeof app.locals.phoneHubNotify === 'function') {
         app.locals.phoneHubNotify({ type: ev.type, title, body, sourceId: ev.id || ev.triggerId || ev.deadlineId });
       }
       const settings = getState()['jarvis.settings'] || {};
