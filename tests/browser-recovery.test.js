@@ -8,6 +8,7 @@ try{
  check('rejects embedded credentials',B.safeUrl('https://user:pass@example.com/')===null);
  const clean=B.safeUrl('https://example.com/search?q=jarvis&token=secret&api_key=abc#private');
  check('redacts secret query parameters and fragments',clean==='https://example.com/search?q=jarvis',clean);
+ check('redacts prefilled WhatsApp message text from saved browser history',B.safeUrl('https://wa.me/919876543210?text=private%20message')==='https://wa.me/919876543210');
  const b=B.createBrowserRecovery({file,launch:u=>opened.push(u)});
  const first=b.record('https://example.com/docs?q=hello&access_token=private');
  check('records a sanitized URL',!!first&&first.url==='https://example.com/docs?q=hello');
