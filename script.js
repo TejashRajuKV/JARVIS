@@ -2080,18 +2080,18 @@ async function doResearch(q, extraSuggestions) {
   setState('PROCESSING', 'Searching the web…'); toolStep('research → ' + q);
   const r = await callTool('/tool/research', { q, online: true });
   if (r.error || !r.results || !r.results.length) return { text: 'I could not search the web right now' + (r.error ? ' (' + r.error + ')' : '') + '.', suggestions: ['Search Google for ' + q] };
-  const sources = '\\n\\n**Sources**\\n' + r.results.slice(0, 4).map((x, i) => (i + 1) + '. [' + x.title + '](' + x.url + ')').join('\\n');
+  const sources = '\n\n**Sources**\n' + r.results.slice(0, 4).map((x, i) => (i + 1) + '. [' + x.title + '](' + x.url + ')').join('\n');
   // Search Mode is terminal: render retrieved evidence and return before any LLM prompt is built.
   const evidence = r.results.slice(0, 5).map((x, i) => {
     const page = (r.pages || []).find(p => p.url === x.url) || (r.pages || [])[i];
-    const excerpt = String((page && page.text) || x.snippet || '').replace(/\\s+/g, ' ').trim().slice(0, 650);
-    return '### [' + (i + 1) + '] [' + (x.title || x.url) + '](' + x.url + ')\\n' + (excerpt || x.snippet || 'No readable passage was extracted from this page.');
-  }).join('\\n\\n');
-  const directEvidence = '## Search results for **' + q + '**\\n\\n' + evidence + sources + '\\n\\n_Search Mode does not call an LLM; these are retrieved passages, not an AI-generated synthesis._';
+    const excerpt = String((page && page.text) || x.snippet || '').replace(/\s+/g, ' ').trim().slice(0, 650);
+    return '### [' + (i + 1) + '] [' + (x.title || x.url) + '](' + x.url + ')\n' + (excerpt || x.snippet || 'No readable passage was extracted from this page.');
+  }).join('\n\n');
+  const directEvidence = '## Search results for **' + q + '**\n\n' + evidence + sources + '\n\n_Search Mode does not call an LLM; these are retrieved passages, not an AI-generated synthesis._';
   if (settings.researchMode === 'search') return { text: directEvidence, suggestions: extraSuggestions || ['Switch to AI Research Mode'], noPersona: true, tool: 'research' };
-  if (!llmReady()) return { text: directEvidence + '\\n\\n_The local model is unavailable, so I have shown the evidence without synthesis._', suggestions: extraSuggestions, noPersona: true, tool: 'research' };
+  if (!llmReady()) return { text: directEvidence + '\n\n_The local model is unavailable, so I have shown the evidence without synthesis._', suggestions: extraSuggestions, noPersona: true, tool: 'research' };
   if (typeof isCloudModel === 'function' && isCloudModel(llm.model))
-    return { text: directEvidence + '\\n\\n_AI Research Mode requires a local model. Your selected model appears to be cloud-hosted, so I did not send the research question or evidence to it. Select a local Ollama model to enable synthesis._', suggestions: ['Choose a local Ollama model'], noPersona: true, tool: 'research' };
+    return { text: directEvidence + '\n\n_AI Research Mode requires a local model. Your selected model appears to be cloud-hosted, so I did not send the research question or evidence to it. Select a local Ollama model to enable synthesis._', suggestions: ['Choose a local Ollama model'], noPersona: true, tool: 'research' };
   const pages = r.pages.map((x, i) => '[' + (i + 1) + '] ' + x.title + ' (' + x.url + ')\n' + ((x.text || '').length > 200 ? x.text : x.snippet).slice(0, 3000)).join('\n\n');
   // Something that changes (a winner, a price, news): a small model will happily "remember" a years-old answer, so the
   // code decides. Results that don't even mention the question's key words are reported as such, without the AI.
