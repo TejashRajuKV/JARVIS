@@ -16,7 +16,7 @@ function safeUrl(input) {
 }
 function createBrowserRecovery({ file, launch }) {
   let rows = [];
-  try { const v=JSON.parse(fs.readFileSync(file,'utf8')); if (Array.isArray(v)) rows=v.filter(x=>x&&typeof x.id==='string'&&safeUrl(x.url)).slice(0,MAX_ITEMS); } catch(e) { if(e.code!=='ENOENT') rows=[]; }
+  try { const v=JSON.parse(fs.readFileSync(file,'utf8')); if (Array.isArray(v)) rows=v.filter(x=>x&&typeof x.id==='string'&&/^[a-f0-9]{12}$/i.test(x.id)&&safeUrl(x.url)).map(x=>({id:x.id,url:safeUrl(x.url),title:String(x.title||new URL(safeUrl(x.url)).hostname).slice(0,120),openedAt:Number(x.openedAt)||Date.now()})).slice(0,MAX_ITEMS); } catch(e) { if(e.code!=='ENOENT') rows=[]; }
   const persist = () => { fs.mkdirSync(path.dirname(file),{recursive:true}); const tmp=file+'.tmp'; fs.writeFileSync(tmp,JSON.stringify(rows,null,2),{mode:0o600}); fs.renameSync(tmp,file); };
   function record(input) {
     const url=safeUrl(input); if(!url) return null;
