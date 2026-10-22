@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const MAX_ITEMS = 30;
-const SECRET_PARAM = /^(?:token|access_token|refresh_token|api[_-]?key|key|auth|authorization|code|password|passwd|session|sid|secret|signature|sig|email)$/i;
+const SECRET_PARAM = /^(?:token|access_token|refresh_token|api[_-]?key|key|auth|authorization|code|password|passwd|session|sid|secret|signature|sig|email|text|message|body|caption)$/i;
 function safeUrl(input) {
   let u;
   try { u = new URL(String(input || '')); } catch { return null; }
