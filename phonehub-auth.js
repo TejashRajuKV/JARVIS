@@ -116,6 +116,13 @@ function createPhoneHubAuth(options = {}) {
     return { pairingId: id, code, createdAt, expiresAt: createdAt + pairingTtlMs };
   }
 
+  function activeDeviceCount() {
+    const now = nowFn();
+    let count = 0;
+    for (const device of devices.values()) if (!device.revokedAt && device.expiresAt > now) count++;
+    return count;
+  }
+
   function completePairing(input = {}) {
     const id = String(input.pairingId || '');
     const pairing = pairings.get(id);
@@ -129,7 +136,7 @@ function createPhoneHubAuth(options = {}) {
       persist();
       return { ok: false, error: 'PAIRING_LOCKED' };
     }
-    if (devices.size >= maxDevices) return { ok: false, error: 'DEVICE_CAPACITY' };
+    if (activeDeviceCount() >= maxDevices) return { ok: false, error: 'DEVICE_CAPACITY' };
     pairing.attempts++;
     const suppliedHash = hash(String(input.code || ''));
     if (!safeEqual(pairing.codeHash, suppliedHash)) {
