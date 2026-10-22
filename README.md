@@ -1254,3 +1254,8 @@ node -e "const D=require('./decider.js'); console.log(D.decide(D.signals('neares
 ## 16. License
 
 MIT — see `package.json`. Third-party: Express, unpdf (Mozilla pdf.js), qrcode-generator (MIT), Google Fonts via Fontsource.
+
+
+### Calling feature
+
+The optional calling module and Android voice UI are documented in [docs/CALLING.md](docs/CALLING.md). Open `/calling.html` on the local JARVIS server to place an explicitly requested outbound announcement call after configuring server-side Twilio environment variables.
