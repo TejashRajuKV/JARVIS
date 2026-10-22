@@ -2205,6 +2205,59 @@ async function searchDDG(q) {
   }
   return results;
 }
+// Live commerce discovery: compare provider-specific search results and readable public listing pages.
+// Prices are candidates only; checkout totals can change with variant, account, offers and delivery.
+app.post('/api/commerce/compare', async (req, res) => {
+  const type = req.body && req.body.type === 'bus' ? 'bus' : 'product';
+  const provider = String((req.body && req.body.provider) || 'all').toLowerCase();
+  const date = String((req.body && req.body.date) || '').trim().slice(0, 40);
+  const from = String((req.body && req.body.from) || '').trim().slice(0, 100);
+  const to = String((req.body && req.body.to) || '').trim().slice(0, 100);
+  const query = String((req.body && req.body.query) || '').trim().slice(0, 160);
+  if (type === 'bus' ? (!from || !to) : !query) return res.status(400).json({ error: type === 'bus' ? 'Departure and destination are required.' : 'Product query is required.' });
+  try {
+    const CommerceCompare = require('./commerce-compare');
+    const specs = type === 'bus' ? [
+      { id: 'abhibus', name: 'AbhiBus', query: 'site:abhibus.com ' + from + ' to ' + to + (date ? ' ' + date : '') + ' bus tickets fare' },
+      { id: 'redbus', name: 'redBus', query: 'site:redbus.in ' + from + ' to ' + to + (date ? ' ' + date : '') + ' bus tickets fare' },
+      { id: 'government', name: 'Government bus services', query: 'official state government transport bus booking ' + from + ' to ' + to + (date ? ' ' + date : '') + ' fare' },
+    ] : [
+      { id: 'amazon', name: 'Amazon India', query: 'site:amazon.in ' + query + ' price' },
+      { id: 'flipkart', name: 'Flipkart', query: 'site:flipkart.com ' + query + ' price' },
+      { id: 'shopping', name: 'Google Shopping / wider listings', query: query + ' price India buy' },
+    ];
+    const selected = provider === 'all' ? specs : specs.filter(x => x.id === provider || (provider === 'government' && x.id === 'government'));
+    const providers = await Promise.all(selected.map(async spec => {
+      let results = [];
+      try { results = await webSearch(spec.query); } catch {}
+      const hostOk = item => {
+        let host = ''; try { host = new URL(item.url).hostname.toLowerCase().replace(/^www\./, ''); } catch { return false; }
+        if (spec.id === 'amazon') return host === 'amazon.in' || host.endsWith('.amazon.in');
+        if (spec.id === 'flipkart') return host === 'flipkart.com' || host.endsWith('.flipkart.com');
+        if (spec.id === 'abhibus') return host === 'abhibus.com' || host.endsWith('.abhibus.com');
+        if (spec.id === 'redbus') return host === 'redbus.in' || host.endsWith('.redbus.in');
+        if (spec.id === 'government') return /\.(gov\.in|nic\.in)$/.test(host) || /\b(ksrtc|apsrtc|tsrtc|msrtc|tnstc|upsrtc|gsrtc|rsrtc|osrtc|hrtc|punbus)\b/i.test(host);
+        return !/\b(amazon\.in|flipkart\.com|abhibus\.com|redbus\.in)\b/i.test(host) || /google\./i.test(host);
+      };
+      const matches = results.filter(hostOk).slice(0, 4);
+      const enriched = await Promise.all(matches.slice(0, 3).map(async item => {
+        let body = String(item.snippet || '');
+        try { const page = await pageText(item.url, { timeout: 4500, max: 3500 }); if (page && page.text) body += ' ' + page.text; } catch {}
+        const priceCandidates = CommerceCompare.extractPriceCandidates(body);
+        const relevance = CommerceCompare.queryMatch(type === 'bus' ? from + ' ' + to : query, item.title + ' ' + item.snippet + ' ' + body);
+        return { title: String(item.title || '').slice(0, 220), url: item.url, snippet: String(item.snippet || '').slice(0, 500), priceCandidates, relevance, priceStatus: priceCandidates.length ? 'observed_candidate_not_checkout_verified' : 'not_found' };
+      }));
+      return { id: spec.id, name: spec.name, results: enriched };
+    }));
+    const candidates = providers.flatMap(p => p.results.map(item => ({ provider: p.name, display: item.priceCandidates[0] && item.priceCandidates[0].display, value: item.priceCandidates[0] && item.priceCandidates[0].value, relevance: item.relevance, url: item.url, title: item.title })))
+      .filter(x => x.display && x.value > 0 && x.relevance >= 0.25);
+    candidates.sort((a, b) => a.value - b.value);
+    const distinctProviders = new Set(candidates.map(x => x.provider));
+    const lowestObserved = distinctProviders.size >= 2 ? { provider: candidates[0].provider, display: candidates[0].display, value: candidates[0].value, url: candidates[0].url, title: candidates[0].title, verifiedCheckout: false } : null;
+    res.json({ success: true, type, query: type === 'bus' ? undefined : query, route: type === 'bus' ? { from, to, date } : undefined, providers, lowestObserved, priceComparisonStatus: lowestObserved ? 'lowest_observed_candidate_not_checkout_verified' : 'insufficient_comparable_prices', checkedAt: new Date().toISOString(), note: 'Prices are observed in public search results or readable page text. They are not guaranteed checkout totals.' });
+  } catch (e) { res.status(502).json({ error: 'Comparison search failed: ' + e.message }); }
+});
+
 // Search is used to open "the best page for X" (an explicit user web action), so it is not gated by Online tools.
 app.post('/api/tool/webSearch', async (req, res) => {
   const q = String(req.body.q || '').trim().slice(0, 200);
