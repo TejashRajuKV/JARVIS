@@ -20,6 +20,14 @@ async function runDiagnostics({ root, sandbox, ollamaUrl, defaultModel, fetchImp
     {name:'JARVIS data folder',group:'storage',ok:fs.existsSync(sandbox),detail:fs.existsSync(sandbox)?'Data folder exists':'Data folder will be created when needed'},
     {name:'Memory availability',group:'runtime',ok:os.freemem()>256*1024*1024,detail:Math.round(os.freemem()/1024/1024)+' MB free RAM reported by the OS'}
   ];
+  try {
+    const skillpack = require(path.join(root, 'skillpack.js'));
+    const loaded = skillpack.loadAll(path.join(root, 'skills-bundled'), path.join(sandbox, 'Skills'));
+    checks.push({name:'Skill loader discovery',group:'skills',ok:loaded.skills.length>0,detail:loaded.skills.length+' skill(s) discovered; '+loaded.skipped.length+' invalid/unreadable skill folder(s) skipped'});
+    for (const skipped of loaded.skipped.slice(0,8)) recommendations.push({name:'Skill '+skipped.folder,action:'Fix the skill metadata or file: '+skipped.reason+'. Then rescan skills in the Skill Hub.'});
+  } catch (e) {
+    checks.push({name:'Skill loader discovery',group:'skills',ok:false,detail:'Could not scan skill packs: '+String(e.message||e).slice(0,140)});
+  }
   let ai={checked:false,ok:null,detail:'Not probed (optional)'}; 
   try {
     const r=await fetchImpl(String(ollamaUrl).replace(/\/+$/,'')+'/api/tags',{signal:AbortSignal.timeout(1800)});
