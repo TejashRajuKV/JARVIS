@@ -8,7 +8,7 @@ const start = source.indexOf('const TIME_SENSITIVE =');
 const fn = source.indexOf('async function doResearch', start);
 const end = source.indexOf('/* ============ flashcards', fn);
 if (start < 0 || fn < 0 || end < 0) throw new Error('Could not locate doResearch in script.js');
-const snippet = source.slice(start, end) + '\\nglobalThis.runResearch = doResearch;';
+const snippet = source.slice(start, end) + '\nglobalThis.runResearch = doResearch;';
 let modelChecks = 0;
 const sample = {
   results: [
@@ -21,7 +21,7 @@ const sample = {
   ]
 };
 const sandbox = {
-  TIME_SENSITIVE: /\\b(latest|current|today|news|price)\\b/i,
+  TIME_SENSITIVE: /\b(latest|current|today|news|price)\b/i,
   settings: { researchMode: 'search' },
   llm: { model: 'qwen3.5:4b' },
   llmReady: () => { modelChecks++; return true; },
