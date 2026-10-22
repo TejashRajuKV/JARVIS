@@ -4,7 +4,9 @@ const path = require('path');
 eval(fs.readFileSync(path.join(__dirname, '..', 'nlu.js'), 'utf8') + ';global.NLU=NLU;');
 
 const CASES = [
-  // explicit outbound call requests only\n  ['call me', 'CALL_PHONE'], ['Jarvis, call my phone now', 'CALL_PHONE'], ['ring my mobile', 'CALL_PHONE'],\n  ['call mom', 'REMIND'],\n  // core commands
+  // explicit outbound call requests only
+  ['call me', 'CALL_PHONE'], ['Jarvis, call my phone now', 'CALL_PHONE'], ['ring my mobile', 'CALL_PHONE'],
+  // core commands
   ['yo can u fire up crome pls', 'OPEN_APPLICATION'], ['hey jarvis open spotfy', 'OPEN_APPLICATION'], ['close it', 'CONTEXT_CLOSE'],
   ["how's my battery doing", 'SYS_BATTERY'], ["what's thirty times 12", 'CALCULATE'], ['set a timer for half a minute', 'SET_TIMER'],
   ['remind me to call mom at 6pm', 'REMIND'], ['remind me every day at 9pm to revise', 'REMIND'], ['add milk to my shopping list', 'ADD_TODO'],
