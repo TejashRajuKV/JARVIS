@@ -3,7 +3,7 @@ const fs=require('fs'),path=require('path');
 let fail=0,total=0;const check=(n,ok)=>{total++;if(!ok){fail++;console.log('FAIL '+n);}};
 const root=path.join(__dirname,'..'),html=fs.readFileSync(path.join(root,'index.html'),'utf8'),sw=fs.readFileSync(path.join(root,'sw.js'),'utf8'),hub=fs.readFileSync(path.join(root,'skill-hub.js'),'utf8');
 check('Skill Hub is loaded by the main application',html.includes('skill-hub.js'));
-check('Skill Hub is included in the PWA shell and cache version is bumped',sw.includes("'skill-hub.js'")&&/jarvis-v46/.test(sw));
+check('Skill Hub is included in the PWA shell and cache version is bumped',sw.includes("'skill-hub.js'")&&/jarvis-v47/.test(sw));
 for(const api of ['/api/skills?all=1','/api/skills/reload','/api/browser-recovery','/api/workflows','/api/diagnostics','/api/tool/screenshots','/api/commerce/compare'])check('UI uses '+api,hub.includes(api));
 check('workflow reuse fills the chat box but does not auto-submit',hub.includes("input.value=w.prompt")&&!/input\.value\s*=\s*w\.prompt;[^\n]*sendBtn/.test(hub));
 check('browser shortcut is documented but never injected globally',hub.includes('Ctrl+Shift+T')&&!/key(?:down|up).*Ctrl\+Shift\+T/i.test(hub));
@@ -23,4 +23,5 @@ check('shopping comparison opens Amazon, Flipkart and Google Shopping without in
 check('bus comparison supports AbhiBus, redBus and official-government portal discovery',hub.includes('site:abhibus.com')&&hub.includes('site:redbus.in')&&hub.includes('official government bus booking'));
 check('product and bus forms call live comparison endpoint and render provider results',hub.includes("json('/api/commerce/compare'")&&hub.includes('jhShopResults')&&hub.includes('jhBusResults')&&hub.includes('renderComparison'));
 check('comparison UI calls the live public-listing comparison endpoint and renders observed candidates',hub.includes('/api/commerce/compare')&&hub.includes('renderComparison')&&hub.includes('Lowest observed candidate'));
+check('comparison UI labels prices as observed and unverified',hub.includes('Lowest observed candidate')&&hub.includes('not a verified checkout total'));
 console.log('skill-hub-ui: '+(total-fail)+'/'+total);process.exitCode=fail?1:0;
