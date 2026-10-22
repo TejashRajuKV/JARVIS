@@ -398,12 +398,14 @@ const Life = (() => {
     /^where(?:'s|\s+is|\s+was)\s+(?:the\s+|that\s+|my\s+)screenshot\s+(?:of|with|about|where)\s+(.+?)\s*[?.!]*$/i,
   ];
   const SHOT_INDEX = /^(?:please\s+)?(?:(?:index|update|refresh|rebuild)\s+(?:all\s+)?(?:my\s+|the\s+)?screenshots?(?:\s+index)?|make\s+(?:my\s+)?screenshots\s+searchable)\s*[.!]*$/i;
+  const SHOT_GALLERY = /^(?:please\s+)?(?:show|list|view|display)\s+(?:me\s+)?(?:my\s+)?(?:saved\s+|jarvis\s+)?screenshots?(?:\s+gallery)?\s*[?.!]*$/i;
   const SHOT_STATUS = /^(?:screenshot\s+(?:index|search)\s+(?:status|info)|how\s+many\s+screenshots\s+(?:are\s+)?(?:indexed|searchable))\s*[?.!]*$/i;
   const SHOT_FORGET = /^(?:please\s+)?(?:forget|clear|delete|erase|reset)\s+(?:my\s+|the\s+)?screenshot\s+(?:index|search|text)\s*[.!]*$/i;
   const SHOT_ADD = /^(?:please\s+)?(add|remove)\s+(.+?)\s+(?:to|from)\s+(?:my\s+)?screenshot\s+folders?\s*[.!]*$/i;
   const SHOT_WIN = /\s+(?:from\s+|in\s+|during\s+|taken\s+)?(today|yesterday|this week|last week|this month|last month)$/i;
   function matchShot(t) {
     let m;
+    if (SHOT_GALLERY.test(t)) return { op: 'gallery' };
     if (SHOT_STATUS.test(t)) return { op: 'status' };
     if (SHOT_INDEX.test(t)) return { op: 'index' };
     if (SHOT_FORGET.test(t)) return { op: 'forget' };
@@ -452,8 +454,27 @@ const Life = (() => {
     const lines = r.results.map((x, i) => (i + 1) + '. **' + shotWhen(x.mtime) + '** — ' + x.name + '\n   “' + plain(x.snippet).slice(0, 150) + '”');
     return say('**' + pl(r.total, 'screenshot') + '** with “' + m.q + '”' + (r.total > r.results.length ? ' (the best ' + r.results.length + ')' : '') + ':\n\n' + lines.join('\n') + tail, { speak: 'I found ' + pl(r.total, 'screenshot') + '.', actions: r.results.slice(0, 3).flatMap((x, i) => ([{ label: 'OPEN ' + (i + 1), fn: async () => { const o = await callTool('/shots/open', { path: x.path }); if (o.error) jarvisSay(say(o.error)); } }, { label: 'ANALYZE ' + (i + 1), fn: async () => { const model = (typeof llm !== 'undefined' && llm && llm.model) || ''; if (model && typeof isCloudModel === 'function' && isCloudModel(model)) { const yes = await ask('This will send the saved screenshot to the selected cloud AI provider (' + (typeof modelInfo === 'function' ? modelInfo(model).providerLabel : 'cloud provider') + '). Continue?', 'SEND SCREENSHOT TO CLOUD AI'); if (!yes) return jarvisSay(say('Okay — I kept the screenshot on this laptop.')); } const a = await callTool('/vision/saved-image', { path: x.path, question: 'Describe the visible scene, identify clearly visible objects and interface elements, and read visible text. State uncertainty rather than guessing.', model }); jarvisSay(a.error ? say(a.error) : say('**Saved screenshot analysis — ' + x.name + '**\n\n' + a.answer + (a.cloud ? '\n\n*This image was analyzed by the selected cloud provider.*' : '\n\n*Analyzed locally.*'))); } }])) });
   }
+  async function analyzeSavedShot(x) {
+    const model = (typeof llm !== 'undefined' && llm && llm.model) || '';
+    if (model && typeof isCloudModel === 'function' && isCloudModel(model)) {
+      const yes = await ask('This will send the saved screenshot to the selected cloud AI provider (' + (typeof modelInfo === 'function' ? modelInfo(model).providerLabel : 'cloud provider') + '). Continue?', 'SEND SCREENSHOT TO CLOUD AI');
+      if (!yes) return jarvisSay(say('Okay — I kept the screenshot on this laptop.'));
+    }
+    const a = await callTool('/vision/saved-image', { path: x.path, question: 'Describe the visible scene, identify clearly visible objects and interface elements, and read visible text. State uncertainty rather than guessing.', model });
+    jarvisSay(a.error ? say(a.error) : say('**Saved screenshot analysis — ' + x.name + '**\n\n' + a.answer + (a.cloud ? '\n\n*This image was analyzed by the selected cloud provider.*' : '\n\n*Analyzed locally.*')));
+  }
   async function shots(m, source) {
     switch (m.op) {
+      case 'gallery': {
+        if (source === 'phone') return say(PHONE_NO);
+        const g = await getJSON('/tool/screenshots');
+        if (!g || g.error) return say('I could not load saved screenshots: ' + ((g && g.error) || 'unknown error'));
+        const items = Array.isArray(g.screenshots) ? g.screenshots : [];
+        if (!items.length) return say('I could not find any saved JARVIS screenshots on Desktop or in the JARVIS Screenshots folder. Take one with “take a screenshot” first.');
+        const shown = items.slice(0, 10);
+        const lines = shown.map((x, i) => (i + 1) + '. **' + shotWhen(x.modified) + '** — ' + x.name + ' (' + Math.max(1, Math.round((x.bytes || 0) / 1024)) + ' KB)');
+        return say('**Saved JARVIS screenshots** — ' + items.length + ' found (showing ' + shown.length + '):\n\n' + lines.join('\n') + '\n\nChoose **OPEN** to view the saved image or **ANALYZE** to identify visible objects and text.', { actions: shown.slice(0, 6).flatMap((x, i) => ([{ label: 'OPEN ' + (i + 1), fn: () => { window.open(API + '/tool/screenshots/' + encodeURIComponent(x.id), '_blank', 'noopener'); } }, { label: 'ANALYZE ' + (i + 1), fn: async () => analyzeSavedShot(x) }])) });
+      }
       case 'find': return shotFind(m, source);
       case 'status': {
         const s = await getJSON('/shots/status'); if (s.error) return say('I could not check: ' + s.error);
