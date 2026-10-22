@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DEFAULT_CAPABILITIES = Object.freeze([
-  'status', 'notifications', 'sms.read', 'sms.send', 'contacts.read',
+  'status', 'notifications', 'voice', 'sms.read', 'sms.send', 'contacts.read',
   'calls', 'photos.read', 'clipboard.read', 'app.launch'
 ]);
 const PAIRING_CAPABILITIES = Object.freeze(['status', 'notifications']);
