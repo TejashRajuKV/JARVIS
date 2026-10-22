@@ -41,6 +41,7 @@ internal class PhoneHubNotificationWorker(
             if (message.contains("UNAUTHENTICATED") || message.contains("DEVICE_REVOKED") ||
                 message.contains("SESSION_EXPIRED")) {
                 TokenVault.clear(applicationContext)
+                WorkManager.getInstance(applicationContext).cancelUniqueWork(WORK_NAME)
                 Result.success()
             } else {
                 Result.retry()
