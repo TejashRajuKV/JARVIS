@@ -99,7 +99,7 @@ Everything below works today. The phrases are examples you can type or say; the 
 - **Places:** "nearest restaurants to Kodigehalli, Bengaluru" → Google Maps with the category, location and sort worked out.
 - **Open or search:** "search google for…", "find react documentation" (opens the page), sites it knows, YouTube, weather, directions and distance, units and conversions, CS calculators (binary, hex, xor, complexity).
 - **Research mode controls:** “turn on Search Mode” (no LLM calls), “switch to AI Research Mode” (web evidence + local model), “what research mode is active?”, and “turn off Search Mode” (returns to AI Research Mode).
-- **Emotional intelligence controls:** “turn on emotional intelligence” / “turn off emotional intelligence” — persistent preference, enabled by default.
+- **Emotional intelligence controls:** “turn on emotional intelligence” / “turn off emotional intelligence” — persistent preference, enabled by default. It distinguishes frustration directed at JARVIS from academic or coding stress, carries relevant tone only across immediate follow-ups (no permanent mood profile), uses a calmer/slower spoken rate without overwriting your saved voice speed, and suggests one practical next action when a message signals overload.
 - **Study-related web:** upcoming contests (Codeforces / LeetCode / CodeChef), hackathons, "research…" with sources.
 - **Honest when offline:** if the answer needs the web and Online tools is off, it says so and offers to turn it on — it never passes off old memory as current news.
 
