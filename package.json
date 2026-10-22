@@ -10,7 +10,8 @@
     "test:live": "node tests/live.test.js",
     "test:report": "node tests/report.js",
     "test:phonehub": "node tests/phonehub-auth.test.js",
-    "test:phonehub-gateway": "node tests/phonehub-gateway.test.js"
+    "test:phonehub-gateway": "node tests/phonehub-gateway.test.js",
+    "test:phonehub-android": "node tests/phonehub-android.test.js"
   },
   "keywords": [
     "jarvis",
