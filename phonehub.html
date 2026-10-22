@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="dark light">
   <title>JARVIS Phone Hub</title>
   <link rel="stylesheet" href="/phonehub.css">
+  <script src="/qrcode.js" defer></script>
   <script src="/phonehub-ui.js" defer></script>
 </head>
 <body>
@@ -30,7 +31,9 @@
       <p class="muted">Codes expire after five minutes. Pairing grants only status and notifications; other capabilities require a separate approval below.</p>
       <button id="create-pairing" class="button primary" type="button">Create pairing code</button>
       <div id="pairing-result" class="pairing-result" hidden>
-        <p class="muted">Enter both the pairing ID and code in the Android companion app.</p>
+        <p class="muted">Scan this one-time QR in the Android app, or enter the pairing ID and code manually. The QR expires with the code.</p>
+        <div id="pairing-qr" class="pairing-qr" role="img" aria-label="One-time pairing QR code"></div>
+        <p id="pairing-qr-help" class="muted small"></p>
         <p id="pairing-code" class="pairing-code"></p>
         <p class="muted">Pairing ID</p>
         <p id="pairing-id" class="pairing-id"></p>
