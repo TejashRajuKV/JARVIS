@@ -1306,3 +1306,10 @@ JARVIS now includes an **opt-in outbound phone announcement** flow and an initia
 - **Security:** calling credentials stay server-side. The Phone Hub gateway is separately configured, HTTPS-only, disabled unless explicitly enabled, and grants `voice` and `calls` capabilities separately. For away-from-home in-app voice, connect both devices to Tailscale and bind the gateway to the laptop's Tailscale IP; do not expose the general JARVIS server or forward gateway ports publicly.
 
 Start with [Calling setup](docs/CALLING.md), [Phone Hub setup and security](docs/PHONE-HUB.md), and the [Android companion guide](android/phonehub/README.md). This is an initial implementation: Twilio credentials, provider account restrictions, Android certificate trust, physical-device pairing, and real call delivery must be configured and verified by the operator. CI/build checks do not prove a real call or phone-network setup works.
+
+
+## Context-aware intent and live commerce comparison
+
+JARVIS routes explicit product and bus fare comparison requests through `/api/commerce/compare`. It searches provider-specific public results, fetches readable public listing pages when available, extracts price candidates, and shows source links. A candidate price is not a checkout-verified total; JARVIS must not claim a guaranteed cheapest purchase until exact variant, route/date, availability, delivery/booking fees and offers are confirmed. Search failures or inaccessible pages are reported as missing data, not fabricated prices.
+
+Natural-language intent rules handle clear buying/comparison requests and preserve the active commerce task for short provider follow-ups. For unclear or ambiguous requests, JARVIS should ask a focused clarification rather than guessing an external action. The local rule engine remains the fast first pass; the optional local Qwen NLU assist can interpret low-confidence commands when enabled.
