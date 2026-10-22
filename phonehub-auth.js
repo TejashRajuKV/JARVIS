@@ -4,6 +4,8 @@
 // listener: the gateway must provide HTTPS and call these methods only after validating
 // the transport, origin, request size, and local-network policy.
 const crypto = require('crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const DEFAULT_CAPABILITIES = Object.freeze([
   'status', 'notifications', 'sms.read', 'sms.send', 'contacts.read',
@@ -37,6 +39,62 @@ function createPhoneHubAuth(options = {}) {
   const pairings = new Map();
   const devices = new Map();
   const usedNonces = new Map();
+  const stateFile = typeof options.stateFile === 'string' && options.stateFile.trim()
+    ? path.resolve(options.stateFile) : null;
+
+  function persist() {
+    if (!stateFile) return;
+    const state = {
+      version: 1,
+      pairings: [...pairings.entries()],
+      devices: [...devices.entries()],
+      usedNonces: [...usedNonces.entries()]
+    };
+    const dir = path.dirname(stateFile);
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const temporary = stateFile + '.' + process.pid + '.' + crypto.randomBytes(6).toString('hex') + '.tmp';
+    try {
+      fs.writeFileSync(temporary, JSON.stringify(state), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      try { fs.chmodSync(temporary, 0o600); } catch {}
+      fs.renameSync(temporary, stateFile);
+      try { fs.chmodSync(stateFile, 0o600); } catch {}
+    } finally {
+      try { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); } catch {}
+    }
+  }
+
+  function restore() {
+    if (!stateFile || !fs.existsSync(stateFile)) return;
+    let state;
+    try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')); }
+    catch { throw new Error('Phone Hub state file is unreadable; refusing to reset device credentials'); }
+    if (!state || state.version !== 1 || !Array.isArray(state.pairings) ||
+        !Array.isArray(state.devices) || !Array.isArray(state.usedNonces)) {
+      throw new Error('Phone Hub state file has an unsupported or invalid format; refusing to reset device credentials');
+    }
+    for (const [id, p] of state.pairings) {
+      if (typeof id !== 'string' || !p || typeof p.codeHash !== 'string' ||
+          !Number.isFinite(p.expiresAt) || !Number.isFinite(p.attempts)) {
+        throw new Error('Phone Hub state file contains an invalid pairing record');
+      }
+      if (p.expiresAt > nowFn() && !p.consumed && p.attempts < maxAttempts) pairings.set(id, p);
+    }
+    for (const [id, d] of state.devices) {
+      if (typeof id !== 'string' || !d || typeof d.tokenHash !== 'string' ||
+          !Array.isArray(d.capabilities) || !Number.isFinite(d.expiresAt)) {
+        throw new Error('Phone Hub state file contains an invalid device record');
+      }
+      if (d.expiresAt > nowFn() && !d.revokedAt) devices.set(id, d);
+      else if (d.revokedAt) devices.set(id, d);
+    }
+    for (const [key, expiry] of state.usedNonces) {
+      if (typeof key === 'string' && Number.isFinite(expiry) && expiry > nowFn()) usedNonces.set(key, expiry);
+    }
+    if (pairings.size > maxActivePairings || usedNonces.size > maxUsedNonces) {
+      throw new Error('Phone Hub state exceeds configured safety limits; refusing to load it');
+    }
+  }
+  restore();
 
   function beginPairing() {
     // Bound memory even if the laptop UI is repeatedly asked to create pairing sessions.
@@ -50,6 +108,7 @@ function createPhoneHubAuth(options = {}) {
     const id = randomId(12);
     const createdAt = nowFn();
     pairings.set(id, { codeHash: hash(code), createdAt, expiresAt: createdAt + pairingTtlMs, attempts: 0, consumed: false });
+    persist();
     return { pairingId: id, code, createdAt, expiresAt: createdAt + pairingTtlMs };
   }
 
@@ -69,6 +128,7 @@ function createPhoneHubAuth(options = {}) {
     const suppliedHash = hash(String(input.code || ''));
     if (!safeEqual(pairing.codeHash, suppliedHash)) {
       if (pairing.attempts >= maxAttempts) pairings.delete(id);
+      persist();
       return { ok: false, error: pairing.attempts >= maxAttempts ? 'PAIRING_LOCKED' : 'PAIRING_CODE_INVALID' };
     }
 
@@ -89,6 +149,7 @@ function createPhoneHubAuth(options = {}) {
     pairing.consumed = true;
     pairings.delete(id);
     devices.set(deviceId, device);
+    persist();
     return { ok: true, device: publicDevice(device), token };
   }
 
@@ -116,6 +177,7 @@ function createPhoneHubAuth(options = {}) {
       if (usedNonces.has(nonceKey)) return { ok: false, error: 'REPLAYED_NONCE' };
       if (usedNonces.size >= maxUsedNonces) return { ok: false, error: 'NONCE_CAPACITY' };
       usedNonces.set(nonceKey, now + NONCE_TTL_MS);
+      persist();
       return { ok: true, device: publicDevice(device) };
     }
     return { ok: false, error: 'UNAUTHENTICATED' };
@@ -135,6 +197,7 @@ function createPhoneHubAuth(options = {}) {
     if (!device || device.revokedAt) return { ok: false, error: 'DEVICE_NOT_FOUND' };
     if (!Array.isArray(capabilities)) return { ok: false, error: 'INVALID_CAPABILITIES' };
     device.capabilities = [...new Set(capabilities.map(String).filter(v => allowed.has(v)))];
+    persist();
     return { ok: true, device: publicDevice(device) };
   }
 
@@ -142,6 +205,7 @@ function createPhoneHubAuth(options = {}) {
     const device = devices.get(String(deviceId || ''));
     if (!device) return false;
     device.revokedAt = nowFn();
+    persist();
     return true;
   }
 
@@ -154,6 +218,7 @@ function createPhoneHubAuth(options = {}) {
     for (const [id, p] of pairings) if (p.expiresAt <= now || p.consumed || p.attempts >= maxAttempts) pairings.delete(id);
     for (const [key, expiry] of usedNonces) if (expiry <= now) usedNonces.delete(key);
     for (const [id, d] of devices) if (d.expiresAt <= now && !d.revokedAt) d.revokedAt = now;
+    persist();
     return { pairings: pairings.size, devices: devices.size, nonces: usedNonces.size };
   }
 
