@@ -29,6 +29,7 @@ const checks = [
   ['token encryption uses Android Keystore AES-GCM', /AndroidKeyStore/.test(vault) && /AES\/GCM\/NoPadding/.test(vault)],
   ['token storage uses randomized encryption', /setRandomizedEncryptionRequired\(true\)/.test(vault)],
   ['Android voice UI supports speech recognition, spoken replies, and call request', /startVoiceSession/.test(activity) && /TextToSpeech/.test(activity) && /callJarvis/.test(activity) && /voiceReply/.test(client)],
+  ['Android endpoint validation accepts Tailscale CGNAT addresses for remote access', /b\\[0\\] == 100 && b\\[1\\] in 64\\.\\.127/.test(client)],
   ['app supports QR scanning and pairing payload validation', /IntentIntegrator/.test(activity) && /optString\("endpoint"\)/.test(activity) && /optInt\("version"\) == 1/.test(activity)],
   ['app surfaces pairing, status and notifications', /fun pair\(/.test(client) && /fun status\(/.test(client) && /fun notifications\(/.test(client) && /refreshNotifications/.test(activity) && /forgetPhone\(\)/.test(activity)],
   ['Android TLS trusts system and user-installed CA roots without disabling verification', manifest.includes('@xml/network_security_config') && /certificates src="system"/.test(networkSecurity) && /certificates src="user"/.test(networkSecurity) && /cleartextTrafficPermitted="false"/.test(networkSecurity)],
