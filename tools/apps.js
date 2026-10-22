@@ -22,6 +22,13 @@ ToolHandlers.add('apps', async function (p, raw, s, a) {
       const what = s.replace(/^(open|launch|start|run|fire up|boot up|boot|pull up|bring up|load|show me)\s+(up\s+)?(the\s+|my\s+)?/, '');
       return { text: 'I couldn’t find an app called "' + what + '" on this laptop. I can open anything in your Start menu by its name — or any website.', suggestions: ['Open ' + what + '.com', 'Search Google for ' + what] };
     }
+    case 'RECENT_CLOSED_APP_STATUS': {
+      const key = ctx.recentlyClosedApp || store.get('jarvis.recentlyClosedApp', null);
+      const app = key && NLU.appByKey(key);
+      return app
+        ? { text: 'The most recent app you closed through JARVIS was **' + app.n + '**.', suggestions: ['Reopen the last app'] }
+        : { text: 'I have not recorded an app closed through JARVIS yet.' };
+    }
     case 'REOPEN_RECENT_APP': {
       const key = ctx.recentlyClosedApp || store.get('jarvis.recentlyClosedApp', null);
       const app = key && NLU.appByKey(key);
