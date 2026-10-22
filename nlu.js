@@ -655,6 +655,7 @@ const NLU = (() => {
 
     // Restore actions are explicit and precede generic open/close rules.
     ['REOPEN_RECENT_APP', /^(?:reopen|restore|open|launch|bring back) (?:the )?(?:last|most recent|recently closed|last closed) app(?:lication)?$|^(?:open|launch) (?:the )?app i (?:just )?closed$/, .97, 'openApplication'],
+    ['RECENT_CLOSED_APP_STATUS', /^(?:which|what) app did i (?:just )?close(?: last)?$|^(?:what was|name) the last app i closed$|^show (?:me )?(?:the )?recently closed app$/, .96, 'openApplication'],
 
     // context follow-ups
     ['CONTEXT_CLOSE', /^(close|kill|quit|exit|shut) (it|that|this|the app)$/, .95, 'closeApplication'],
