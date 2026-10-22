@@ -923,7 +923,7 @@ const NLU = (() => {
     const s = norm.text;
     ctx = ctx || {};
     // Explicit commerce requests are routed to a live provider comparison, not a generic search page.
-    const busRoute = s.match(/\\bfrom\\s+(.+?)\\s+to\\s+(.+?)(?:\\s+(?:tomorrow|today|tonight|on\\s+\\d|next\\s+week|this\\s+week)\\b|$)/i) || s.match(/^(?:find|compare|book|show me|get me)?\\s*(?:the )?(?:cheapest )?(?:bus tickets? )?(.+?)\\s+to\\s+(.+?)(?:\\s+(?:tomorrow|today|tonight|on\\s+\\d|next\\s+week|this\\s+week)\\b|$)/i);
+    const busRoute = s.match(/\bfrom\s+(.+?)\s+to\s+(.+?)(?:\s+(?:tomorrow|today|tonight|on\s+\d|next\s+week|this\s+week)\b|$)/i) || s.match(/^(?:find|compare|book|show me|get me)?\s*(?:the )?(?:cheapest )?(?:bus tickets? )?(.+?)\s+to\s+(.+?)(?:\s+(?:tomorrow|today|tonight|on\s+\d|next\s+week|this\s+week)\b|$)/i);
     const busAsk = /\b(bus|buses|bus ticket|bus tickets|bus fare|bus booking|coach)\b/i.test(s) && /\b(compare|cheapest|cheaper|price|fare|book|find|get|show|search|look for|options|ticket|tickets)\b/i.test(s);
     if (busAsk && busRoute && !/\b(what is a bus|how do buses|explain .*bus)\b/i.test(s)) {
       const date = (s.match(/\b(?:today|tomorrow|tonight|\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2})\b/i) || [])[0] || '';
@@ -946,7 +946,7 @@ const NLU = (() => {
       const provider = (s.match(/\b(amazon|flipkart|abhibus|red ?bus|government buses|state buses)\b/i) || [])[1] || '';
       if (mode === 'bus') {
         const route = previous.match(/\bfrom\s+(.+?)\s+to\s+(.+?)(?:\s+(?:on|tomorrow|today|tonight|next)\b|$)/i);
-        if (route) return { intent: 'COMMERCE_COMPARE', confidence: .94, tool: 'web', args: { type: 'bus', from: route[1].trim(), to: route[2].trim(), date: (previous.match(/\b(?:today|tomorrow|tonight|\d{4}-\d{2}-\d{2})\b/i)||[])[0] || '', provider }, text: previous };
+        if (route) return { intent: 'COMMERCE_COMPARE', confidence: .94, tool: 'web', args: { type: 'bus', from: route[1].trim(), to: route[2].trim(), date: (previous.match(/\b(?:today|tomorrow|tonight|\d{4}-\d{2}-\d{2})\b/i)||[])[0] || '', provider: provider || 'all' }, text: previous };
       } else {
         const query = previous.replace(/^(?:please )?(?:compare|find|search|look for|show me|get me|buy|shop for)\s+/i, '').trim();
         if (query) return { intent: 'COMMERCE_COMPARE', confidence: .94, tool: 'web', args: { type: 'product', query, provider }, text: previous };
