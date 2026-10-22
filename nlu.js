@@ -90,7 +90,7 @@ const NLU = (() => {
 
   /* ---------- text utils ---------- */
   const TYPOS = {
-    crome: 'chrome', chorme: 'chrome', chrom: 'chrome', gogle: 'google', googel: 'google', youtub: 'youtube', utube: 'youtube',
+    crome: 'chrome', chorme: 'chrome', chrom: 'chrome', ogoen: 'open', ogone: 'open', opne: 'open', oppen: 'open', gogle: 'google', googel: 'google', youtub: 'youtube', utube: 'youtube',
     yotube: 'youtube', youtbe: 'youtube', spotfy: 'spotify', spotifi: 'spotify', notpad: 'notepad', notepadd: 'notepad',
     calculater: 'calculator', calulator: 'calculator', whatsap: 'whatsapp', watsapp: 'whatsapp', discrod: 'discord',
     vscod: 'vscode', 'vs-code': 'vs code', 'v s code': 'vs code', 'visual code': 'vs code', 'screen shot': 'screenshot',
