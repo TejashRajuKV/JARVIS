@@ -24,6 +24,11 @@ const WTTR = (process.env.JARVIS_WTTR_URL || 'https://wttr.in').replace(/\/+$/, 
 const DEFAULT_MODEL = process.env.JARVIS_MODEL || 'qwen3.5:4b';
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
+const { createPhoneHubAuth, DEFAULT_CAPABILITIES } = require('./phonehub-auth');
+const { createPhoneHubHttpsServer, DEFAULT_PORT: PHONEHUB_DEFAULT_PORT } = require('./phonehub-gateway');
+const phoneHubAuth = createPhoneHubAuth();
+let phoneHubGateway = null;
+let phoneHubGatewayError = null;
 
 /* ---------------- security: same-origin only ---------------- */
 const ALLOWED_ORIGINS = new Set([`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`]);
@@ -118,6 +123,38 @@ app.get('/api/remote/status', async (req, res) => {
   const serve = tsName ? await tsJSON(['serve', 'status', '--json']) : null;
   const serving = !!serve && JSON.stringify(serve).includes(`:${PORT}"`);
   res.json({ tailscale: !!tsName, url: tsName ? 'https://' + tsName : null, serving, port: PORT });
+});
+
+// Phone Hub owner controls stay on the existing loopback-only JARVIS origin. The phone gateway is
+// a separate, opt-in HTTPS listener; these routes never proxy laptop-control tools to the phone.
+app.get('/api/phonehub/status', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    gateway: !!phoneHubGateway,
+    gatewayError: phoneHubGatewayError,
+    host: phoneHubGateway ? phoneHubGateway.host : null,
+    port: phoneHubGateway ? phoneHubGateway.port : null,
+    devices: phoneHubAuth.listDevices(),
+    capabilities: DEFAULT_CAPABILITIES
+  });
+});
+app.post('/api/phonehub/pairing', (req, res) => {
+  const pairing = phoneHubAuth.beginPairing();
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(201).json({ pairingId: pairing.pairingId, code: pairing.code, createdAt: pairing.createdAt, expiresAt: pairing.expiresAt });
+});
+app.post('/api/phonehub/devices/:id/grant', (req, res) => {
+  const capabilities = req.body && req.body.capabilities;
+  if (!Array.isArray(capabilities) || capabilities.length > DEFAULT_CAPABILITIES.length) {
+    return res.status(400).json({ error: 'capabilities must be a bounded array' });
+  }
+  const result = phoneHubAuth.grant(req.params.id, capabilities);
+  if (!result.ok) return res.status(404).json({ error: result.error });
+  res.json(result);
+});
+app.delete('/api/phonehub/devices/:id', (req, res) => {
+  if (!phoneHubAuth.revoke(req.params.id)) return res.status(404).json({ error: 'DEVICE_NOT_FOUND' });
+  res.json({ ok: true });
 });
 
 /* ---------------- shared app state ---------------- */
@@ -2630,11 +2667,39 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.type === 'entity.parse.failed' ? 'Invalid JSON body' : 'Server error' });
 });
 
+async function startConfiguredPhoneHubGateway() {
+  const host = String(process.env.JARVIS_PHONEHUB_HOST || '').trim();
+  if (!host) {
+    console.log('[Phone Hub] gateway disabled (set JARVIS_PHONEHUB_HOST to an explicit private LAN IP to enable)');
+    return;
+  }
+  const port = Number(process.env.JARVIS_PHONEHUB_PORT) || PHONEHUB_DEFAULT_PORT;
+  try {
+    phoneHubGateway = createPhoneHubHttpsServer({
+      auth: phoneHubAuth,
+      host,
+      port,
+      key: process.env.JARVIS_PHONEHUB_TLS_KEY,
+      cert: process.env.JARVIS_PHONEHUB_TLS_CERT,
+      allowedOrigins: String(process.env.JARVIS_PHONEHUB_ALLOWED_ORIGINS || '').split(',').map(v => v.trim()).filter(Boolean),
+      getStatus: async () => ({ online: true, platform: process.platform, uptimeSeconds: Math.floor(process.uptime()) }),
+      getNotifications: async () => []
+    });
+    const address = await phoneHubGateway.listen();
+    console.log(`[Phone Hub] HTTPS gateway listening on ${address.address}:${address.port}`);
+  } catch (error) {
+    phoneHubGateway = null;
+    phoneHubGatewayError = error.message;
+    console.error('[Phone Hub] gateway disabled: ' + error.message);
+  }
+}
+
 const httpServer = app.listen(PORT, HOST, () => {
   lock.update(PORT);   // record the real port, pid and port file for the launcher and Stop JARVIS
   console.log(`JARVIS backend running on http://localhost:${PORT}`);
   console.log(`Sandbox: ${SANDBOX}`);
   console.log(`LLM: ${OLLAMA} (${DEFAULT_MODEL})`);
+  void startConfiguredPhoneHubGateway();
 });
 httpServer.on('error', e => {
   lock.release();
