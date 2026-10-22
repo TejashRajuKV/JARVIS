@@ -12,7 +12,8 @@
     "test:phonehub": "node tests/phonehub-auth.test.js",
     "test:phonehub-gateway": "node tests/phonehub-gateway.test.js",
     "test:phonehub-android": "node tests/phonehub-android.test.js",
-    "test:phonehub-notifications": "node tests/phonehub-notifications.test.js"
+    "test:phonehub-notifications": "node tests/phonehub-notifications.test.js",
+    "test:phonehub-cert": "node tests/phonehub-cert.test.js"
   },
   "keywords": [
     "jarvis",
