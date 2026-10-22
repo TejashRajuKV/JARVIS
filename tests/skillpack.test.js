@@ -101,7 +101,7 @@ let reply = 'ok', lastCall = null;
 const llm = { complete: async o => { lastCall = o; if (reply instanceof Error) throw reply; return reply; } };
 const sandbox = path.join(tmp, 'sandbox');
 P(app, { llm, DEFAULT_MODEL: 'm0', SANDBOX: sandbox, bundledDir: bundled });
-const call = async (table, p, body, extra = {}) => { let out, code = 200; await table[p]({ body, params: extra.params || {}, query: extra.query || {} }, { json: o => { out = o; }, status: c => ({ json: o => { code = c; out = o; } }) }); return { code, ...out }; };
+const call = async (table, p, body, extra = {}) => { let out, code = 200; await table[p]({ body, params: extra.params || {}, query: extra.query || {} }, { setHeader: () => {}, json: o => { out = o; }, status: c => ({ json: o => { code = c; out = o; } }) }); return { code, ...out }; };
 (async () => {
   const list = await call(gets, '/api/skills');
   check('GET /api/skills: names + hints, no instructions', list.success && list.skills.length === 3 && !JSON.stringify(list).includes('MINE') && list.folder === mine, list);
