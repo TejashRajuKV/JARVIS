@@ -3290,6 +3290,21 @@ async function handleUser(text, source) {
       await deliver({ text: 'Just to be sure, ' + Persona.sir() + ': should I **' + p.intent.toLowerCase().replace(/_/g, ' ') + '** for **“' + (p.corrected || norm.text) + '”**? “' + ((sig && sig.words.fresh[0]) || 'latest').trim() + '” about your own things usually means you want to see something, and that command changes something.', suggestions: ['Yes', 'No'], noPersona: true, intent: 'CONFIRM' }, p);
       return;
     }
+    // Policy enforcement: Decider marks ambiguous/conflicting requests for review, but that flag must gate
+    // execution here. Never execute a non-safe action on a low-confidence/conflicting route without confirmation.
+    // actionConflict is handled above with a more specific message; CONFIRM_GATE already has its own approval flow.
+    if (!wantsLLM && decision.needsReview && !decision.actionConflict && p.intent !== 'CONVERSATION'
+      && !p.fromPending && !CONFIRM_GATE[p.intent] && Agent.tierFor
+      && Agent.tierFor(p.intent, norm.text)[0] !== 'safe') {
+      ctx.pending = { intent: 'CONFIRM_INTENT', p };
+      traceRoute('decision policy requires review → asked before execution');
+      await deliver({
+        text: 'This request has ambiguous or conflicting signals, ' + Persona.sir() + '. I won’t run **' +
+          p.intent.toLowerCase().replace(/_/g, ' ') + '** until you confirm: **“' + (p.corrected || norm.text) + '”**. Is that what you want?',
+        suggestions: ['Yes', 'No'], noPersona: true, intent: 'CONFIRM'
+      }, p);
+      return;
+    }
     // Medium confidence on something SPOKEN (the mic may have misheard): ask before acting, instead of guessing or
     // handing it to the AI. Never for questions, and not for "open <something unknown>" (that opens the best web page).
     if (wantsLLM && spoken && p.intent !== 'CONVERSATION' && p.confidence >= CONFIRM_MIN && p.confidence < 0.85 && p.intent !== 'OPEN_APPLICATION'
