@@ -36,6 +36,7 @@ h3 { margin: 0; font-size: 1.05rem; }
 .secondary { color: var(--text); background: #1b2a3c; border-color: #35465c; }
 .danger { color: #ffe4e8; background: #4a1f2b; border-color: #7b3043; }
 .pairing-result { margin-top: 18px; padding: 18px; border: 1px dashed #52748f; border-radius: 12px; }
+.pairing-id { margin: 0; overflow-wrap: anywhere; font: 700 .95rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: #dbeafe; }
 .pairing-code { margin: 0; font: 800 clamp(2.4rem, 9vw, 3.6rem)/1.1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .22em; color: var(--accent); }
 .notice { margin-top: 12px; padding: 10px 12px; border-radius: 9px; overflow-wrap: anywhere; }
 .error { color: #fecdd3; background: #3c1d27; border: 1px solid #6f2a3a; }
