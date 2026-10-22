@@ -1,0 +1,10 @@
+'use strict';
+const { extractPriceCandidates, queryMatch } = require('../commerce-compare');
+let fail=0,total=0;const check=(name,ok)=>{total++;if(!ok){fail++;console.log('FAIL '+name);}};
+const p=extractPriceCandidates('Deal price ₹1,299.00 today; another offer Rs. 2,499; version 2026; model: 3050');
+check('extracts rupee-prefixed price',p.some(x=>x.value===1299));
+check('extracts Rs price',p.some(x=>x.value===2499));
+check('does not treat model/version identifiers as prices',!p.some(x=>x.value===2026||x.value===3050));
+check('query matching rewards relevant listing text',queryMatch('wireless mouse Logitech','Logitech wireless mouse with USB receiver')>.6);
+check('query matching rejects unrelated listing text',queryMatch('wireless mouse Logitech','stainless steel water bottle')<.4);
+console.log('commerce-compare: '+(total-fail)+'/'+total);process.exitCode=fail?1:0;
