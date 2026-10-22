@@ -923,7 +923,7 @@ const NLU = (() => {
     const s = norm.text;
     ctx = ctx || {};
     // Explicit commerce requests are routed to a live provider comparison, not a generic search page.
-    const busRoute = s.match(/\b(?:from\s+)?(.+?)\s+to\s+(.+?)(?:\s+(?:tomorrow|today|tonight|on\s+\d|next\s+week|this\s+week)\b|$)/i);
+    const busRoute = s.match(/\\bfrom\\s+(.+?)\\s+to\\s+(.+?)(?:\\s+(?:tomorrow|today|tonight|on\\s+\\d|next\\s+week|this\\s+week)\\b|$)/i) || s.match(/^(?:find|compare|book|show me|get me)?\\s*(?:the )?(?:cheapest )?(?:bus tickets? )?(.+?)\\s+to\\s+(.+?)(?:\\s+(?:tomorrow|today|tonight|on\\s+\\d|next\\s+week|this\\s+week)\\b|$)/i);
     const busAsk = /\b(bus|buses|bus ticket|bus tickets|bus fare|bus booking|coach)\b/i.test(s) && /\b(compare|cheapest|cheaper|price|fare|book|find|get|show|search|look for|options|ticket|tickets)\b/i.test(s);
     if (busAsk && busRoute && !/\b(what is a bus|how do buses|explain .*bus)\b/i.test(s)) {
       const date = (s.match(/\b(?:today|tomorrow|tonight|\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2})\b/i) || [])[0] || '';
