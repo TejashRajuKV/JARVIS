@@ -156,7 +156,7 @@ module.exports = function setupAgentPlatform(app, { SANDBOX }) {
     audit.append({ category: 'research', action: 'delete session', outcome: 'success' });
     res.json({ success: true });
   });
-  app.get('/api/audit/events', (req, res) => res.setHeader('Cache-Control', 'no-store') || res.json({ success: true, events: audit.list(req.query.limit) }));
+  app.get('/api/audit/events', (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, events: audit.list(req.query.limit) }); });
   app.post('/api/audit/events', (req, res) => {
     const result = audit.append(req.body);
     if (result.error) return res.status(400).json(result);
