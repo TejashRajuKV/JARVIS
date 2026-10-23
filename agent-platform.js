@@ -63,6 +63,48 @@ function validateWorkflow(input) {
     policy: 'validation-only; execution must use the normal tool registry, permission checks and verification' } };
 }
 
+// Optional orchestration primitive for trusted adapters. It never chooses tools itself: callers inject
+// the executor and approval gate. No retries and no side-effect replay are performed automatically.
+async function executeWorkflow(input, { execute, authorize, signal } = {}) {
+  const validated = validateWorkflow(input);
+  if (!validated.ok) return { ok: false, error: validated.error, message: validated.message, results: [] };
+  if (typeof execute !== 'function') return { ok: false, error: 'EXECUTOR_REQUIRED', results: [] };
+  const byId = new Map(validated.plan.steps.map(s => [s.id, s]));
+  const results = new Map();
+  const runOne = async id => {
+    const step = byId.get(id);
+    if (signal && signal.aborted) { results.set(id, { id, status: 'cancelled' }); return; }
+    const blockedBy = step.dependsOn.find(dep => !results.has(dep) || results.get(dep).status !== 'success');
+    if (blockedBy) { results.set(id, { id, status: 'blocked', reason: 'dependency did not succeed: ' + blockedBy }); return; }
+    if (step.requiresApproval) {
+      let approved = false;
+      try { approved = typeof authorize === 'function' && await authorize({ ...step }); } catch {}
+      if (!approved) { results.set(id, { id, status: 'blocked', reason: 'approval required' }); return; }
+    }
+    try {
+      const value = await execute({ ...step }, { signal });
+      results.set(id, { id, status: 'success', output: cleanText(typeof value === 'string' ? value : JSON.stringify(value == null ? '' : value), 2000) });
+    } catch (error) {
+      results.set(id, { id, status: signal && signal.aborted ? 'cancelled' : 'failed',
+        reason: cleanText(error && error.message || error, 300) });
+    }
+  };
+  for (const wave of validated.plan.waves) {
+    if (signal && signal.aborted) {
+      for (const id of wave) if (!results.has(id)) results.set(id, { id, status: 'cancelled' });
+      continue;
+    }
+    if (wave.length > 1) await Promise.all(wave.map(runOne));
+    else for (const id of wave) await runOne(id);
+  }
+  const ordered = validated.plan.steps.map(s => results.get(s.id) || { id: s.id, status: 'notrun' });
+  return { ok: ordered.every(r => r.status === 'success'), plan: { version: validated.plan.version, waves: validated.plan.waves },
+    results: ordered, completed: ordered.filter(r => r.status === 'success').length,
+    failed: ordered.filter(r => r.status === 'failed').length,
+    blocked: ordered.filter(r => r.status === 'blocked').length,
+    cancelled: ordered.filter(r => r.status === 'cancelled').length };
+}
+
 function atomicWrite(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = file + '.' + process.pid + '.' + crypto.randomBytes(6).toString('hex') + '.tmp';
@@ -170,6 +212,7 @@ module.exports = function setupAgentPlatform(app, { SANDBOX }) {
   app.get('/api/audit/events', (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, events: audit.list(req.query.limit) }); });
 };
 module.exports.validateWorkflow = validateWorkflow;
+module.exports.executeWorkflow = executeWorkflow;
 module.exports.safeSourceUrl = safeSourceUrl;
 module.exports.createResearchNotebook = createResearchNotebook;
 module.exports.createAuditLog = createAuditLog;
