@@ -65,8 +65,8 @@ function validateWorkflow(input) {
 
 function atomicWrite(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = file + '.' + process.pid + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
+  const tmp = file + '.' + process.pid + '.' + crypto.randomBytes(6).toString('hex') + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600, flag: 'wx' });
   try { fs.renameSync(tmp, file); } catch (e) { try { fs.unlinkSync(tmp); } catch {} throw e; }
 }
 function readArray(file, max) {
@@ -74,7 +74,13 @@ function readArray(file, max) {
   catch (e) { if (e.code !== 'ENOENT') return []; return []; }
 }
 function createResearchNotebook({ file }) {
-  let rows = readArray(file, MAX_RESEARCH).filter(x => x && ID_RE.test(String(x.id || '')));
+  let rows = readArray(file, MAX_RESEARCH).filter(x => x && ID_RE.test(String(x.id || ''))).map(x => ({
+    id: String(x.id), question: cleanText(x.question, 1200), title: cleanText(x.title || x.question, 180), summary: cleanText(x.summary, 5000),
+    sources: (Array.isArray(x.sources) ? x.sources : []).slice(0, 30).map(s => {
+      const url = safeSourceUrl(s && s.url); if (!url) return null;
+      return { url, title: cleanText(s.title || new URL(url).hostname, 180), note: cleanText(s.note, 400) };
+    }).filter(Boolean), createdAt: Number(x.createdAt) || Date.now(), updatedAt: Number(x.updatedAt) || Number(x.createdAt) || Date.now()
+  })).filter(x => x.question);
   const persist = () => atomicWrite(file, rows);
   function list() { return rows.map(x => ({ ...x, sources: x.sources.map(s => ({ ...s })) })); }
   function add(input) {
@@ -98,7 +104,11 @@ function createResearchNotebook({ file }) {
   return { list, add, get, remove, clear: () => { const old = rows; rows = []; try { persist(); return true; } catch { rows = old; return false; } } };
 }
 function createAuditLog({ file }) {
-  let rows = readArray(file, MAX_AUDIT).filter(x => x && Number.isFinite(Number(x.at)));
+  let rows = readArray(file, MAX_AUDIT).filter(x => x && Number.isFinite(Number(x.at)) && ALLOWED_CATEGORIES.has(x.category) && ALLOWED_OUTCOMES.has(x.outcome)).map(x => ({
+    id: ID_RE.test(String(x.id || '')) ? String(x.id) : crypto.randomBytes(8).toString('hex'), at: Number(x.at),
+    category: x.category, action: ALLOWED_AUDIT_ACTIONS.has(String(x.action || '')) ? String(x.action) : 'other',
+    outcome: x.outcome, runId: /^[a-zA-Z0-9._-]{1,80}$/.test(String(x.runId || '')) ? String(x.runId) : null
+  }));
   const persist = () => atomicWrite(file, rows);
   function append(input) {
     const b = input && typeof input === 'object' ? input : {};
