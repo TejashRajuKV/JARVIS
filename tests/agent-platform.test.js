@@ -47,7 +47,7 @@ try {
 
   // Exercise the mounted API handlers with a tiny Express-compatible fake.
   const mounted = {};
-  const app = {};
+  const app = { locals: {} };
   for (const method of ['get','post','delete']) app[method] = (route, handler) => { mounted[method.toUpperCase() + ' ' + route] = handler; };
   P(app, { SANDBOX: tmp });
   function request(method, route, req = {}) {
