@@ -43,7 +43,7 @@ try {
   check('audit rejects unknown categories', audit.append({ category: 'whatever', action: 'x' }).error === 'INVALID_CATEGORY');
   check('audit persists across reload', P.createAuditLog({ file: auditFile }).list()[0].id === event.item.id);
   check('audit history is bounded on read', audit.list(1).length === 1);
-  check('audit storage uses private permissions where supported', (fs.statSync(auditFile).mode & 0o077) === 0);
+  check('audit storage uses private permissions where supported', process.platform === 'win32' || (fs.statSync(auditFile).mode & 0o077) === 0);
 
   // Exercise the mounted API handlers with a tiny Express-compatible fake.
   const mounted = {};
