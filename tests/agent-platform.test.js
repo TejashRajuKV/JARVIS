@@ -44,6 +44,39 @@ try {
   check('audit persists across reload', P.createAuditLog({ file: auditFile }).list()[0].id === event.item.id);
   check('audit history is bounded on read', audit.list(1).length === 1);
   check('audit storage uses private permissions where supported', (fs.statSync(auditFile).mode & 0o077) === 0);
+
+  // Exercise the mounted API handlers with a tiny Express-compatible fake.
+  const mounted = {};
+  const app = {};
+  for (const method of ['get','post','delete']) app[method] = (route, handler) => { mounted[method.toUpperCase() + ' ' + route] = handler; };
+  P(app, { SANDBOX: tmp });
+  function request(method, route, req = {}) {
+    const response = { code: 200, headers: {}, body: null,
+      setHeader(k,v) { this.headers[k]=v; return this; },
+      status(n) { this.code=n; return this; },
+      json(v) { this.body=v; return this; } };
+    const handler = mounted[method + ' ' + route];
+    if (!handler) throw new Error('Missing route ' + method + ' ' + route);
+    handler({ body: {}, query: {}, params: {}, ...req }, response);
+    return response;
+  }
+  const status = request('GET','/api/platform/status');
+  check('status API reports cross-phase foundations', status.code === 200 && status.body.success && status.body.phases.researchNotebook.available);
+  const empty = request('POST','/api/research/sessions',{body:{question:'   '}});
+  check('research API rejects blank questions', empty.code === 400);
+  const saved = request('POST','/api/research/sessions',{body:{question:'API research question',sources:[{url:'https://example.net/?token=private'}]}});
+  check('research API saves a session and redacts source secrets', saved.code === 201 && saved.body.session.sources[0].url === 'https://example.net/');
+  const listed = request('GET','/api/research/sessions');
+  check('research API lists saved sessions', listed.body.sessions.some(x=>x.id===saved.body.session.id));
+  const invalidWorkflow = request('POST','/api/workflows/validate',{body:{steps:[{id:'x',dependsOn:['missing']}] }});
+  check('workflow API returns a client error for invalid graphs', invalidWorkflow.code === 400 && invalidWorkflow.body.error === 'UNKNOWN_DEPENDENCY');
+  const validWorkflow = request('POST','/api/workflows/validate',{body:{steps:[{id:'read',tier:'safe',readOnly:true}]}});
+  check('workflow API returns validated plans without executing them', validWorkflow.code === 200 && validWorkflow.body.ok && /validation-only/.test(validWorkflow.body.plan.policy));
+  const audit = request('GET','/api/audit/events',{query:{limit:'10'}});
+  check('audit API exposes server-generated events only', audit.code === 200 && audit.body.events.some(x=>x.action==='save-research-session'));
+  const removed = request('DELETE','/api/research/sessions/:id',{params:{id:saved.body.session.id}});
+  check('research API deletes a saved session', removed.code === 200);
+
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 console.log('agent-platform: ' + (total - fail) + '/' + total);
 process.exitCode = fail ? 1 : 0;
