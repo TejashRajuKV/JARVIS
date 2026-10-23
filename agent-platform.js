@@ -12,6 +12,7 @@ const ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
 const SECRET_PARAM = /^(?:token|access_token|refresh_token|api[_-]?key|key|auth|authorization|code|password|passwd|session|sid|secret|signature|sig|email|text|message|body|caption)$/i;
 const ALLOWED_CATEGORIES = new Set(['workflow', 'research', 'skill', 'agent', 'security', 'system']);
 const ALLOWED_OUTCOMES = new Set(['success', 'failure', 'blocked', 'cancelled', 'review']);
+const ALLOWED_AUDIT_ACTIONS = new Set(['validate-workflow', 'save-research-session', 'delete-research-session', 'run-task', 'skill-run', 'approval', 'permission-denied', 'cancel-task', 'recover-task', 'export-data', 'other']);
 
 function safeSourceUrl(input) {
   let u;
@@ -107,7 +108,7 @@ function createAuditLog({ file }) {
     if (!ALLOWED_OUTCOMES.has(outcome)) return { error: 'INVALID_OUTCOME' };
     // Intentionally exclude prompts, file paths, URLs, arguments, credentials and arbitrary payloads.
     const row = { id: crypto.randomBytes(8).toString('hex'), at: Date.now(), category,
-      action: cleanText(b.action, 80).replace(/[^a-zA-Z0-9 .:_-]/g, '').slice(0, 80),
+      action: ALLOWED_AUDIT_ACTIONS.has(String(b.action || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 80)) ? String(b.action || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 80) : 'other',
       outcome, runId: /^[a-zA-Z0-9._-]{1,80}$/.test(String(b.runId || '')) ? String(b.runId) : null };
     rows = [row, ...rows].slice(0, MAX_AUDIT);
     try { persist(); } catch { rows = rows.filter(x => x.id !== row.id); return { error: 'PERSIST_FAILED' }; }
@@ -136,14 +137,14 @@ module.exports = function setupAgentPlatform(app, { SANDBOX }) {
   app.post('/api/workflows/validate', (req, res) => {
     const result = validateWorkflow(req.body);
     if (!result.ok) return res.status(400).json(result);
-    audit.append({ category: 'workflow', action: 'validate', outcome: 'success' });
+    audit.append({ category: 'workflow', action: 'validate-workflow', outcome: 'success' });
     res.json(result);
   });
   app.get('/api/research/sessions', (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, sessions: notebook.list() }); });
   app.post('/api/research/sessions', (req, res) => {
     const result = notebook.add(req.body);
     if (result.error) return res.status(result.error === 'QUESTION_REQUIRED' ? 400 : 500).json(result);
-    audit.append({ category: 'research', action: 'save session', outcome: 'success' });
+    audit.append({ category: 'research', action: 'save-research-session', outcome: 'success' });
     res.status(201).json({ success: true, session: result.item });
   });
   app.get('/api/research/sessions/:id', (req, res) => {
@@ -153,15 +154,10 @@ module.exports = function setupAgentPlatform(app, { SANDBOX }) {
   });
   app.delete('/api/research/sessions/:id', (req, res) => {
     if (!notebook.remove(req.params.id)) return res.status(404).json({ error: 'RESEARCH_SESSION_NOT_FOUND' });
-    audit.append({ category: 'research', action: 'delete session', outcome: 'success' });
+    audit.append({ category: 'research', action: 'delete-research-session', outcome: 'success' });
     res.json({ success: true });
   });
   app.get('/api/audit/events', (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, events: audit.list(req.query.limit) }); });
-  app.post('/api/audit/events', (req, res) => {
-    const result = audit.append(req.body);
-    if (result.error) return res.status(400).json(result);
-    res.status(201).json({ success: true, event: result.item });
-  });
 };
 module.exports.validateWorkflow = validateWorkflow;
 module.exports.safeSourceUrl = safeSourceUrl;
