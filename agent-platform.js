@@ -122,7 +122,7 @@ module.exports = function setupAgentPlatform(app, { SANDBOX }) {
   const audit = createAuditLog({ file: path.join(SANDBOX, '.audit-events.json') });
   app.locals.jarvisResearchNotebook = notebook;
   app.locals.jarvisAuditLog = audit;
-  app.get('/api/platform/status', (req, res) => res.setHeader('Cache-Control', 'no-store') || res.json({
+  app.get('/api/platform/status', (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({
     success: true, phases: {
       skills: { available: true, source: 'skillpack.js' },
       researchNotebook: { available: true, savedItems: notebook.list().length },
@@ -132,14 +132,14 @@ module.exports = function setupAgentPlatform(app, { SANDBOX }) {
       auditTrail: { available: true, events: audit.list(1).length ? 'active' : 'ready' },
       phoneHub: { available: true, source: 'phonehub-gateway.js' }
     }
-  }));
+  }); });
   app.post('/api/workflows/validate', (req, res) => {
     const result = validateWorkflow(req.body);
     if (!result.ok) return res.status(400).json(result);
     audit.append({ category: 'workflow', action: 'validate', outcome: 'success' });
     res.json(result);
   });
-  app.get('/api/research/sessions', (req, res) => res.setHeader('Cache-Control', 'no-store') || res.json({ success: true, sessions: notebook.list() }));
+  app.get('/api/research/sessions', (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, sessions: notebook.list() }); });
   app.post('/api/research/sessions', (req, res) => {
     const result = notebook.add(req.body);
     if (result.error) return res.status(result.error === 'QUESTION_REQUIRED' ? 400 : 500).json(result);
