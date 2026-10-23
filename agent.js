@@ -127,8 +127,7 @@ const Agent = (() => {
     while (runs.length > 50) runs.shift();
     store.set(RUNS_KEY, runs);
   }
-  // Read-only summary of a persisted task; continuation still goes through the normal planner and permission gate.
-  
+  // Runs executing in this page.
   // Runs executing in this page. A running record is refreshed every minute; one not refreshed for 3 minutes belongs to a page that
   // closed or restarted mid-task, so it is marked interrupted: the steps it recorded happened, the rest never ran.
   const active = new Set(), STALE_RUN_MS = 3 * 60e3;
