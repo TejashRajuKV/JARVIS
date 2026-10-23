@@ -70,9 +70,6 @@ assert.equal(values.get('jarvis.memory').length, api.memory.length, 'normalized 
 
 
 
-console.log('memory.test.js: assertions defined and ready to run.');
-
-
 // Search and explicit clear operations stay within personal memory.
 assert.equal(api.memSearch('UPDATED')[0].value, 'Updated', 'memory search is case-insensitive');
 assert.equal(api.memSearch('missing').length, 0, 'search excludes unrelated records');
