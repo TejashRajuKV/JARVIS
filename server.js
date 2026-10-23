@@ -1643,6 +1643,8 @@ rag.startWatcher(); // new/changed files are picked up automatically (still chea
 require('./skills')(app, { llm, DEFAULT_MODEL, SANDBOX, openPath, rel, findAllowed, anyPath, approvedChange, whereDir });
 // Skill packs: any folder with a SKILL.md in ~/jarvis/Skills (or ./skills-bundled) becomes a skill (skillpack.js).
 require('./skillpack')(app, { llm, DEFAULT_MODEL, SANDBOX });
+// Cross-phase agent platform: validated workflow DAGs, persistent research notebook, and redacted audit trail.
+require('./agent-platform')(app, { SANDBOX });
 // Skill Hub: explicit workflow notes, safe browser recovery, and read-only local self-diagnostics.
 require('./workflow-memory')(app, { SANDBOX });
 require('./browser-recovery')(app, { SANDBOX, IS_WIN, IS_MAC });

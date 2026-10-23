@@ -266,6 +266,26 @@ async function runUndoTask(id, say = true) {
   return text;
 }
 function memDel(id) { undoRemoved('deleted memory', () => memory, v => { memory = v; }, () => { store.set('jarvis.memory', memory); renderMemory(); }, removedFrom(memory, m => m.id !== id)); memory = memory.filter(m => m.id !== id); store.set('jarvis.memory', memory); renderMemory(); }
+// Search durable personal memory without changing it.
+function memSearch(query, limit = 20) {
+  const q = String(query || '').trim().toLocaleLowerCase();
+  const max = Math.max(1, Math.min(50, Number(limit) || 20));
+  if (!q) return memory.slice(-max).reverse().map(m => ({ ...m }));
+  return memory.filter(m => (m.key + ' ' + m.value).toLocaleLowerCase().includes(q)).slice(-max).reverse().map(m => ({ ...m }));
+}
+function memClearAll() {
+  if (!memory.length) return 0;
+  const previous = memory.slice();
+  memory = [];
+  store.set('jarvis.memory', memory); renderMemory();
+  Undo.push('cleared memory', () => {
+    memory = previous.concat(memory).slice(-MEMORY_MAX_ITEMS);
+    store.set('jarvis.memory', memory); renderMemory();
+    return 'Brought back ' + plural(previous.length, 'memory') + '.';
+  });
+  pulse('mem');
+  return previous.length;
+}
 
 // Conversation context for follow-ups ("close it", "what about RAM").
 const ctx = { lastApp: null, lastIntent: null, lastFile: null, pending: null, recentlyClosedApp: store.get('jarvis.recentlyClosedApp', null) };
@@ -4162,7 +4182,12 @@ $('#wizPhoneBtn').addEventListener('click', () => { closeDrawer(); Wizard.open('
 $('#providerKey').addEventListener('keydown', e => { if (e.key === 'Enter') $('#providerAddBtn').click(); });
 $('#settingsBtn').addEventListener('click', () => { renderProviders(); renderImageService(); });
 
-$('#clearMemBtn').addEventListener('click', () => { if (!confirm('Forget everything JARVIS knows about you?')) return; const prev = memory.slice(); memory = []; store.set('jarvis.memory', memory); renderMemory(); toast('Memory cleared'); if (prev.length) Undo.push('cleared memory', () => { memory = prev.concat(memory); store.set('jarvis.memory', memory); renderMemory(); return 'Brought back ' + plural(prev.length, 'memory') + '.'; }); });
+$('#clearMemBtn').addEventListener('click', () => {
+  if (!memory.length) { toast('Memory is already empty'); return; }
+  if (!confirm('Forget every personal-memory entry? This does not erase your tasks, chat, or settings.')) return;
+  const count = memClearAll();
+  toast('Forgot ' + count + ' ' + (count === 1 ? 'memory' : 'memories') + ' — say “undo” to restore them');
+});
 $('#clearChatBtn').addEventListener('click', () => {
   const prev = chatLog.slice();
   chatLog = []; store.set('jarvis.chat', chatLog); restoreChat(); toast('Chat cleared — say "undo" to bring it back');
