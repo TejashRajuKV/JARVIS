@@ -128,23 +128,7 @@ const Agent = (() => {
     store.set(RUNS_KEY, runs);
   }
   // Read-only summary of a persisted task; continuation still goes through the normal planner and permission gate.
-  function recoverySummary(id) {
-    const want = String(id || '').trim().toUpperCase();
-    const runs = store.get(RUNS_KEY, []);
-    const rec = want ? runs.find(r => r && String(r.id).toUpperCase() === want) : runs.slice().reverse().find(r => r && r.interrupted);
-    if (!rec) return { ok: false, error: 'No interrupted task checkpoint was found.' };
-    const steps = Array.isArray(rec.steps) ? rec.steps : [];
-    const completed = steps.filter(s => ['verified','unverified'].includes(s.status)).length;
-    const failed = steps.filter(s => s.status === 'failed').length;
-    const pending = steps.filter(s => ['notrun','skipped','blocked','declined','running'].includes(s.status)).length;
-    return { ok: true, checkpoint: { id: String(rec.id || '').slice(0, 80), goal: String(rec.goal || '').slice(0, 300),
-      source: String(rec.source || '').slice(0, 40),
-      status: rec.interrupted ? 'interrupted' : rec.running ? 'running' : failed ? (completed ? 'partial' : 'failed') : pending ? 'partial' : 'completed',
-      updated: Number(rec.updated || rec.at) || 0, completedSteps: completed, failedSteps: failed, pendingSteps: pending,
-      steps: steps.slice(0, 64).map((s, i) => ({ index: i + 1, label: String(s.label || s.tool || 'Task step').slice(0, 160),
-        status: ['verified','unverified','failed','declined','blocked','notrun','skipped','running'].includes(s.status) ? s.status : 'notrun',
-        verified: s.status === 'verified', note: String(s.note || '').slice(0, 300) })) } };
-  }
+  
   // Runs executing in this page. A running record is refreshed every minute; one not refreshed for 3 minutes belongs to a page that
   // closed or restarted mid-task, so it is marked interrupted: the steps it recorded happened, the rest never ran.
   const active = new Set(), STALE_RUN_MS = 3 * 60e3;
@@ -1236,7 +1220,7 @@ const Agent = (() => {
     }
   }
   { const t = setTimeout(reportInterrupted, 4000), t2 = setInterval(reportInterrupted, 60e3); if (t && t.unref) { t.unref(); t2.unref(); } }
-  return { cancel, sweepInterrupted, recoverySummary, active: () => [...active].map(r => r.id), route, parts, optimize, splitGoal, annotate, DISTRACTORS, isAction, wantsAction, isQuestion, execute, handleMulti, plan, chatTool, runUnattended, watchSingle, preSingle, history, formatRun, inspect, registry, tierFor, lastRuns, envGoal, prepareEnvironment, retryableSteps,
+  return { cancel, sweepInterrupted, active: () => [...active].map(r => r.id), route, parts, optimize, splitGoal, annotate, DISTRACTORS, isAction, wantsAction, isQuestion, execute, handleMulti, plan, chatTool, runUnattended, watchSingle, preSingle, history, formatRun, inspect, registry, tierFor, lastRuns, envGoal, prepareEnvironment, retryableSteps,
     learnedMatch, learnSave, runLearned, learnedSummary, forgetAllLearned, learnedCount, recordMiss, missList, forgetMiss, aliasMatch, teach, learnGoal, learnLanguage,
     createProjectGoal, createProject, explainLastAction, LEARN_LANG_MAP,
     designPromptGoal, buildTcreiPrompt, DESIGN_PROMPT_QUESTIONS, DESIGN_PROMPT_STEPS,
