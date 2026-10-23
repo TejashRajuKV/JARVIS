@@ -16,6 +16,9 @@ const check = (name, ok, details) => { total++; if (!ok) { fail++; console.log('
   check('side-effecting step remains serialized and approval-gated', r.ok && r.plan.waves[1].join() === 'c' && r.plan.approvalRequired.includes('c'));
   check('dependent verification follows the write', r.ok && r.plan.waves[2].join() === 'd');
   check('validation explicitly never executes tools', r.ok && /validation-only/.test(r.plan.policy));
+  const noExecutor = await P.executeWorkflow({steps:[{id:'x'}]});
+  check('executor is mandatory for execution', noExecutor.error === 'EXECUTOR_REQUIRED');
+
   check('rejects empty plans', P.validateWorkflow({ steps: [] }).error === 'WORKFLOW_EMPTY');
   check('rejects duplicate ids', P.validateWorkflow({ steps: [{id:'a'},{id:'a'}] }).error === 'DUPLICATE_STEP_ID');
   check('rejects missing dependency', P.validateWorkflow({ steps: [{id:'a',dependsOn:['missing']}] }).error === 'UNKNOWN_DEPENDENCY');
@@ -24,6 +27,7 @@ const check = (name, ok, details) => { total++; if (!ok) { fail++; console.log('
   check('does not parallelize unknown or side-effecting steps', (() => { const x=P.validateWorkflow({steps:[{id:'a'},{id:'b',tier:'confirm'}]}); return x.ok && x.plan.waves.every(w=>w.length===1); })());
 }
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-platform-'));
+(async () => {
 try {
   const file = path.join(tmp, 'research.json');
   const book = P.createResearchNotebook({ file });
@@ -77,6 +81,21 @@ try {
   const removed = request('DELETE','/api/research/sessions/:id',{params:{id:saved.body.session.id}});
   check('research API deletes a saved session', removed.code === 200);
 
+  let order = [], approvals = 0, concurrent = 0, maxConcurrent = 0;
+  const execResult = await P.executeWorkflow({steps:[
+    {id:'r1',tier:'safe',readOnly:true},{id:'r2',tier:'safe',readOnly:true},
+    {id:'write',tier:'confirm',dependsOn:['r1','r2']},{id:'verify',tier:'safe',readOnly:true,dependsOn:['write']}
+  ]},{authorize:async()=>{approvals++;return true;},execute:async step=>{
+    order.push('start:'+step.id); concurrent++; maxConcurrent=Math.max(maxConcurrent,concurrent);
+    await new Promise(resolve=>setTimeout(resolve,5)); concurrent--; order.push('end:'+step.id); return 'ok';
+  }});
+  check('executor runs independent read-only steps concurrently', execResult.completed===4 && maxConcurrent===2, {execResult,maxConcurrent});
+  check('executor asks for approval before confirmed side effects', approvals===1 && order.indexOf('start:write')>order.indexOf('end:r1') && order.indexOf('start:write')>order.indexOf('end:r2'));
+  const denied = await P.executeWorkflow({steps:[{id:'write',tier:'confirm'}]},{authorize:async()=>false,execute:async()=>{throw new Error('must not execute');}});
+  check('denied side effects are blocked and never executed', denied.blocked===1 && denied.results[0].status==='blocked');
+  const failed = await P.executeWorkflow({steps:[{id:'a',tier:'safe'},{id:'b',tier:'safe',dependsOn:['a']}]},{execute:async step=>{if(step.id==='a')throw new Error('simulated');return 'wrong';}});
+  check('failed dependency blocks downstream work without replay', failed.failed===1 && failed.blocked===1);
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 console.log('agent-platform: ' + (total - fail) + '/' + total);
 process.exitCode = fail ? 1 : 0;
+})();
