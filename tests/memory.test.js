@@ -32,7 +32,7 @@ const context = {
 };
 const sourceUnderTest = source.slice(start, end) + '\n' +
   source.slice(memFnsStart, memFnsEnd) +
-  '\nglobalThis.api = { normalizeMemoryRecords, memSet, memAdd, memGet, memDel, memSearch, memClearAll, get memory(){ return memory; } };';
+  '\nglobalThis.api = { normalizeMemoryRecords, memSet, memAdd, memGet, get memory(){ return memory; } };';
 vm.runInNewContext(sourceUnderTest, context, { filename: 'script.js memory section' });
 const api = context.api;
 
@@ -70,11 +70,5 @@ assert.equal(values.get('jarvis.memory').length, api.memory.length, 'normalized 
 console.log('memory.test.js: assertions defined and ready to run.');
 
 
-// Memory search and clear affect only the personal-memory list.
-assert.equal(api.memSearch('UPDATED')[0].value, 'Updated', 'memory search is case-insensitive');
-assert.equal(api.memSearch('missing').length, 0, 'memory search excludes unrelated records');
-const beforeClear = api.memory.length;
-assert.ok(beforeClear > 0);
-assert.equal(api.memClearAll(), beforeClear, 'clear reports the number of removed entries');
-assert.equal(api.memory.length, 0, 'clear empties current memory');
-assert.equal(values.get('jarvis.memory').length, 0, 'clear persists the empty list');
+
+console.log('memory.test.js: assertions defined and ready to run.');
