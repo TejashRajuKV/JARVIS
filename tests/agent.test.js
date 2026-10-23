@@ -428,7 +428,7 @@ for (const t of ['create a project', 'create a new folder called notes', 'what i
     global.executeTool = previousExecuteTool;
   }
 
-    // Phase 2 recovery summary: report checkpoint facts without returning runnable tool args.
+  // Phase 2 recovery summary: report checkpoint facts without returning runnable tool args.
   {
     const before = store.get('jarvis.agentRuns', []).slice();
     store.set('jarvis.agentRuns', [
