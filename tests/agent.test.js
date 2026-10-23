@@ -428,6 +428,26 @@ for (const t of ['create a project', 'create a new folder called notes', 'what i
     global.executeTool = previousExecuteTool;
   }
 
+    // Phase 2 recovery summary: report checkpoint facts without returning runnable tool args.
+  {
+    const before = store.get('jarvis.agentRuns', []).slice();
+    store.set('jarvis.agentRuns', [
+      { id: 'AGT-20261023-998', goal: 'resume my project', source: 'planner', checkpointVersion: 1, updated: Date.now(),
+        running: false, interrupted: true, steps: [
+          { id: 'a', tool: 'add_todo', label: 'Save checkpoint', status: 'verified', args: { text: 'must not leak' } },
+          { id: 'b', tool: 'write_note', label: 'Write notes', status: 'notrun', args: { content: 'must not leak' } }
+        ] }
+    ]);
+    const summary = Agent.recoverySummary();
+    SAFETY.push(['recovery summary finds latest interrupted task', summary, x => x.ok && x.checkpoint.id === 'AGT-20261023-998' && x.checkpoint.status === 'interrupted']);
+    SAFETY.push(['recovery summary classifies verified vs pending and does not expose runnable arguments', summary, x =>
+      x.ok && x.checkpoint.completedSteps === 1 && x.checkpoint.pendingSteps === 1 &&
+      x.checkpoint.steps[0].verified === true && !JSON.stringify(x).includes('must not leak')]);
+    SAFETY.push(['unknown recovery id returns a clear miss without modifying history', { got: Agent.recoverySummary('AGT-unknown'), count: store.get('jarvis.agentRuns', []).length },
+      x => x.got.ok === false && x.count === 1]);
+    store.set('jarvis.agentRuns', before);
+  }
+
   let sfail = 0;
   for (const [d, r, ok] of SAFETY) if (!ok(r)) { sfail++; console.log('SAFETY FAIL  ' + d + ' → ' + JSON.stringify(r)); }
   console.log(`safety: ${SAFETY.length - sfail}/${SAFETY.length}`);
