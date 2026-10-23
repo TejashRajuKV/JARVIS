@@ -1314,12 +1314,6 @@ JARVIS now includes an **opt-in outbound phone announcement** flow and an initia
 Start with [Calling setup](docs/CALLING.md), [Phone Hub setup and security](docs/PHONE-HUB.md), and the [Android companion guide](android/phonehub/README.md). This is an initial implementation: Twilio credentials, provider account restrictions, Android certificate trust, physical-device pairing, and real call delivery must be configured and verified by the operator. CI/build checks do not prove a real call or phone-network setup works.
 
 
-## Agent Platform: research notebook and workflow planner
-
-Open **AGENT PLATFORM** from the JARVIS interface to save local research questions, findings and sanitized source links; validate a workflow's dependencies and permission tiers; and review the metadata-only audit trail. Workflow validation never executes commands. Research sessions and audit metadata are stored locally under `~/jarvis`.
-
-The corresponding APIs are documented in [the Phase 3–8 implementation status](docs/PHASES-3-8-IMPLEMENTATION.md). Existing skill packs, reminders, browser recovery and Phone Hub remain the source of truth for those capabilities.
-
 ## Context-aware intent and live commerce comparison
 
 JARVIS routes explicit product and bus fare comparison requests through `/api/commerce/compare`. It searches provider-specific public results, fetches readable public listing pages when available, extracts price candidates, and shows source links. A candidate price is not a checkout-verified total; JARVIS must not claim a guaranteed cheapest purchase until exact variant, route/date, availability, delivery/booking fees and offers are confirmed. Search failures or inaccessible pages are reported as missing data, not fabricated prices.
