@@ -265,7 +265,35 @@ async function runUndoTask(id, say = true) {
   if (say) jarvisSay({ text, intent: 'UNDO', tool: 'undo', noPersona: true });
   return text;
 }
-function memDel(id) { undoRemoved('deleted memory', () => memory, v => { memory = v; }, () => { store.set('jarvis.memory', memory); renderMemory(); }, removedFrom(memory, m => m.id !== id)); memory = memory.filter(m => m.id !== id); store.set('jarvis.memory', memory); renderMemory(); }
+function memDel(id) {
+  const removed = removedFrom(memory, m => m.id !== id);
+  if (!removed.length) return false;
+  undoRemoved('deleted memory', () => memory, v => { memory = v; }, () => { store.set('jarvis.memory', memory); renderMemory(); }, removed);
+  memory = memory.filter(m => m.id !== id);
+  store.set('jarvis.memory', memory); renderMemory(); pulse('mem');
+  return true;
+}
+// Search durable personal memory without changing it.
+function memSearch(query, limit = 20) {
+  const q = String(query || '').trim().toLocaleLowerCase();
+  const max = Math.max(1, Math.min(50, Number(limit) || 20));
+  if (!q) return memory.slice(-max).reverse().map(m => ({ ...m }));
+  return memory.filter(m => (m.key + ' ' + m.value).toLocaleLowerCase().includes(q)).slice(-max).reverse().map(m => ({ ...m }));
+}
+function memClearAll() {
+  if (!memory.length) return 0;
+  const previous = memory.slice();
+  memory = [];
+  store.set('jarvis.memory', memory);
+  renderMemory();
+  Undo.push('cleared memory', () => {
+    memory = previous.concat(memory).slice(-MEMORY_MAX_ITEMS);
+    store.set('jarvis.memory', memory); renderMemory();
+    return 'Brought back ' + plural(previous.length, 'memory') + '.';
+  });
+  pulse('mem');
+  return previous.length;
+}
 
 // Conversation context for follow-ups ("close it", "what about RAM").
 const ctx = { lastApp: null, lastIntent: null, lastFile: null, pending: null, recentlyClosedApp: store.get('jarvis.recentlyClosedApp', null) };
