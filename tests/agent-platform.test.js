@@ -16,9 +16,6 @@ const check = (name, ok, details) => { total++; if (!ok) { fail++; console.log('
   check('side-effecting step remains serialized and approval-gated', r.ok && r.plan.waves[1].join() === 'c' && r.plan.approvalRequired.includes('c'));
   check('dependent verification follows the write', r.ok && r.plan.waves[2].join() === 'd');
   check('validation explicitly never executes tools', r.ok && /validation-only/.test(r.plan.policy));
-  const noExecutor = await P.executeWorkflow({steps:[{id:'x'}]});
-  check('executor is mandatory for execution', noExecutor.error === 'EXECUTOR_REQUIRED');
-
   check('rejects empty plans', P.validateWorkflow({ steps: [] }).error === 'WORKFLOW_EMPTY');
   check('rejects duplicate ids', P.validateWorkflow({ steps: [{id:'a'},{id:'a'}] }).error === 'DUPLICATE_STEP_ID');
   check('rejects missing dependency', P.validateWorkflow({ steps: [{id:'a',dependsOn:['missing']}] }).error === 'UNKNOWN_DEPENDENCY');
@@ -29,6 +26,8 @@ const check = (name, ok, details) => { total++; if (!ok) { fail++; console.log('
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-platform-'));
 (async () => {
 try {
+  const noExecutor = await P.executeWorkflow({steps:[{id:'x'}]});
+  check('executor is mandatory for execution', noExecutor.error === 'EXECUTOR_REQUIRED');
   const file = path.join(tmp, 'research.json');
   const book = P.createResearchNotebook({ file });
   check('requires a research question', book.add({ title: 'empty' }).error === 'QUESTION_REQUIRED');
