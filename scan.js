@@ -247,5 +247,19 @@ module.exports = function setupScan(app, { SANDBOX, llm, DEFAULT_MODEL, rel, ope
     pruneSnapshots(dir);
     res.json({ success: true, file: rel(out) });
   });
+  // Show a saved room-watch picture inside JARVIS. Accept only generated snapshot names and
+  // serve only real files still inside the sandbox's Watch directory.
+  app.get('/api/room/image', (req, res) => {
+    if (!laptopOnly(req, res)) return;
+    const name = String(req.query.name || '');
+    if (!/^watch-\d{8}-\d{6}(?:-\d+)?\.jpg$/i.test(name)) return res.status(400).json({ error: 'That is not a room snapshot name.' });
+    const dir = path.join(SANDBOX, 'Watch'), file = path.join(dir, name);
+    if (!safeOutputDir(dir, SANDBOX)) return res.status(404).json({ error: 'The room snapshot is not available.' });
+    let actual;
+    try { actual = fs.realpathSync(file); } catch { return res.status(404).json({ error: 'The room snapshot is no longer available.' }); }
+    if (path.dirname(actual) !== fs.realpathSync(dir) || !fs.statSync(actual).isFile()) return res.status(404).json({ error: 'The room snapshot is not available.' });
+    res.setHeader('Cache-Control', 'no-store');
+    res.type('image/jpeg').sendFile(actual);
+  });
 };
 Object.assign(module.exports, { buildSearchablePdf, isJpeg, pruneSnapshots, slug, MAX_PAGES });

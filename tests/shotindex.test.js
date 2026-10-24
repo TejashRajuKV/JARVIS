@@ -86,6 +86,20 @@ const mk = (extra = {}) => createShotIndex({ SANDBOX: S, ocr, folders: () => [A]
   const H = mk({ stateFile: path.join(S, 'g.json') }); check('forget: stays forgotten after a reload', H.search('wifi').results.length === 0);
   check('junk: a corrupt state file is ignored', (() => { fs.writeFileSync(path.join(S, 'bad.json'), '{not json'); return mk({ stateFile: path.join(S, 'bad.json') }).search('x1').results.length === 0; })());
 
+  // The JARVIS sandbox also contains room-watch photos. Its root should contribute only
+  // JARVIS-generated screenshots; the dedicated Screenshots folder remains recursive.
+  const watchDir = path.join(S, 'Watch'), jarvisShots = path.join(S, 'Screenshots');
+  fs.mkdirSync(watchDir, { recursive: true }); fs.mkdirSync(jarvisShots, { recursive: true });
+  put(S, 'JARVIS_screenshot_fixture.png', 'screen wifi password');
+  put(watchDir, 'watch-20261024-123456.jpg', 'room movement person');
+  const dedicated = put(jarvisShots, 'manual-capture.png', 'manual screen error');
+  const scoped = createShotIndex({ SANDBOX: S, ocr, folders: () => [S, jarvisShots], stateFile: path.join(S, 'scoped.json') });
+  const scopedStatus = await scoped.status();
+  check('sandbox scope: counts JARVIS screenshots and the dedicated Screenshots folder, but not Watch camera photos', scopedStatus.total === 2, scopedStatus);
+  await scoped.update();
+  check('sandbox scope: JARVIS screenshots and dedicated screenshots are searchable', scoped.search('wifi password').results.length === 1 && scoped.search('manual screen error').results[0].path === dedicated);
+  check('sandbox scope: room-watch pictures are excluded from screenshot search', scoped.search('room movement person').results.length === 0);
+
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(`shotindex: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;

@@ -33,7 +33,19 @@ function createShotIndex({ SANDBOX, ocr, folders = () => [], now = Date.now, sta
         else if (e.isFile() && IMG.test(e.name)) { try { const st = await fsp.stat(full); if (st.size > 1000 && st.size <= MAX_BYTES) out.push({ full, name: e.name, m: Math.round(st.mtimeMs), s: st.size }); } catch { /* gone */ } }
       }
     }
-    for (const f of allFolders()) await walk(f, 0);
+    for (const f of allFolders()) {
+      // SANDBOX is also the destination for room-watch photos and other assistant images. Search
+      // only JARVIS's own screenshot files at its root; the dedicated Screenshots subfolder and
+      // user-added folders still use the normal recursive scan below.
+      if (path.resolve(f) === path.resolve(SANDBOX)) {
+        let ents; try { ents = await fsp.readdir(f, { withFileTypes: true }); } catch { continue; }
+        for (const e of ents) if (e.isFile() && /^JARVIS_screenshot_[\w.-]+\.png$/i.test(e.name)) {
+          try { const full = path.join(f, e.name), st = await fsp.stat(full); if (st.size > 1000 && st.size <= MAX_BYTES) out.push({ full, name: e.name, m: Math.round(st.mtimeMs), s: st.size }); } catch { /* gone */ }
+        }
+        continue;
+      }
+      await walk(f, 0);
+    }
     return out.sort((a, b) => b.m - a.m);
   }
   const pendingOf = list => { const d = load().files; return list.filter(x => { const r = d[x.full]; return !r || r.m !== x.m || r.s !== x.s || (r.err && now() - (r.at || 0) > 864e5); }); };
@@ -102,7 +114,8 @@ function createShotIndex({ SANDBOX, ocr, folders = () => [], now = Date.now, sta
 /* ---------- routes (laptop page only) ---------- */
 module.exports = function setupShots(app, { SANDBOX, IS_WIN }) {
   const home = os.homedir();
-  // Include the actual JARVIS screenshot destination (Desktop, or SANDBOX when no Desktop exists), not only the Windows Pictures\\Screenshots convention.\n  const defaults = () => [path.join(home, 'Desktop'), path.join(home, 'Pictures', 'Screenshots'), path.join(home, 'OneDrive', 'Pictures', 'Screenshots'), path.join(home, 'OneDrive', 'Screenshots'), SANDBOX, path.join(SANDBOX, 'Screenshots')];
+  // Include the actual JARVIS screenshot destination (Desktop, or SANDBOX when no Desktop exists), not only the Windows Pictures\Screenshots convention.
+  const defaults = () => [path.join(home, 'Desktop'), path.join(home, 'Pictures', 'Screenshots'), path.join(home, 'OneDrive', 'Pictures', 'Screenshots'), path.join(home, 'OneDrive', 'Screenshots'), SANDBOX, path.join(SANDBOX, 'Screenshots')];
   const ocr = async buf => (app.locals.ocrWords ? app.locals.ocrWords(buf) : { error: 'The text reader is not available.' });
   const idx = createShotIndex({ SANDBOX, ocr, folders: defaults });
   const fromLaptopPage = req => req.headers['sec-fetch-site'] === 'same-origin' && /^(localhost|127\.0\.0\.1):/.test(String(req.headers.host || ''));

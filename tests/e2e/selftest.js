@@ -787,6 +787,9 @@
     const alerts = [...document.querySelectorAll('#messages .msg.jarvis')].filter(m => /Movement seen in the room/.test(m.innerText));
     check('Room watch', 'three moving frames raise one alert in the chat with the name of the picture saved on this laptop', alerts.length === 1 && /Watch\/watch-\d{8}-\d{6}\.jpg/.test(alerts[0].innerText), alerts.map(m => m.innerText));
     check('Room watch', 'the picture went to the laptop\'s own server only (a snapshot upload; no phone call, since phone alerts are off)', calls.every(c => c.endpoint !== '/phone/alert'));
+    r = await say('I need u to open that image', { limit: 15000 });
+    const preview = [...document.querySelectorAll('#messages .room-snapshot-preview')].pop();
+    check('Room watch', 'a natural follow-up displays the saved snapshot in chat and verifies it loaded', r.ok && has(r, /Here is the saved room-watch image.*verified/i) && !!preview && preview.complete && preview.naturalWidth > 0, { reply: r.text, imageLoaded: !!preview && preview.complete && preview.naturalWidth > 0 });
     r = await say('stop watching the room');
     check('Room watch', 'stopping it switches the camera and indicator off', !Watch.roomOn() && !document.getElementById('camPill') && has(r, /stopped watching/i), r.text);
     Camera.smallGray = origSG; Watch.deps.now = () => Date.now();

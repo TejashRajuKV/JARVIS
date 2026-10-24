@@ -82,16 +82,21 @@ const ScanMath = (() => {
   }
 
   /* ---------- motion ---------- */
-  // Two grey frames of the same size → { mean (0..1), changed (share of pixels that moved a lot, 0..1) }.
-  function frameDiff(prev, cur, pixelThreshold = 25) {
-    if (!prev || !cur || prev.length !== cur.length || !cur.length) return { mean: 0, changed: 0 };
+  // Two grey frames of the same size → corrected movement + raw whole-frame change for exposure rejection.
+  function frameDiff(prev, cur, pixelThreshold = 18) {
+    if (!prev || !cur || prev.length !== cur.length || !cur.length) return { mean: 0, changed: 0, globalChanged: 0 };
+    // Estimate the frame-wide exposure shift first. Removing that common offset makes slow movement easier to
+    // detect while preventing a camera auto-exposure flicker from looking like motion.
+    let bias = 0, rawBig = 0;
+    for (let i = 0; i < cur.length; i++) { const delta = cur[i] - prev[i]; bias += delta; if (Math.abs(delta) > pixelThreshold) rawBig++; }
+    bias /= cur.length;
     let sum = 0, big = 0;
-    for (let i = 0; i < cur.length; i++) { const d = Math.abs(cur[i] - prev[i]); sum += d; if (d > pixelThreshold) big++; }
-    return { mean: sum / cur.length / 255, changed: big / cur.length };
+    for (let i = 0; i < cur.length; i++) { const d = Math.abs((cur[i] - prev[i]) - bias); sum += d; if (d > pixelThreshold) big++; }
+    return { mean: sum / cur.length / 255, changed: big / cur.length, globalChanged: rawBig / cur.length };
   }
-  // Feeds small grey frames; says when something has really moved. Ignores the first seconds (camera auto-exposure),
-  // whole-picture jumps (a light switched on), and needs several moving frames in a row. One alert per cooldown.
-  function MotionDetector({ warmupMs = 10000, minChanged = 0.012, maxChanged = 0.85, needFrames = 3, cooldownMs = 300000 } = {}) {
+  // Feeds small grey frames; compensates for exposure, ignores whole-picture jumps, and confirms two consecutive
+  // movement frames before alerting. One alert per cooldown.
+  function MotionDetector({ warmupMs = 6000, minChanged = 0.006, minMean = 0.01, maxChanged = 0.85, needFrames = 2, cooldownMs = 60000 } = {}) {
     let prev = null, start = null, streak = 0, lastAlert = -Infinity;
     return {
       feed(gray, t) {
@@ -101,8 +106,10 @@ const ScanMath = (() => {
         prev = gray;
         if (!had) return { motion: false, alert: false, ...d, warming: true };
         if (t - start < warmupMs) return { motion: false, alert: false, ...d, warming: true };
-        if (d.changed > maxChanged) { streak = 0; return { motion: false, alert: false, ...d, globalChange: true }; }     // lighting changed, not movement
-        const motion = d.changed >= minChanged;
+        if (d.globalChanged > maxChanged) { streak = 0; return { motion: false, alert: false, ...d, globalChange: true }; }     // lighting changed, not movement
+        // Pixel-count catches clear movement; mean-change also catches slow, low-contrast movement that affects
+        // many pixels without crossing the per-pixel threshold. Requiring consecutive frames filters sensor noise.
+        const motion = d.changed >= minChanged || d.mean >= minMean;
         streak = motion ? streak + 1 : 0;
         let alert = false;
         if (streak >= needFrames && t - lastAlert >= cooldownMs) { alert = true; lastAlert = t; streak = 0; }

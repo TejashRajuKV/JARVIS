@@ -23,10 +23,9 @@ function alive(pid) {
 }
 const readLock = () => { try { const j = JSON.parse(fs.readFileSync(LOCK, 'utf8')); return j && typeof j === 'object' ? j : null; } catch { return null; } };
 
-// The port a start with no PORT setting should use: the one remembered from last time (3000–3010), else 3000.
+// JARVIS has one stable local address so its browser page, phone connection and listeners use the same instance.
 function rememberedPort() {
-  try { const n = parseInt(fs.readFileSync(PORT_FILE, 'utf8'), 10); if (n >= 3000 && n <= 3010) return n; } catch {}
-  return 3000;
+  return 3002;
 }
 
 // Take the lock. Returns { running: true, port, pid } when another JARVIS already holds it, else { running: false, release, update }.

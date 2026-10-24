@@ -67,6 +67,7 @@ const check = (name, ok, extra) => { total++; if (!ok) { fail++; console.log('FA
     check('custom server without a key sends no auth header', !('Authorization' in noKey.headers));
     check('custom server: thinking turned off', L.buildRequest('openai', { baseUrl: 'u', preset: 'custom' }, o).body.reasoning_effort === 'none');
     check('named providers: reasoning_effort not sent', !('reasoning_effort' in L.buildRequest('openai', { baseUrl: 'u', preset: 'groq' }, o).body));
+    check('Gemini 3 uses low reasoning for responsive streaming; Gemini 2.5 is unchanged', L.buildRequest('openai', { baseUrl: 'u', preset: 'gemini' }, { ...o, model: 'gemini-3.8-flash' }).body.reasoning_effort === 'low' && !('reasoning_effort' in L.buildRequest('openai', { baseUrl: 'u', preset: 'gemini' }, { ...o, model: 'gemini-2.5-flash' }).body));
     check('adaptFor: server rejects reasoning_effort → dropped', L.adaptFor('unknown parameter reasoning_effort', {}, false).noReasoningEffort === true);
   }
   {

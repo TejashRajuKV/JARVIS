@@ -125,9 +125,12 @@ function buildRequest(kind, prov, o, adapt = {}) {
   if (adapt.maxCompletion) body.max_completion_tokens = Math.max(maxTokens, 4000); else body.max_tokens = maxTokens;
   if (!adapt.noTemperature && o.temperature != null) body.temperature = o.temperature;
   if (o.json && !adapt.noJsonMode) body.response_format = { type: 'json_object' };
+  // Gemini 3 Flash can spend a long time thinking before its first streamed token at the default level.
+  // Keep interactive replies responsive; Gemini's OpenAI-compatible API supports low reasoning_effort.
   // Local OpenAI-style servers often run thinking models (qwen3, deepseek-r1) that would spend the whole budget
   // reasoning; turn that off like the Ollama path does (think:false). Dropped automatically if the server objects.
-  if (prov.preset === 'custom' && !adapt.noReasoningEffort) body.reasoning_effort = 'none';
+  if (!adapt.noReasoningEffort && prov.preset === 'gemini' && /^gemini-3\./i.test(o.model)) body.reasoning_effort = 'low';
+  else if (prov.preset === 'custom' && !adapt.noReasoningEffort) body.reasoning_effort = 'none';
   const headers = { 'Content-Type': 'application/json' };
   if (prov.apiKey) headers.Authorization = 'Bearer ' + prov.apiKey;
   if (prov.preset === 'openrouter') { headers['HTTP-Referer'] = 'http://localhost'; headers['X-Title'] = 'JARVIS'; }

@@ -58,7 +58,7 @@ function setup(app, { IS_WIN }) {
     isWin: !!IS_WIN, home: require('os').homedir(),
     run: (file, args) => execFile(file, args, { windowsHide: true, timeout: 15000 }, () => {}),
     exists: p => fs.existsSync(p),
-    readlink: p => { try { const w = new (require('child_process').execFileSync)('powershell.exe', ['-NoProfile', '-Command', '(New-Object -ComObject WScript.Shell).CreateShortcut(\'' + String(p).replace(/'/g, "''") + '\').TargetPath'], { encoding: 'utf8', timeout: 15000, windowsHide: true }); return String(w).trim(); } catch { return ''; } },
+    readlink: p => { try { const w = require('child_process').execFileSync('powershell.exe', ['-NoProfile', '-Command', '(New-Object -ComObject WScript.Shell).CreateShortcut(\'' + String(p).replace(/'/g, "''") + '\').TargetPath'], { encoding: 'utf8', timeout: 15000, windowsHide: true }); return String(w).trim(); } catch { return ''; } },
     unlink: p => fs.unlinkSync(p),
   });
 

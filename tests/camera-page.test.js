@@ -9,11 +9,13 @@ const root = f => path.join(__dirname, '..', f);
 
 /* ---------- page globals, stubbed ---------- */
 const calls = [], said = [], fetches = [];
+const focused = [];
 let replies = {}, confirmAnswer = true;
 global.ScanMath = require(root('scanmath.js'));
 global.plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
 global.settings = { presenceLock: false, presenceSecs: 60, phonePush: false, presenceLockWindows: false };
 global.saveSettings = () => {}; global.setState = () => {}; global.toast = () => {}; global.API = '/api';
+global.setFocus = (kind, p) => focused.push([kind, p]);
 global.llmReady = () => true; global.llm = { model: 'qwen3.5:4b' }; global.isCloudModel = m => String(m).includes('::'); global.modelInfo = () => ({ providerLabel: 'SomeCloud' });
 global.callTool = async (ep, body) => { calls.push([ep, body]); const r = replies[ep]; return typeof r === 'function' ? r(body) : (r || { error: 'no stub for ' + ep }); };
 global.getJSON = async ep => { const r = replies['GET ' + ep]; return typeof r === 'function' ? r() : (r || { error: 'no stub for ' + ep }); };
@@ -46,7 +48,7 @@ Camera.getStream = async () => { streams++; return { getTracks: () => [{ stop: (
 Camera.stopStream = s => { if (s) stopped++; };
 Camera.track = (name, label, stop) => { indicator.set(name, { label, stop }); return () => indicator.delete(name); };
 Camera.untrack = name => indicator.delete(name);
-const fresh = () => { calls.length = 0; said.length = 0; fetches.length = 0; replies = {}; confirmAnswer = true; };
+const fresh = () => { calls.length = 0; said.length = 0; fetches.length = 0; focused.length = 0; replies = {}; confirmAnswer = true; };
 
 (async () => {
   /* ---------- wording ---------- */
@@ -191,20 +193,21 @@ const fresh = () => { calls.length = 0; said.length = 0; fetches.length = 0; rep
   const tick = async () => { clock += 1000; await Watch.roomStep(); };
   for (let i = 0; i < 15; i++) await tick();
   check('room: a still room (and the 10 s warm-up) gives no alert', !said.some(s => s.alert) && !fetches.length);
-  movingNow = true; await tick(); await tick(); check('room: two moving frames are not enough', !said.some(s => s.alert));
+  movingNow = true; await tick(); check('room: one moving frame is not enough to alert', !said.some(s => s.alert));
   await tick();
   const al = said.find(s => s.alert);
-  check('room: the third moving frame raises ONE alert on screen with the saved picture name', al && /Movement seen in the room/.test(al.text) && /Watch\/watch-test\.jpg/.test(al.text) && said.filter(s => s.alert).length === 1, said.map(s => s.text));
+  check('room: two moving frames raise ONE alert on screen with the saved picture name', al && /Movement seen in the room/.test(al.text) && /Watch\/watch-test\.jpg/.test(al.text) && said.filter(s => s.alert).length === 1, said.map(s => s.text));
+  check('room: saved snapshot becomes the current file focus for "open that image" follow-ups', focused.some(([kind, p]) => kind === 'file' && p === 'Watch/watch-test.jpg'));
   const snap = fetches.find(f => /room\/snapshot/.test(f[0]));
   check('room: the picture goes to the laptop\'s own server only (one request, to /api/room/snapshot)', snap && snap[0] === '/api/room/snapshot' && snap[1].method === 'POST' && fetches.length === 1, fetches.map(f => f[0]));
   const pa = calls.find(c => c[0] === '/phone/alert');
   check('room: the phone gets a TEXT-ONLY alert (no image, no data URL, no file)', pa && pa[1].kind === 'room' && /^Movement seen in your room at /.test(pa[1].text) && !('image' in pa[1]) && !/data:|jpe?g|Watch\//.test(JSON.stringify(pa[1])) && calls.filter(c => c[0] === '/phone/alert').length === 1, pa);
   for (let i = 0; i < 20; i++) await tick();
-  check('room: more movement in the next minutes does not alert again (cooldown)', said.filter(s => s.alert).length === 1);
-  movingNow = false; for (let i = 0; i < 302; i++) await tick();                          // five quiet minutes pass, one second at a time
+  check('room: more movement inside the one-minute cooldown does not alert again', said.filter(s => s.alert).length === 1);
+  movingNow = false; for (let i = 0; i < 62; i++) await tick();                           // more than one quiet minute passes
   movingNow = true; await tick(); await tick(); await tick();
   check('room: after the cooldown it can alert again', said.filter(s => s.alert).length === 2);
-  r = await Watch.intercept('room watch status', 'phone'); check('room: status (allowed from the phone) counts alerts', /2 alerts/.test(r.text));
+  r = await Watch.intercept('room watch status', 'phone'); check('room: status (allowed from the phone) counts alerts', /2 movement alerts/.test(r.text));
   r = await Watch.intercept('stop watching the room', 'phone'); check('room: stopping is allowed from the phone, and the camera and indicator go', /stopped watching/.test(r.text) && !Watch.roomOn() && indicator.size === 0);
   r = await Watch.intercept('stop watching the room', 'text'); check('room: stopping when not watching is fine', /was not watching/.test(r.text));
   // phone alerts off: nothing is sent to the phone

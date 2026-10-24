@@ -383,5 +383,65 @@ details.trace dl { display: grid; grid-template-columns: max-content 1fr; gap: 4
 details.trace dt { color: var(--faint, #778); font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding-top: 1px; }
 details.trace dd { margin: 0; color: var(--ink); word-break: break-word; }
 
+/* ---------- visual pass: clearer hierarchy and a calmer, finished console ---------- */
+body, html[data-theme] body { background: #0d0f12; }
+header { background: rgba(13, 15, 18, .96); border-bottom-color: rgba(var(--rgb), .18); }
+.brand .mark { border-radius: 6px; background: rgba(var(--rgb), .10); padding: 4px; }
+.brand h1 { letter-spacing: .12em; }
+.status-pills { gap: 8px; }
+.status-pills .pill { padding: 5px 9px; border: 1px solid var(--rule); border-radius: 999px; background: rgba(255,255,255,.025); }
+.status-pills .pill i { width: 6px; height: 6px; }
+main { gap: 14px; }
+.stage { background: radial-gradient(ellipse at 50% 40%, rgba(var(--rgb), .075), transparent 63%), var(--bg1); border-color: rgba(var(--rgb), .16); }
+.right-col > .panel { overflow: hidden; border-color: rgba(var(--rgb), .16); box-shadow: 0 12px 40px rgba(0,0,0,.14); }
+.tabbar { background: rgba(255,255,255,.018); }
+.tab { transition: color .16s ease, border-color .16s ease, background .16s ease; }
+.tab.active { background: rgba(var(--rgb), .055); }
+#messages { gap: 25px; }
+.msg.jarvis .avatar { border: 1px solid rgba(var(--rgb), .3); border-radius: 50%; background: rgba(var(--rgb), .06); }
+.msg.user .mbody { background: rgba(var(--rgb), .075); border-color: rgba(var(--rgb), .16); }
+.controls { padding: 7px; border-radius: 13px; border-color: rgba(var(--rgb), .22); box-shadow: 0 10px 30px rgba(0,0,0,.16); }
+#micBtn { border-radius: 10px; }
+.input-row { min-width: 0; }
+#chatInput { min-width: 0; }
+#sendBtn { border-radius: 9px; }
+.cmd-deck { min-width: 0; padding: 0 2px 2px; }
+.cmd-tabs { gap: 4px; border: 0; margin-bottom: 8px; scrollbar-width: none; }
+.cmd-tabs::-webkit-scrollbar { display: none; }
+.cmd-tab { flex: none; border: 1px solid transparent; border-radius: 999px; padding: 6px 10px; transition: .16s ease; }
+.cmd-tab:hover { background: var(--bg1); }
+.cmd-tab.active { color: var(--cyan-hi); background: rgba(var(--rgb), .10); border-color: rgba(var(--rgb), .20); }
+.chips { min-height: 38px; padding: 3px 1px 7px; scrollbar-width: none; mask-image: none; -webkit-mask-image: none; }
+.chip-cmd { border-radius: 999px; background: var(--bg1); padding: 7px 12px; white-space: nowrap; }
+.chip-cmd:hover { background: rgba(var(--rgb), .09); border-color: rgba(var(--rgb), .28); }
+footer { background: #0d0f12; }
+
+@media (max-width: 860px) {
+  main { padding: 10px 12px 82px; gap: 11px; }
+  .stage { min-height: 66px; border-radius: 12px; }
+  .right-col > .panel { border-radius: 12px; height: min(64vh, 680px); min-height: 360px; }
+  .tabbar { overflow-x: auto; scrollbar-width: none; }
+  .tabbar::-webkit-scrollbar { display: none; }
+  .tab { padding: 11px 10px 9px; font-size: 11px; }
+  .controls { gap: 6px; }
+  .input-row { flex: 1 1 calc(100% - 56px); }
+  #chatInput { font-size: 15px; }
+  .cmd-tabs { overflow-x: auto; padding-bottom: 2px; }
+  .cmd-tab { font-size: 10.5px; padding: 6px 9px; }
+  .chips { margin-right: 0; }
+  .cmd-deck { padding-bottom: 58px; }
+  #jarvisPlatformOpen, #jarvisHubOpen { bottom: 10px !important; padding: 9px 11px !important; font-size: 10px !important; }
+}
+@media (max-width: 560px) {
+  header { height: 50px; }
+  .brand h1 { font-size: 13px; }
+  .brand .mark { width: 20px; height: 20px; }
+  #settingsBtn { padding: 7px 9px; font-size: 10px; }
+  .right-col > .panel { min-height: 340px; height: 58vh; }
+  .controls { border-radius: 11px; }
+  .cmd-deck { padding-bottom: 4px; }
+  #jarvisPlatformOpen, #jarvisHubOpen { bottom: 10px !important; padding: 9px 11px !important; font-size: 10px !important; }
+}
+
 /* text for screen readers only (the live region that reads each finished reply aloud) */
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }

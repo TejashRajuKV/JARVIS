@@ -75,8 +75,8 @@ try {
   check('workflow API returns a client error for invalid graphs', invalidWorkflow.code === 400 && invalidWorkflow.body.error === 'UNKNOWN_DEPENDENCY');
   const validWorkflow = request('POST','/api/workflows/validate',{body:{steps:[{id:'read',tier:'safe',readOnly:true}]}});
   check('workflow API returns validated plans without executing them', validWorkflow.code === 200 && validWorkflow.body.ok && /validation-only/.test(validWorkflow.body.plan.policy));
-  const audit = request('GET','/api/audit/events',{query:{limit:'10'}});
-  check('audit API exposes server-generated events only', audit.code === 200 && audit.body.events.some(x=>x.action==='save-research-session'));
+  const auditRes = request('GET','/api/audit/events',{query:{limit:'10'}});
+  check('audit API exposes server-generated events only', auditRes.code === 200 && auditRes.body.events.some(x=>x.action==='save-research-session'));
   const removed = request('DELETE','/api/research/sessions/:id',{params:{id:saved.body.session.id}});
   check('research API deletes a saved session', removed.code === 200);
 

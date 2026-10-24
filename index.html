@@ -250,6 +250,8 @@
       <div class="s-row"><label>Speak replies<small>BROWSER TEXT-TO-SPEECH</small></label><button class="switch on" id="ttsToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Assistant<small>JARVIS OR FRIDAY</small></label><select id="personaSelect"><option value="jarvis">J.A.R.V.I.S.</option><option value="friday">F.R.I.D.A.Y.</option></select></div>
       <div class="s-row"><label>Speech language<small>WHAT THE MIC LISTENS FOR</small></label><select id="speechLangSelect"><option value="en">ENGLISH</option><option value="te" lang="te">తెలుగు</option><option value="kn" lang="kn">ಕನ್ನಡ</option></select></div>
+      <div class="s-row"><label>Microphone engine<small>HOW JARVIS TURNS YOUR VOICE INTO TEXT</small></label><select id="speechEngineSelect"><option value="web">Web Speech API</option><option value="whisper">Whisper · local</option></select></div>
+      <div class="s-note" id="speechEngineNote" style="margin:-4px 0 12px"></div>
       <div class="s-row"><label>Pause before I answer<small>HOW LONG YOU CAN PAUSE MID-SENTENCE</small></label><select id="pauseSelect"><option value="1000">SHORT · 1 S</option><option value="1600">NORMAL · 1.6 S</option><option value="2500">LONG · 2.5 S</option></select></div>
       <div class="s-row"><label>Mic sensitivity<small>HIGHER HEARS YOU FROM FARTHER AWAY</small></label><select id="micBoostSelect"><option value="normal">NORMAL</option><option value="high">HIGH</option><option value="max">MAX · ACROSS THE ROOM</option></select></div>
       <div class="s-row"><label>Reply language</label><select id="replyLangSelect"><option value="auto">SAME AS I SPOKE</option><option value="en">ENGLISH</option><option value="te" lang="te">తెలుగు</option><option value="kn" lang="kn">ಕನ್ನಡ</option></select></div>
@@ -258,7 +260,7 @@
       <div class="s-row"><label>Neural voice<small>FRIDAY · TELUGU · KANNADA · MICROSOFT · SENDS REPLY TEXT ONLINE</small></label><button class="switch on" id="neuralVoiceToggle" role="switch" aria-checked="true"></button></div>
       <div class="s-row"><label>Voice check<small>WHAT THIS BROWSER SUPPORTS</small></label><button class="btn" id="voiceCheckBtn">CHECK</button></div>
       <div class="s-note" id="voiceCheckOut" style="margin:-4px 0 12px"></div>
-      <div class="s-row"><label>Test my mic<small>SAY 14 WORDS · SEE WHAT I HEAR, AND WHAT I FIX</small></label><button class="btn" id="micTestBtn">START</button></div>
+      <div class="s-row"><label>Test Web Speech API<small>SAY 14 WORDS · SEE WHAT IT HEARS, AND WHAT I FIX</small></label><button class="btn" id="micTestBtn">START</button></div>
       <div class="s-note" id="micTestOut" style="margin:-4px 0 12px"></div>
       <div class="s-row"><label>Address me as</label><select id="addressSelect"><option value="sir">SIR</option><option value="ma'am">MA'AM</option><option value="boss">BOSS</option><option value="name">MY NAME</option></select></div>
       <div class="s-row"><label>Voice</label><select id="voiceSelect"></select></div>

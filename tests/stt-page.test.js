@@ -21,6 +21,13 @@ const tone = t => 0.4 * Math.sin(2 * Math.PI * 220 * t);
 
 (async () => {
   check('ready: asks the server whether Whisper is installed', await Stt.ready() === true);
+  {
+    const c = mkCtx(), sent = [], texts = [];
+    const h = await Stt.start({ silenceMs: 600, chunkSec: 25, getStream: async () => mkStream(), ctxFactory: () => c, send: async wav => { sent.push(wav); return { text: 'offline words' }; }, onText: t => texts.push(t) });
+    feed(c, 1.2, tone); feed(c, 1.2, () => 0); await new Promise(r => setTimeout(r, 20));
+    check('silence mode: Whisper transcribes a short spoken turn after a pause without needing a mic-button stop', sent.length === 1 && texts[0] === 'offline words', { sent: sent.length, texts });
+    h.abort();
+  }
   const sent = [], texts = [], errors = []; let delay = 0, failWith = null;
   const ctx = mkCtx(), stream = mkStream();
   const h = await Stt.start({ chunkSec: 6, lang: 'en', getStream: async () => stream, ctxFactory: () => ctx, send: async (wav, lang) => { sent.push({ wav, lang }); if (delay) await new Promise(r => setTimeout(r, delay)); return failWith || { text: 'piece ' + sent.length }; }, onText: t => texts.push(t), onError: (m, ni) => errors.push([m, ni]) });

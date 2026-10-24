@@ -45,7 +45,7 @@ JARVIS is a **voice and text AI assistant that runs on your own Windows laptop**
 
 👉 **The complete list of what JARVIS can do** is in [Highlights](#what-jarvis-can-do--the-full-list); **how it works inside** (and how to debug it) is in [How it works](#11-how-it-works-architecture).
 
-There is also a **cinematic landing page** that introduces JARVIS: open `http://localhost:PORT/welcome` (or `/landing.html`) — PORT is the address JARVIS prints (3002 on the author's laptop) while JARVIS is running.
+There is also a **cinematic landing page** that introduces JARVIS: open `http://localhost:3002/welcome` (or `http://localhost:3002/landing.html`) while JARVIS is running.
 
 ---
 
@@ -165,21 +165,21 @@ A laptop GPU helps the local model (e.g. an RTX 3050 6 GB runs `qwen3.5:4b` comf
 2. Double-click **`Start JARVIS.bat`**. The first time it:
    - checks for Node.js and offers to install it if missing (then asks you to start it again),
    - installs JARVIS's parts (`npm install`, about a minute),
-   - opens the JARVIS that is already running if there is one, otherwise finds a free port (3000–3010) and adds a **JARVIS shortcut to your desktop**,
+   - opens the JARVIS that is already running if there is one; otherwise starts it on the fixed address **http://localhost:3002** and adds a **JARVIS shortcut to your desktop**,
    - starts JARVIS and opens it in your browser.
-3. That's it. From the second time on, **double-click the JARVIS icon on your desktop** — it starts the server quietly in the background (no terminal window) and opens JARVIS when it's ready.
+3. That's it. From the second time on, **double-click the JARVIS icon on your desktop** — it starts Ollama when installed, starts the server quietly in the background (no terminal window), and opens JARVIS when it's ready.
 
 ### Starting and stopping
 
 | | |
 |---|---|
-| **Start** | Double-click the desktop **JARVIS** icon (or `Start JARVIS.bat`). No terminal window appears — the server runs hidden in the background and your browser opens automatically. |
+| **Start** | Double-click the desktop **JARVIS** icon (or `Start JARVIS.bat`). Ollama starts automatically when installed; no terminal window appears — the server runs hidden in the background and your browser opens automatically. |
 | **Start from the page itself** | If you open JARVIS while the server is down, the page shows a **▶ START JARVIS** button — one click and Windows launches the server, then the page reconnects by itself. |
 | **Stop** | Double-click **`Stop JARVIS.bat`**, or use **Settings → Data → Stop JARVIS** inside the app. |
 | **Start automatically at every sign-in** | Settings → Data → **Start with Windows**. JARVIS then runs quietly in the background after every reboot, so the desktop icon (or the installed app) opens instantly. |
 | **First-time setup** | The very first launch shows its progress in a window; every later launch is silent. |
 
-If JARVIS is already running, double-clicking the icon simply opens it. JARVIS remembers its port, so the same address works every time.
+If JARVIS is already running, double-clicking the icon starts Ollama if needed, then opens the existing JARVIS page. JARVIS remembers its port, so the same address works every time.
 
 **Only one JARVIS runs at a time.** However it is started (desktop icon, `npm start`, an AI tool, a VS Code terminal), a second start finds the running copy through `~/jarvis/.jarvis.lock`, prints its address and exits. So there is one chat, one phone (ntfy) connection and one wake-word listener, whatever launched it. Your address is the one JARVIS remembers (`~/jarvis/.jarvis-port`).
 
@@ -469,7 +469,7 @@ All explicit wording (a plain sentence never switches a camera or microphone on)
 - **QR codes** — “scan a QR code” reads one live or from a picture (jsQR) and shows what it says; a link is **never opened by itself** (only with a button, and only http/https), Wi-Fi passwords are kept out of the chat. “make a QR for https://…” saves an SVG in `~/jarvis/QR`.
 - **Solve from a photo** (“solve this from a photo”, “what is in this picture”) — the local vision model looks at it (Windows OCR text is added as a hint). If an online model is selected the card says the photo would be sent there and asks first. *A 4B model can be wrong, especially at maths and handwriting.*
 - **Lock when I leave** (Settings → Behaviour, or “lock when I leave”) — the webcam looks for a face every 2 seconds; after the chosen time without one, JARVIS locks itself (and Windows too only if you also switch that on). “Could not tell” (camera blocked, tab asleep) never counts as “gone”. It can only lock, never unlock, and needs **Lock JARVIS** (Windows Hello) to be set up first. No picture is saved or sent.
-- **Watch my room** — movement alert with the camera: still pictures stay in `~/jarvis/Watch` (the last 50) and, if phone alerts are on, your phone gets a **text-only** alert. Starts after a confirmation, stops after 8 hours or on reload. *Keep the JARVIS window visible: browsers slow down hidden tabs.*
+- **Watch my room** — movement alert with the camera: compares 128×96 frames twice per second after a 6-second camera warm-up, compensates for whole-frame exposure changes, and confirms movement across consecutive frames. Re-alerts no more than once a minute. Still pictures stay in `~/jarvis/Watch` (the last 50) and, if phone alerts are on, your phone gets a **text-only** alert. Starts after a confirmation, stops after 8 hours or on reload. *Keep the JARVIS window visible: browsers slow down hidden tabs.*
 - **Similar photos** (“find similar photos”) — near-duplicates, even resized or re-saved, grouped in numbered sets; “clean sets 1 and 3” or “clean up the similar photos” moves the smaller copies to the JARVIS trash (undoable; copies inside a project are never touched). **Shrink** (“shrink my big photos”) re-saves JPEGs over 3 MB older than 90 days (quality 82, longest side 2560 px, EXIF kept); the original goes to the JARVIS trash and the new file keeps its name and date. *Space is only freed when you empty the trash.*
 
 **Faster and smarter**
@@ -481,7 +481,7 @@ All explicit wording (a plain sentence never switches a camera or microphone on)
 - **Import my timetable** — from a **photo** (the table is rebuilt from word positions: days down the side or across the top), a **calendar file** (`.ics`, weekly repeating events) or **pasted lines** (“Mon 9:00-10:00 DBMS”). You see what was read and say yes; classes already there are skipped; **two classes at overlapping times** (among the new ones, or against one you already have) are flagged with “⚠ N clashes” before you say yes; **one “undo”** removes the new ones. If the photo cannot be read as a table, the text it saw is offered for you to correct.
 - **Can I bunk tomorrow?** — tomorrow’s classes from the timetable and, per subject, your attendance now and after missing them against 75%.
 - **Lecture mode** (“start lecture mode for DBMS”, “stop the lecture”) — the browser’s speech recogniser listens until you stop; the transcript is appended to `~/jarvis/Notes/lecture-<subject>-<date>.md` every 3 minutes, and at the end the AI writes notes (Notes / Key terms / Questions to revise / Announcements) from the transcript in pieces it can hold. *By default the browser’s recogniser sends the audio to Google or Microsoft, so it needs the internet and the tab must stay visible. For audio that never leaves the laptop, install **offline speech** (below) and say “turn on offline speech”; the wake word is paused meanwhile either way.*
-- **Offline speech (Whisper)** — `install-whisper.ps1` (you run it; JARVIS never downloads on its own) puts the whisper.cpp program (a few MB) and one model (`base.en`, ~150 MB) in the `.whisper` folder next to JARVIS. With the Settings switch **Offline lecture transcription** (or “turn on offline speech”) lecture mode records the microphone in the page, cuts it at pauses into ~25-second pieces, converts each to 16 kHz mono WAV and has the local server transcribe it. Quiet pieces are never sent to Whisper (it invents words for silence). *CPU-only, so it can lag behind a fast speaker; English models are best; expect some wrong words.* “Is offline speech installed?” says what is missing.
+- **Offline speech (Whisper)** — `install-whisper.ps1` (you run it; JARVIS never downloads on its own) puts the whisper.cpp program (a few MB) and one model (`base.en`, ~150 MB) in the `.whisper` folder next to JARVIS. If the browser reports no internet, regular mic dictation uses the installed local Whisper; if the connection drops during dictation, JARVIS switches when the browser speech service returns a network error. Lecture mode can also use Whisper with the Settings switch **Offline lecture transcription** (or “turn on offline speech”): it records the microphone in the page, cuts it at pauses into ~25-second pieces, converts each to 16 kHz mono WAV and has the local server transcribe it. Quiet pieces are never sent to Whisper (it invents words for silence). *CPU-only, so it can lag; English models are best; expect some wrong words.* “Is offline speech installed?” says what is missing.
 - **Month-first dates** — numeric dates in an assignment sheet are read day first (10/11/2026 = 10 November). If your college writes them month first, say “my college writes dates month first” once (“read dates day first” switches back, “undo” too); then 10/11/2026 is 11 October. JARVIS always says how it read an ambiguous date.
 - **Assignment from a photo or file** (“add assignment from a photo”, “add assignment from dbms_assign.pdf”) — the text is read (Windows OCR, or the file), and the title, subject, due date (day first: 03/04 is 3 April; “by Friday” is the next Friday; a time like “5 pm” is used, else 23:59), marks and numbered questions are found. You see the result and any assumptions first; “yes” adds one **deadline** and one **to-do per question**, and one **undo** removes them together. If no date is found it says so and adds nothing without you.
   Its question to-dos are **linked to the deadline**: the Tasks tab shows “OS lab · 2/5 done”, ticking the last one offers **MARK SUBMITTED**, and marking the deadline submitted ticks the to-dos still open.
@@ -585,7 +585,7 @@ Open **SETTINGS** (top right).
 | **AI brain** | Use AI brain · Model | Turn the AI on/off; pick a local (Ollama) or cloud model. |
 | | Guided setup (AI / PHONE) | Step-by-step setup for non-technical users. |
 | | AI providers | Add an API key (auto-detected provider), TEST it, or remove it. **Custom** accepts any OpenAI-compatible URL (LM Studio, vLLM, llama.cpp). |
-| **Voice** | Speak replies · Assistant (JARVIS/FRIDAY) · Speech language · Reply language | How JARVIS listens and answers. |
+| **Voice** | Speak replies · Assistant (JARVIS/FRIDAY) · Speech language · **Microphone engine** · Reply language | Choose Web Speech API (faster, multilingual, needs internet) or Whisper (local, offline, slower). |
 | | Online translation · Neural voice | Better Telugu/Kannada answers and natural voices (send reply text online). |
 | | Voice check · Address me as · Voice · Speech rate · Interface sounds · Wake word | Voice details and your wake word. |
 | | Test my mic | Say 14 command words; see what the mic heard, what JARVIS repaired, and the score. |
@@ -739,9 +739,9 @@ A few properties worth knowing when debugging:
 
 #### Speech input — `voice.js`, `script.js`, `wakeword.js`
 - **What it does:** turns your voice into one clean sentence.
-- **Flow:** the mic button / `Space` / wake word calls `startDictation` → `makeRec` creates a browser `SpeechRecognition` (language from **Speech language**: en-IN / te-IN / kn-IN, continuous, interim results, 3 alternatives). `piecesOf` turns each result into `{text, isFinal}`, choosing the best alternative with `SpeechFix.pickAlternative`. `Voice.createUtterance` (voice.js) collects the pieces across pauses and recogniser restarts, **waits for the final version of the last words**, and commits after *Pause before I answer* of silence (1 / 1.6 / 2.5 s) or when you tap again. `finishDictation` → `handleUser(text, 'voice')`.
-- **Wake word:** `wakeword.js` runs Windows' offline `System.Speech` recogniser so "Jarvis" works while you're in another tab or app; on a hit the page starts dictation with `source: 'wake'`.
-- **Privacy note:** Chrome/Edge send the audio to their speech service — this part needs the internet even with a local AI.
+- **Flow:** choose **Web Speech API** or **Whisper · local** under Settings → Voice. Web Speech API uses browser `SpeechRecognition` (English / Telugu / Kannada, continuous, interim results, 3 alternatives) and falls back to Whisper when offline if the installed model supports the selected language. Whisper records locally and submits a phrase after a pause. The current `base.en` model supports English only. `finishDictation` → `handleUser(text, 'voice')`.
+- **Wake word:** on Windows, `wakeword.js` runs the offline `System.Speech` recogniser in the foreground and in other apps; a hit starts dictation with `source: 'wake'`. Turning it on is remembered across page reloads; the browser recogniser remains a foreground fallback on platforms without Windows speech.
+- **Privacy note:** Chrome/Edge normally send dictation audio to their speech service. When the browser reports offline, JARVIS uses its installed local Whisper model; if the connection drops mid-dictation, it switches after the browser speech service returns a network error. Lecture mode uses Whisper when **Offline lecture transcription** is enabled; otherwise it uses browser speech recognition and needs the internet.
 - **Debug:** *Settings → Test my mic* (14 words, raw vs repaired, scored); the live transcript line above the box; the ☰ log line `heard "…" → understood "…"`.
 
 #### Speech repair — `speechfix.js`
@@ -1087,9 +1087,9 @@ npm run test:live
 | `projectwiki.test.js` | 82 | Reading JS / Python / Java / C, the import graph, the pages; **everything the wiki names exists in the project**; Mermaid safety; limits, symlinks, git |
 | `imagegen.test.js` | 64 | What counts as a picture (by its bytes), each service's request, failures in plain words, saving with a note, the key never shown back |
 | `pdftools.test.js` | 77 | Page selections, merging, taking pages, rotation, text-to-PDF layout, the watermark, password-protected and damaged files, the original untouched |
-| `scanmath.test.js` | 52 | Page corners and flattened size, the cleaner (shadows go, ink stays, marker colours kept), picture fingerprints, motion detector (warm-up, light switched on, cooldown), presence tracker (“could not tell” never locks), QR contents (Wi-Fi escapes, link warnings) |
+| `scanmath.test.js` | 55 | Page corners and flattened size, the cleaner (shadows go, ink stays, marker colours kept), picture fingerprints, motion detector (warm-up, exposure compensation, subtle movement, cooldown), presence tracker (“could not tell” never locks), QR contents (Wi-Fi escapes, link warnings) |
 | `scan.test.js` | 43 | A real picture drawn here → Windows OCR word boxes → one searchable PDF (the hidden text is read back), scan pages, limits, snapshots, vision refusals, phone alert |
-| `camera-page.test.js` | 186 | Camera / QR / photo wording (and sentences that must not match), phone refusals, QR maker and descriptions, presence lock and room watch driven by a fake camera, detector and clock |
+| `camera-page.test.js` | 193 | Camera / QR / photo wording (and sentences that must not match), phone refusals, QR maker and descriptions, presence lock and room watch driven by a fake camera, detector and clock |
 | `photocare.test.js` | 48 | Similar photos (cache, project protection, plan → apply → undo) and JPEG shrink (original always kept, refusals, undo) with fakes, then **real Windows image tools** on drawn pictures including EXIF rotation |
 | `skillrouter.test.js` · `speechstream.test.js` | 48 · 174 | Which messages suggest which skill (and 22 that must not) · sentence splitting however the text arrives, the 320-character rule, code blocks, the queue and Stop, the stop words |
 | `chatarchive.test.js` | 70 | ~35 date phrases, search, monthly files and the size cap, forgetting, laptop-only routes |
@@ -1224,7 +1224,7 @@ node -e "const D=require('./decider.js'); console.log(D.decide(D.signals('neares
 
 **The page says "Backend offline".** Start JARVIS (`Start JARVIS.bat` or `npm start`) and open `http://localhost:PORT` — not the `index.html` file.
 
-**Port 3000 is busy.** The launcher picks a free port automatically and remembers it (`~/jarvis/.jarvis-port`); with npm use `$env:PORT=3002; npm start` the first time.
+**JARVIS does not open at localhost:3002.** Start it with the desktop **JARVIS** icon or `Start JARVIS.bat`. JARVIS always uses port 3002; if another program is using that port, close that program and start JARVIS again. Enable **Settings → Data → Start with Windows** to have JARVIS ready after you sign in.
 
 **Different chats on different ports, or the phone (ntfy) app stops responding.** That means more than one JARVIS was running. Since the single-instance lock this can no longer happen from a normal start: starting JARVIS again (desktop icon, `npm start`, an AI tool, VS Code) just reuses the running one. If you ever see two, use **Stop JARVIS** (it stops the copy recorded in `~/jarvis/.jarvis.lock`) and start once. `JARVIS_ALLOW_MULTI=1` turns the guard off; only tests use it.
 

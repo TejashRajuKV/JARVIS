@@ -122,7 +122,7 @@ const store = (() => {
 
 /* ============ data ============ */
 const settings = Object.assign(
-  { wakeWord: 'jarvis', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '', qwenNlu: true, hudOverlay: false, bootCinema: true, attendancePrompt: true, offlineStt: false, attendanceMin: 75, researchMode: 'ai', emotionalIntelligence: true },
+  { wakeWord: 'jarvis', wakeEnabled: false, speechEngine: 'web', tts: true, rate: 1, voice: '', sound: true, online: false, responseLen: 'balanced', llm: true, model: '', city: '', focusMin: 25, breakMin: 5, alerts: true, chargerAlerts: true, address: 'sir', neuralVoice: true, translateOnline: true, speechLang: 'en', replyLang: 'auto', persona: 'jarvis', theme: 'arc', phonePush: false, phoneTopic: '', qwenNlu: true, hudOverlay: false, bootCinema: true, attendancePrompt: true, offlineStt: false, attendanceMin: 75, researchMode: 'ai', emotionalIntelligence: true },
   store.get('jarvis.settings', {})
 );
 Persona.setAddressSource(() => {
@@ -359,7 +359,15 @@ function scopeFrom(original, forCreate) {
 // (not about the focus — the normal pipeline handles it).
 const ORDINAL = { first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4, fifth: 5, '5th': 5, sixth: 6, '6th': 6, last: -1 };
 function openFocusTarget(text) {
-  const t = String(text || '').trim().toLowerCase().replace(/[.!?]+$/, '').replace(/^(?:please|can you|could you|jarvis,?)\s+/, '').replace(/\s+(?:please|now|for me)$/, '');
+  const t = String(text || '').trim().toLowerCase().replace(/[.!?]+$/, '')
+    .replace(/^(?:(?:i need|i want)\s+(?:you|u)?\s*to\s+|(?:can|could|would)\s+you\s+|please\s+|jarvis,?\s+)/, '')
+    .replace(/\s+(?:please|now|for me)$/, '');
+  // Room-watch snapshots become the current file focus. Resolve natural image references
+  // before generic app-name matching (which otherwise treats "that image" as an app).
+  if (/^(?:open|show|view|display)(?: up)?\s+(?:(?:the|that|this|last|saved)\s+)?(?:image|picture|photo|screenshot)(?:\s+(?:i|you)\s+(?:just\s+)?(?:saved|took))?$/.test(t)) {
+    const f = focusOf('file');
+    if (f && /\.(?:png|jpe?g|gif|webp|bmp)$/i.test(f.path)) return { path: f.path, file: true, preview: /(?:^|[\\/])Watch[\\/]watch-\d{8}-\d{6}(?:-\d+)?\.jpg$/i.test(f.path) };
+  }
   let idx = null, m = t.match(/^(?:open|show|launch)(?: up)?\s+(?:the\s+)?(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th|sixth|6th|last)(?:\s+(?:one|result|folder|file|match|item))?$/);
   if (m) idx = ORDINAL[m[1]];
   else if ((m = t.match(/^(?:open|show)\s+(?:number|no\.?|#|item|result)\s*(\d{1,2})$/))) idx = +m[1];
@@ -376,8 +384,26 @@ function openFocusTarget(text) {
   }
   return null;
 }
-async function openFocusPath(p) {
+async function openFocusPath(p, preferFile = false) {
   toolStep('open → ' + p);
+  if (preferFile) {
+    if (/(?:^|[\\/])Watch[\\/]watch-\d{8}-\d{6}(?:-\d+)?\.jpg$/i.test(p)) {
+      const name = p.split(/[\\/]/).pop();
+      const img = document.createElement('img'); img.className = 'room-snapshot-preview'; img.alt = 'Saved room-watch image ' + name;
+      const loaded = await new Promise(resolve => {
+        const timeout = setTimeout(() => resolve(false), 10000);
+        img.onload = () => { clearTimeout(timeout); resolve(true); };
+        img.onerror = () => { clearTimeout(timeout); resolve(false); };
+        img.src = API + '/room/image?name=' + encodeURIComponent(name);
+      });
+      if (!loaded) return { text: 'I could not display the saved image `' + p + '`. The snapshot may have been removed or the local image service did not return it.', speak: 'I could not display the saved image.', tool: 'roomSnapshotPreview' };
+      setFocus('file', p);
+      return { text: 'Here is the saved room-watch image. I verified that it loaded:', speak: 'Here is the saved image.', extraNode: img, tool: 'roomSnapshotPreview', op: { kind: 'image_preview', name } };
+    }
+    const f = await callTool('/tool/openFile', { name: p });
+    if (!f.error) { setFocus('file', f.path || p); return { text: 'Opening **' + (f.path || p) + '**.', speak: 'Opening it.', tool: 'openFile' }; }
+    return { text: 'I couldn’t open `' + p + '`: ' + f.error + '.' };
+  }
   const r = await callTool('/tool/openFolder', { name: p });
   if (!r.error) { setFocus('folder', r.path || p); return { text: 'Opening `' + (r.path || p) + '` in your file explorer.', speak: 'Opening it.', tool: 'openFolder' }; }
   const f = await callTool('/tool/openFile', { name: p });
@@ -1631,8 +1657,16 @@ if (serverScheduler && 'EventSource' in window) {
   // window forward; once it's in front, the page asks "Yes, sir?" and takes the command (visibility/focus handlers).
   events.addEventListener('wake', async e => {
     const ev = JSON.parse(e.data);
-    if (!ev.lead || !wakeOn) return;
-    if (!document.hidden && document.hasFocus()) return;   // in front: the browser listener already handles it
+    if (!ev.lead || !wakeOn || micHeld || wakePaused) return;
+    if (!document.hidden && document.hasFocus()) {
+      // Windows' recognizer is offline, so it can still wake JARVIS when the browser's online recognizer cannot.
+      // If the browser already caught this wake and is collecting the command, let that path finish instead.
+      if (micHeld || awaitingCmd) return;
+      nativeWakeAt = Date.now(); sfx.wake();
+      log('ok', 'offline Windows wake word heard in the JARVIS tab (' + Math.round(ev.conf * 100) + '%)');
+      startDictation({ source: 'wake', prompt: true });
+      return;
+    }
     nativeWakeAt = Date.now(); sfx.wake();
     log('ok', 'wake word heard while you were in another tab/app (“' + ev.text + '”, ' + Math.round(ev.conf * 100) + '%)');
     const r = await callTool('/wake/front', {});
@@ -2810,7 +2844,7 @@ async function askLLM(userText, opts) {
   let acc = '', raf = 0;
   // Speak while writing: only for ordinary chat answers in English, with the voice on, and never when the answer is cut to "N lines".
   const early = (opts.earlySpeech && !opts.calmVoice && settings.tts && settings.speakWhileWriting !== false && !limit && Lang.replyLang() === 'en'
-    ? SpeechStream.createEarly({ enqueue: t => speechQueue.add(t), isEnglish: t => Lang.detect(t) === 'en' }) : null;
+    ? SpeechStream.createEarly({ enqueue: t => speechQueue.add(t), isEnglish: t => Lang.detect(t) === 'en' }) : null);
   // setTimeout rather than rAF so streaming still renders when the window is in the background.
   const paint = () => { raf = 0; if (!/^\s*</.test(acc)) { node.bodyEl.innerHTML = renderMD(acc); node.bodyEl.classList.add('typing'); messages.scrollTop = messages.scrollHeight; } };
   try {
@@ -3277,7 +3311,7 @@ async function handleUser(text, source) {
     // "open it" / "open that folder" / "open the second one" / "open number 3": the folder or file in focus.
     if (!ctx.pending && !(typeof Skills !== 'undefined' && (Skills.state.site || Skills.state.uip || Skills.state.viva || (typeof Student !== 'undefined' && Student.active())))) {
       const target = openFocusTarget(cmdText);
-      if (target) { await deliver(target.text ? { text: target.text } : await openFocusPath(target.path), { intent: 'OPEN_FOCUS', confidence: 1 }); return; }
+      if (target) { await deliver(target.text ? { text: target.text } : await openFocusPath(target.path, target.file), { intent: 'OPEN_FOCUS', confidence: 1 }); return; }
     }
     // Website generator, DSA coach and viva practice (skills-page.js): active sessions and their trigger phrases.
     if (!ctx.pending && typeof Skills !== 'undefined') {
@@ -3658,13 +3692,14 @@ let dictUtt = null, dictTick = 0, dictSource = 'voice';
 // opts.source: 'voice' (mic button) or 'wake' (after "Jarvis" was heard in the background); opts.prompt: say
 // "Yes, sir?" first, then listen — the mic starts only after the prompt so JARVIS doesn't hear itself.
 async function startDictation(opts = {}) {
-  if (!SR) { toast('Speech recognition needs Chrome or Edge — type instead'); chatInput.focus(); return; }
   if (micHeld) return;
   if (wakeOn) { wakePaused = true; retireWakeRec(); }   // one recogniser at a time: the wake listener steps aside
   stopSpeaking();
   ensureAnalyser();
   dictSource = opts.source || 'voice';
   if (opts.prompt) { micHeld = true; sfx.wake(); const yes = Persona.say('wake'); setState('LISTENING', yes); await speak(yes); micHeld = false; }
+  if (settings.speechEngine === 'whisper') { await startOfflineDictation(false); return; }
+  if (!SR || navigator.onLine === false) { await startOfflineDictation(true); return; }
   try {
     rec = makeRec(true); micActive = true;
     dictUtt = Voice.createUtterance({ silenceMs: pauseMs(), maxMs: 30000, idleMs: 8000, isEcho,
@@ -3672,12 +3707,73 @@ async function startDictation(opts = {}) {
     rec.onresult = ev => { if (dictUtt) dictUtt.update(piecesOf(ev)); };
     // Chrome ends continuous recognition now and then — carry on (keeping the words) until the sentence is done.
     rec.onend = () => { if (dictUtt && micHeld && rec) { dictUtt.sessionEnded(); const r = rec; startRec(r).catch(() => finishDictation(dictUtt ? dictUtt.text : '')); } };
-    rec.onerror = ev => { if (ev.error === 'no-speech' || ev.error === 'aborted') return; finishDictation(''); voiceError(ev.error); };
+    rec.onerror = ev => {
+      if (ev.error === 'no-speech' || ev.error === 'aborted') return;
+      if (ev.error === 'network') { startOfflineFallback(); return; }
+      finishDictation(''); voiceError(ev.error);
+    };
     startRec(rec).catch(e => { log('err', 'speech failed to start: ' + e.message); finishDictation(''); });
     micHeld = true; micBtn.classList.add('live');
     setState('LISTENING', 'Listening… I’ll answer when you pause (tap the mic to send now)'); engine('stt', true);
     clearInterval(dictTick); dictTick = setInterval(() => dictUtt && dictUtt.tick(), 150);
   } catch (e) { log('err', 'speech failed to start: ' + e.message); micActive = false; micHeld = false; }
+}
+let offlineDictation = null, offlineDictationText = [], offlineDictationFinishing = false, offlineLastSpeech = 0, offlineFinishTimer = 0;
+async function startOfflineDictation(fallback = true) {
+  if (micHeld) return;
+  const sttStatus = typeof Stt === 'undefined' ? null : await Stt.status();
+  if (!sttStatus || !sttStatus.installed) {
+    if (fallback) voiceError('network');
+    else { toast('Offline Whisper is not installed. Run install-whisper.ps1, then try again.'); chatInput.focus(); resumeWakeAfterDictation(); }
+    return;
+  }
+  if (settings.speechLang !== 'en' && /\.en$/i.test(sttStatus.model || '')) {
+    const msg = 'The installed Whisper model (' + sttStatus.model + ') recognizes English only. Switch Speech language to English or install a multilingual Whisper model.';
+    if (fallback) { toast(msg); voiceError('network'); } else { toast(msg); chatInput.focus(); resumeWakeAfterDictation(); }
+    return;
+  }
+  stopSpeaking();
+  try {
+    offlineDictationText = []; offlineDictationFinishing = false; offlineLastSpeech = Date.now();
+    offlineDictation = await Stt.start({
+      lang: (Lang.SPEECH[settings.speechLang] || 'en-IN').slice(0, 2), chunkSec: 25, silenceMs: pauseMs(),
+      onActivity: t => { offlineLastSpeech = t; },
+      onText: text => {
+        if (!offlineDictation) return;
+        offlineDictationText.push(text); showHeard(offlineDictationText.join(' '));
+        clearTimeout(offlineFinishTimer); offlineFinishTimer = setTimeout(() => {
+          if (Date.now() - offlineLastSpeech >= pauseMs()) finishOfflineDictation();
+        }, pauseMs() + 100);
+      },
+      onError: msg => { toast('Offline Whisper failed: ' + msg); finishOfflineDictation(); },
+    });
+    micHeld = true; micActive = true; micBtn.classList.add('live');
+    setState('LISTENING', 'Offline Whisper is listening… tap the mic to send'); engine('stt', true);
+    log('ok', 'offline Whisper dictation started' + (fallback ? ' after browser speech service was unavailable' : ' (browser speech recognition unavailable)'));
+  } catch (e) {
+    offlineDictation = null; micHeld = false; micActive = false; micBtn.classList.remove('live');
+    if (fallback) voiceError('network');
+    else { toast('Could not open the microphone: ' + String(e.message || e)); chatInput.focus(); resumeWakeAfterDictation(); }
+  }
+}
+function resumeWakeAfterDictation() { if (wakeOn && wakePaused) { wakePaused = false; loopWake(); } }
+function startOfflineFallback() {
+  const old = rec; rec = null;
+  if (old) { old.onend = null; old.onerror = null; old.onresult = null; try { old.stop(); } catch (e) {} }
+  clearInterval(dictTick); dictUtt = null; micHeld = false; micActive = false;
+  micBtn.classList.remove('live'); showHeard(''); engine('stt', false); dropBoost();
+  startOfflineDictation(true);
+}
+async function finishOfflineDictation() {
+  if (!offlineDictation || offlineDictationFinishing) return;
+  offlineDictationFinishing = true; clearTimeout(offlineFinishTimer);
+  const handle = offlineDictation; offlineDictation = null;
+  try { await handle.stop(); } catch (e) { log('warn', 'offline Whisper did not flush cleanly: ' + e.message); }
+  const text = offlineDictationText.join(' ').replace(/\s+/g, ' ').trim();
+  offlineDictationText = []; offlineDictationFinishing = false;
+  micHeld = false; micActive = false; micBtn.classList.remove('live'); showHeard(''); engine('stt', false);
+  if (wakeOn && wakePaused) { wakePaused = false; loopWake(); }
+  if (text) handleUser(text, dictSource); else if (state === 'LISTENING') idleState();
 }
 function finishDictation(t) {
   clearInterval(dictTick); dictUtt = null;
@@ -3690,7 +3786,7 @@ function finishDictation(t) {
   else if (state === 'LISTENING') idleState();
 }
 // Tap again / let go of a held mic: send what was heard right away.
-function stopDictation() { if (dictUtt) dictUtt.flush(); else if (rec) finishDictation(''); }
+function stopDictation() { if (offlineDictation) finishOfflineDictation(); else if (dictUtt) dictUtt.flush(); else if (rec) finishDictation(''); }
 
 const shownVoiceErrors = new Set();
 const EMBEDDED = /\bClaude\/|Electron\//.test(navigator.userAgent);
@@ -3700,7 +3796,7 @@ function voiceError(code) {
   log(code === 'no-speech' || code === 'aborted' ? 'info' : 'err', 'speech: ' + code);
   if (code === 'aborted') return;
   if (code === 'no-speech') { toast('I did not hear anything — tap the mic and speak a bit louder'); idleState(); return; }
-  const fatal = ['not-allowed', 'service-not-allowed', 'network', 'audio-capture'].includes(code);
+  const fatal = ['not-allowed', 'service-not-allowed', 'audio-capture'].includes(code);
   if (fatal && wakeOn) stopWake();
   setEngine('stt', 'down', code === 'network' ? 'speech service unreachable' : code === 'audio-capture' ? 'no microphone found' : 'mic blocked');
   if (shownVoiceErrors.has(code)) { toast('Voice unavailable: ' + code); return; }
@@ -3708,7 +3804,7 @@ function voiceError(code) {
   const msg = {
     'not-allowed': '**I cannot access your microphone.** Click the 🔒 / site icon at the left of the address bar → set **Microphone** to *Allow* → reload the page.' + BROWSER_HINT,
     'service-not-allowed': '**Speech recognition is blocked in this browser.**' + (BROWSER_HINT || ' Use Google Chrome or Microsoft Edge.'),
-    'network': '**The speech service is unreachable.** Chrome/Edge voice typing sends audio to Google/Microsoft to transcribe it, so it needs an internet connection and does not work in embedded browsers.' + BROWSER_HINT,
+    'network': '**The speech service is unreachable and offline Whisper could not start.** Chrome/Edge normally sends voice input to Google/Microsoft. JARVIS will use its installed local Whisper model automatically when available; check that `install-whisper.ps1` completed and that microphone access is allowed.' + BROWSER_HINT,
     'audio-capture': '**No microphone detected.** Check it is plugged in and set as the default input in Windows *Settings → System → Sound*.',
     'language-not-supported': 'Your speech language is not supported — I will switch to English (India).'
   }[code] || 'Voice input failed (' + code + '). You can always type instead.';
@@ -3788,7 +3884,7 @@ function retireWakeRec() {
   if (old && wakeUtt) wakeUtt.sessionEnded();
 }
 function loopWake() {
-  if (!wakeOn || wakeHidden || wakePaused) return;
+  if (!SR || !wakeOn || wakeHidden || wakePaused) return;
   if (wakeRec && (wakeRunning || wakeStarting)) return;   // already listening (or about to): never start a second one
   try {
     if (!wakeUtt) wakeUtt = makeWakeUtt();
@@ -3846,7 +3942,8 @@ function setNativeWake(on) {
   });
 }
 function startWake() {
-  if (!SR) { toast('Wake word needs Chrome or Edge speech support'); return; }
+  if (!SR && !/win/i.test(navigator.userAgentData && navigator.userAgentData.platform || navigator.platform || '')) { toast('Wake word needs Windows speech or Chrome/Edge speech support'); return; }
+  settings.wakeEnabled = true; saveSettings();
   wakeOn = true; wakeNetFails = 0; wakeBtn.classList.add('on'); ensureAnalyser(); micActive = true;
   wakeUtt = null; wakeHidden = document.hidden; wakeEndedAt = Date.now();   // fresh collector: picks up the current wake word, language and pause setting
   log('ok', 'wake word armed — say "' + settings.wakeWord + '"');
@@ -3855,6 +3952,7 @@ function startWake() {
   loopWake();
 }
 function stopWake() {
+  settings.wakeEnabled = false; saveSettings();
   wakeOn = false; awaitingCmd = false; wakeBtn.classList.remove('on'); micActive = false; engine('stt', false);
   clearInterval(wakeTick); wakeUtt = null; showHeard(''); wakeRunning = false;
   retireWakeRec();   // off means off: the running (or starting) recogniser is stopped and its events ignored
@@ -3877,7 +3975,7 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('focus', wakePageBack);
 wakeBtn.addEventListener('click', () => { wakeOn ? stopWake() : startWake(); });
-if (!SR) { micBtn.classList.add('off'); wakeBtn.classList.add('off'); }
+if (!SR) { micBtn.classList.add('off'); if (!/win/i.test(navigator.userAgentData && navigator.userAgentData.platform || navigator.platform || '')) wakeBtn.classList.add('off'); }
 
 /* ============ input / chips / shortcuts ============ */
 function sendInput() { const v = chatInput.value; chatInput.value = ''; histIdx = -1; if (v.trim()) handleUser(v, 'text'); }
@@ -4333,6 +4431,29 @@ $('#personaSelect').addEventListener('change', e => { applyPersona(e.target.valu
 $('#themeSelect').value = settings.theme;
 $('#themeSelect').addEventListener('change', e => switchTheme(e.target.value));
 $('#speechLangSelect').value = settings.speechLang;
+settings.speechEngine = settings.speechEngine === 'whisper' ? 'whisper' : 'web';
+const renderSpeechEngineNote = () => {
+  const note = $('#speechEngineNote'); if (!note) return;
+  const selected = settings.speechEngine || 'web';
+  if (selected === 'web') {
+    note.textContent = 'Web Speech API is faster and supports English, Telugu and Kannada, but needs internet. If it reports an outage, JARVIS falls back to local Whisper when its model supports your language.';
+    return;
+  }
+  note.textContent = 'Checking local Whisper…';
+  Stt.status().then(s => {
+    if (settings.speechEngine !== selected) return;
+    if (!s.installed) note.textContent = 'Whisper is not installed. Run install-whisper.ps1 to use local, offline speech recognition.';
+    else if (/\.en$/i.test(s.model || '')) note.textContent = 'Local Whisper (' + s.model + ') keeps audio on this laptop and works offline, but is slower and this English-only model does not support Telugu or Kannada.';
+    else note.textContent = 'Local Whisper (' + s.model + ') keeps audio on this laptop and works offline, but can be slower than Web Speech API.';
+  }).catch(() => { if (settings.speechEngine === selected) note.textContent = 'Local Whisper works offline and keeps audio on this laptop, but is slower; check that Whisper is installed.'; });
+};
+$('#speechEngineSelect').value = settings.speechEngine || 'web';
+$('#speechEngineSelect').addEventListener('change', e => {
+  settings.speechEngine = e.target.value === 'whisper' ? 'whisper' : 'web'; saveSettings(); renderSpeechEngineNote();
+  log('info', 'microphone engine: ' + (settings.speechEngine === 'whisper' ? 'local Whisper' : 'Web Speech API'));
+  if (wakeOn) { stopWake(); startWake(); }
+});
+renderSpeechEngineNote();
 $('#pauseSelect').value = String(settings.pauseMs || 1600);
 $('#micBoostSelect').value = settings.micBoost || 'high';
 $('#micBoostSelect').addEventListener('change', e => {
@@ -4346,7 +4467,7 @@ $('#pauseSelect').addEventListener('change', e => {
   if (wakeOn) { stopWake(); startWake(); }   // the wake-word collector picks the new pause up
   toast('I’ll answer after a ' + (settings.pauseMs / 1000) + ' s pause');
 });
-$('#speechLangSelect').addEventListener('change', e => { setLanguage(e.target.value); });
+$('#speechLangSelect').addEventListener('change', e => { setLanguage(e.target.value); renderSpeechEngineNote(); });
 $('#replyLangSelect').value = settings.replyLang;
 $('#replyLangSelect').addEventListener('change', e => { settings.replyLang = e.target.value; saveSettings(); });
 $$('.lang-btn').forEach(b => b.addEventListener('click', () => { const r = setLanguage(b.dataset.lang); toast(r.text.split(/\n/)[0]); speak(r.speak || r.text); }));
@@ -4718,3 +4839,5 @@ async function bootSequence() {
 applyTheme(settings.theme); applyPersona(settings.persona); updateLangUI();
 restoreChat(); renderMemory(); renderSnippets(); renderFlashDecks(); renderTasks(); renderTele();
 bootSequence();
+// Wake-word activation is an explicit user choice. Keep that choice across reloads so opening JARVIS does not silently disarm it.
+if (settings.wakeEnabled) setTimeout(() => { if (!wakeOn) startWake(); }, 1500);

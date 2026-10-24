@@ -857,12 +857,12 @@ app.post('/api/tool/openUrl', (req, res) => {
   try { url = new URL(String(req.body.url || '')); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
   if (!['http:', 'https:'].includes(url.protocol)) return res.status(400).json({ error: 'Only http/https URLs allowed' });
   try { if (app.locals.jarvisBrowserRecovery) app.locals.jarvisBrowserRecovery.record(url.href); } catch (e) { /* recovery is best-effort and must never block opening a page */ }
-  const [cmd, args] = IS_WIN ? ['rundll32', ['url.dll,FileProtocolHandler', url.href]]
+  const [cmd, args] = IS_WIN ? ['rundll32.exe', ['url.dll,FileProtocolHandler', url.href]]
     : IS_MAC ? ['open', [url.href]] : ['xdg-open', [url.href]];
-  const p = spawn(cmd, args, { detached: true, stdio: 'ignore' });
-  p.on('error', () => {});
-  p.unref();
-  res.json({ success: true, url: url.href });
+  execFile(cmd, args, { windowsHide: true, timeout: 10000 }, err => {
+    if (err) return res.status(503).json({ success: false, error: `Could not launch the browser: ${err.message}` });
+    res.json({ success: true, url: url.href });
+  });
 });
 
 const UA = { 'User-Agent': 'JARVIS-local-assistant/2.0 (personal use)' };

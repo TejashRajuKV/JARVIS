@@ -12,7 +12,7 @@ const Watch = (() => {
   const say = (text, extra) => Object.assign({ text, noPersona: true, intent: 'WATCH' }, extra || {});
   const FACEAPI_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js';
   const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model';
-  const PRESENCE_MS = 2000, ROOM_MS = 1000, ROOM_MAX_MS = 8 * 3600 * 1000, ASLEEP_MS = 15000;
+  const PRESENCE_MS = 2000, ROOM_MS = 500, ROOM_MAX_MS = 8 * 3600 * 1000, ASLEEP_MS = 15000;
   const clockStr = ms => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const secs = () => Math.max(20, Math.min(900, parseInt(typeof settings !== 'undefined' && settings.presenceSecs, 10) || 60));
   // things the tests replace: how a face is looked for, how the page is locked, what time it is
@@ -130,8 +130,9 @@ const Watch = (() => {
       if (now - R.lastTick > 5000) R.det.reset();                        // frames while the tab slept are not comparable
       R.lastTick = now;
       const v = R.video; if (!v.videoWidth) return;
-      const r = R.det.feed(Camera.smallGray(v, 80, 60, R.ctx), now);
+      const r = R.det.feed(Camera.smallGray(v, 128, 96, R.ctx), now);
       R.frames++; R.last = r;
+      if (r.motion) R.lastMotion = now;
       if (r.alert) await onMotion(now);
       if (now - R.start >= ROOM_MAX_MS) { stopRoom(); jarvisSay(say('I stopped watching the room after 8 hours.')); }
     } finally { if (R) R.busy = false; }
@@ -141,7 +142,13 @@ const Watch = (() => {
     try {
       const canvas = Camera.videoToCanvas(R.video, 1280), blob = await Camera.canvasToBlob(canvas, 0.8);
       const r = await fetch(API + '/room/snapshot', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
-      const j = await r.json().catch(() => ({})); if (j && j.file) saved = j.file;
+      const j = await r.json().catch(() => ({}));
+      if (j && j.file) {
+        saved = j.file;
+        // Keep the saved snapshot in the same short-lived file focus used by "open it" and other follow-ups.
+        if (typeof setFocus === 'function') setFocus('file', saved);
+        if (typeof ctx !== 'undefined') ctx.lastFile = saved;
+      }
     } catch {}
     R.alerts++;
     const t = clockStr(now);
@@ -157,11 +164,11 @@ const Watch = (() => {
     let stream, video;
     try { stream = await Camera.getStream({ facing: 'user', width: 640, height: 480 }); video = await hiddenVideo(stream); }
     catch (e) { Camera.stopStream(stream); if (video && video.remove) video.remove(); return say('I could not start the camera: ' + Camera.camError(e)); }
-    const c = document.createElement('canvas'); c.width = 80; c.height = 60;
-    R = { stream, video, ctx: c.getContext('2d', { willReadFrequently: true }), det: ScanMath.MotionDetector({ warmupMs: 10000, needFrames: 3, cooldownMs: 300000 }), lastTick: deps.now(), start: deps.now(), alerts: 0, frames: 0, busy: false, last: null };
+    const c = document.createElement('canvas'); c.width = 128; c.height = 96;
+    R = { stream, video, ctx: c.getContext('2d', { willReadFrequently: true }), det: ScanMath.MotionDetector({ warmupMs: 6000, minChanged: 0.006, minMean: 0.01, needFrames: 2, cooldownMs: 60000 }), lastTick: deps.now(), start: deps.now(), alerts: 0, frames: 0, busy: false, last: null, lastMotion: 0 };
     R.timer = setInterval(roomStep, ROOM_MS);
     R.untrack = Camera.track('room', 'WATCHING THE ROOM', () => stopRoom());
-    return say('✓ Watching the room. The first 10 seconds are only for the camera to settle. I will tell you here' + (settings && settings.phonePush ? ' and on your phone (text only)' : '') + ' if something moves. Say **“stop watching the room”** when you are done.', { speak: 'Watching the room.' });
+    return say('✓ Watching the room. The first 6 seconds let the camera settle; after that I compare 2 frames each second and alert again if more movement is seen later. I will tell you here' + (settings && settings.phonePush ? ' and on your phone (text only)' : '') + '. Say **“stop watching the room”** when you are done.', { speak: 'Watching the room.' });
   }
   function stopRoom() {
     if (!R) return false;
@@ -169,7 +176,7 @@ const Watch = (() => {
     clearInterval(r.timer); Camera.stopStream(r.stream); if (r.video && r.video.remove) r.video.remove(); if (r.untrack) r.untrack();
     return true;
   }
-  const roomStatus = () => (R ? say('I am **watching the room**: ' + R.alerts + ' alert' + (R.alerts === 1 ? '' : 's') + ' so far, since ' + clockStr(R.start) + '.') : say('I am **not** watching the room. Say **“watch my room”** to start.'));
+  const roomStatus = () => (R ? say('I am **watching the room**: sampled ' + R.frames + ' frames, ' + R.alerts + ' movement alert' + (R.alerts === 1 ? '' : 's') + ' so far' + (R.last && R.last.warming ? ' (camera settling)' : R.lastMotion ? ', last movement ' + clockStr(R.lastMotion) : ', no movement detected yet') + ', since ' + clockStr(R.start) + '.') : say('I am **not** watching the room. Say **“watch my room”** to start.'));
 
   /* ================= chat wording (explicit only) ================= */
   const PRES_ON = /^(?:please\s+)?(?:(?:turn|switch)\s+on\s+(?:the\s+)?presence\s+lock|(?:start|enable)\s+(?:the\s+)?presence\s+lock|lock\s+(?:jarvis\s+)?when\s+i\s+(?:leave|walk away|go away|step away|am away))\s*[.!?]*$/i;

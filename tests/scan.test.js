@@ -110,6 +110,13 @@ const pdfWords = buf => [...inflated(buf).matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)].ma
     /* ---- room snapshots ---- */
     const s1 = await raw('POST', '/api/room/snapshot', jpg);
     check('Snapshot', 'a frame is kept in ~/jarvis/Watch', s1.status === 200 && /^Watch\/watch-\d{8}-\d{6}\.jpg$/.test(s1.json.file) && fs.existsSync(path.join(S.sandbox, s1.json.file)), s1.text);
+    const preview = await fetch(S.base + '/api/room/image?name=' + encodeURIComponent(path.basename(s1.json.file)), { headers: { Origin: S.base, 'Sec-Fetch-Site': 'same-origin' } });
+    const previewBytes = Buffer.from(await preview.arrayBuffer());
+    check('Snapshot', 'the saved room picture can be displayed inline as the original JPEG', preview.status === 200 && preview.headers.get('content-type').startsWith('image/jpeg') && previewBytes.equals(jpg), { status: preview.status, type: preview.headers.get('content-type'), bytes: previewBytes.length });
+    const badPreview = await fetch(S.base + '/api/room/image?name=' + encodeURIComponent('../outside.jpg'), { headers: { Origin: S.base, 'Sec-Fetch-Site': 'same-origin' } });
+    check('Snapshot', 'the inline image route rejects paths outside Watch', badPreview.status === 400);
+    const crossPreview = await fetch(S.base + '/api/room/image?name=' + encodeURIComponent(path.basename(s1.json.file)), { headers: { Origin: S.base, 'Sec-Fetch-Site': 'cross-site' } });
+    check('Snapshot', 'the inline image route refuses other-site requests', crossPreview.status === 403);
     const s2 = await raw('POST', '/api/room/snapshot', jpg);
     check('Snapshot', 'two in the same second do not overwrite each other', s2.status === 200 && s2.json.file !== s1.json.file);
     check('Snapshot', 'only JPEGs are kept', (await raw('POST', '/api/room/snapshot', Buffer.from('this is certainly not a jpeg picture'))).status === 400);

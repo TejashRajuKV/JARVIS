@@ -244,6 +244,8 @@ body.word .orb-wrap::after{filter:blur(18px)}
 .info-card{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-family:var(--mono);font-size:12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:rgba(0,0,0,.2)}
 .info-card dt{color:var(--faint);letter-spacing:.1em}
 .info-card dd{color:var(--cyan-hi)}
+.room-snapshot-preview{display:block;max-width:min(100%,720px);max-height:70vh;margin:10px 0;border:1px solid var(--line);border-radius:10px;object-fit:contain;background:#090a0c}
+.room-snapshot-preview.room-snapshot-missing{width:100%;height:80px;object-fit:scale-down;color:var(--faint)}
 .empty-chat{margin:auto;text-align:center;color:var(--faint);font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;line-height:1.9}
 
 /* ---------- tasks ---------- */

@@ -30,6 +30,32 @@ function IsBusy($p) {
   try { $ok = $c.BeginConnect('127.0.0.1', $p, $null, $null).AsyncWaitHandle.WaitOne(400); if ($ok -and $c.Connected) { return $true } } catch {} finally { $c.Close() }
   return $false
 }
+function EnsureOllama() {
+  # Start the local model service whenever JARVIS is opened, including when the
+  # server is already running and this launcher only opens the existing page.
+  $exe = $null
+  $cmd = Get-Command ollama -ErrorAction SilentlyContinue
+  if ($cmd) { $exe = $cmd.Source }
+  if (-not $exe) {
+    $candidate = Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe'
+    if (Test-Path -LiteralPath $candidate) { $exe = $candidate }
+  }
+  if (-not $exe) { Say '  Ollama is not installed; JARVIS will use its configured AI provider.' 'DarkGray'; return }
+
+  try { $null = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2; return } catch {}
+  Say '  Starting Ollama...' 'DarkGray'
+  try { Start-Process -FilePath $exe -WindowStyle Hidden | Out-Null } catch {
+    try { Add-Content -Path $LogFile -Value ("[launcher] could not start Ollama: " + $_.Exception.Message) } catch {}
+    return
+  }
+  # Ollama can take several seconds to initialize on Windows. Keep this bounded;
+  # JARVIS can still open and will report Ollama as offline if startup fails.
+  for ($i = 0; $i -lt 30; $i++) {
+    Start-Sleep -Seconds 1
+    try { $null = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2; Say '  Ollama is ready.' 'Green'; return } catch {}
+  }
+  Say '  Ollama is taking longer to start; JARVIS will open and retry its model list.' 'Yellow'
+}
 
 Say ''
 Say '  J.A.R.V.I.S. - starting up' 'Cyan'
@@ -54,6 +80,9 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Read-Host '  Press Enter to close'; exit 0
 }
 
+# Start the local AI before checking whether JARVIS itself is already running.
+EnsureOllama
+
 # 2. First-time install of JARVIS's own parts (silent mode can't show progress, so open the visible one once)
 if (-not (Test-Path (Join-Path $PSScriptRoot 'node_modules\express'))) {
   if ($Silent) { Start-Process -WindowStyle Minimized (Join-Path $PSScriptRoot 'Start JARVIS.bat'); exit 0 }
@@ -71,15 +100,14 @@ try {
 } catch {}
 $sticky = $null
 try { if (Test-Path $PortFile) { $sticky = [int](Get-Content $PortFile -TotalCount 1) } } catch {}
-$candidates = @(3000..3010)
-if ($sticky -ge 3000 -and $sticky -le 3010) { $candidates = @($sticky) + @($candidates | Where-Object { $_ -ne $sticky }) }
+$candidates = @(3002)
 $port = $null
 foreach ($p in $candidates) {
   if (IsJarvis $p) { Say "  JARVIS is already running - opening it." 'Green'; Open "http://localhost:$p"; exit 0 }
   if (-not (IsBusy $p)) { $port = $p; break }
 }
 if (-not $port) {
-  if ($Silent) { Msg 'JARVIS could not find a free port (3000-3010). Restart your computer and try again.' } else { Say '  Could not find a free port (3000-3010). Restart your computer and try again.' 'Red' }
+  if ($Silent) { Msg 'JARVIS could not use port 3002. Stop the program using that port, then try again.' } else { Say '  Port 3002 is in use. Stop the program using that port, then try again.' 'Red' }
   exit 1
 }
 try { Set-Content -Path $PortFile -Value "$port" -Encoding ASCII } catch {}

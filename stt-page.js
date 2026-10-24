@@ -14,13 +14,13 @@ const Stt = (() => {
     if (!r.ok && !j.error) j.error = 'HTTP ' + r.status;
     return j;
   }
-  async function start({ onText, onError, lang = 'en', chunkSec = 25, getStream, ctxFactory, send } = {}) {
+  async function start({ onText, onError, onActivity, lang = 'en', chunkSec = 25, silenceMs = 0, getStream, ctxFactory, send } = {}) {
     const sendWav = send || post;
     const stream = await (getStream ? getStream() : navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, channelCount: 1 } }));
     const ctx = ctxFactory ? ctxFactory() : new (window.AudioContext || window.webkitAudioContext)();
     const rate = ctx.sampleRate, src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1), mute = ctx.createGain();
     mute.gain.value = 0;                                                      // the processor only runs while connected; muted so the lecture is not played back
-    let parts = [], total = 0, stopped = false, chain = Promise.resolve(), errors = 0, failedOnce = false, pieces = 0;
+    let parts = [], total = 0, stopped = false, chain = Promise.resolve(), errors = 0, failedOnce = false, pieces = 0, heardSpeech = false, quietSamples = 0;
     const merge = () => { const all = new Float32Array(total); let o = 0; for (const p of parts) { all.set(p, o); o += p.length; } parts = []; total = 0; return all; };
     function enqueue(samples) {
       if (!samples.length) return;
@@ -35,11 +35,18 @@ const Stt = (() => {
     }
     proc.onaudioprocess = ev => {
       if (stopped) return;
-      parts.push(Float32Array.from(ev.inputBuffer.getChannelData(0))); total += 4096;
+      const input = ev.inputBuffer.getChannelData(0); let energy = 0;
+      for (let i = 0; i < input.length; i++) energy += input[i] * input[i];
+      const now = Date.now();
+      if (Math.sqrt(energy / Math.max(1, input.length)) >= 0.012) { heardSpeech = true; quietSamples = 0; onActivity && onActivity(now); }
+      else quietSamples += input.length;
+      parts.push(Float32Array.from(input)); total += input.length;
       if (total >= rate * chunkSec) {
         const all = merge(), cut = WavUtil.cutPoint(all, rate, 5);
         enqueue(all.subarray(0, cut));
         if (cut < all.length) { parts.push(all.slice(cut)); total = all.length - cut; }
+      } else if (silenceMs > 0 && heardSpeech && quietSamples >= rate * silenceMs / 1000) {
+        enqueue(merge()); heardSpeech = false; quietSamples = 0;
       }
     };
     src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
