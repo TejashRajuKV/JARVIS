@@ -22,7 +22,22 @@ module.exports = function setupHomeAssistant(app, { getConfig, saveConfig }) {
     if (!['http:','https:'].includes(u.protocol) || u.username || u.password || u.search || u.hash || u.pathname !== '/' || !String(b.token || '').trim() || String(b.token).length > 4096) throw new Error('Use a base HTTP(S) URL and a long-lived access token.');
     return { url:u.origin, token:String(b.token).trim() };
   };
-  app.get('/api/homeassistant/status', (req,res) => { const c=conf(); res.setHeader('Cache-Control','no-store'); res.json({configured:!!(c.url&&c.token),url:c.url||'',connected:false}); });
+  app.get('/api/homeassistant/status', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const connection = conf();
+    const version = connectionVersion;
+    let connected = false;
+    if (connection.url && connection.token) {
+      try {
+        await request('GET', '', undefined, connection);
+        connected = version === connectionVersion;
+      } catch {
+        // A saved connection can be unreachable or its credential can be expired.
+      }
+    }
+    const current = conf();
+    res.json({ configured: !!(current.url && current.token), url: current.url || '', connected });
+  });
   app.put('/api/homeassistant/config', async (req,res) => {
     try {
       const v = validConfig(req.body || {}), version = connectionVersion;
