@@ -1188,17 +1188,33 @@ const Agent = (() => {
     try { return await execute({ goal: cap(name), steps }, { source: 'routine', unattended: true }); }
     finally { if (typeof approvalsBlocked !== 'undefined') approvalsBlocked--; }
   }
-  // Background check after a single rule-engine open/close: never delays the reply; speaks up only on failure.
-  function watchSingle(p, prePromise) {
-    if (!/^(OPEN_APPLICATION|CLOSE_APPLICATION)$/.test(p.intent)) return;
-    const s = { intent: p.intent, args: p.args || {}, text: p.text };
+  // Give every direct command an honest receipt. Checks run after the acknowledgement so a slow OS query
+  // never delays the answer; actions without a reliable observer are explicitly marked unverified.
+  function watchSingle(p, prePromise, result, undoCountBefore) {
+    if (!p || !p.intent || /^(CONVERSATION|CANCELLED|CONFIRM|UNKNOWN|SYSTEM|AGENT_RUN)$/.test(p.intent)) return null;
+    const s = { intent: p.intent, args: p.args || {}, text: p.text || p.original || '' };
+    const one = Array.isArray(result) ? result[0] : result;
+    const id = typeof ActionReceipts !== 'undefined' ? ActionReceipts.begin(s.text, s.intent, one && one.text) : null;
+    const undoCountAfter = typeof Undo !== 'undefined' ? Undo.size() : 0;
+    const undoLabelAtStart = typeof Undo !== 'undefined' ? Undo.peek() : '';
+    if (one && id) one.receiptId = id;
+    const irreversible = /^(SHUTDOWN|RESTART|SLEEP|LOCK|GIT_COMMIT|SEND_MESSAGE|CALL|DELETE|ERASE|WIPE)$/.test(s.intent);
+    const undoable = !irreversible && Number.isFinite(undoCountBefore) && undoCountAfter > undoCountBefore && !!undoLabelAtStart;
     (async () => {
-      const pre = await prePromise;
-      if (!pre || !pre.app) return;
-      const v = await verify(s, null, pre);
-      log(v.status === 'failed' ? 'warn' : 'agent', 'check: ' + (v.note || v.status));
-      if (v.status === 'failed') jarvisSay({ text: '⚠ ' + cap(v.note) + '.', intent: 'AGENT_CHECK', noPersona: true });
+      let v;
+      if (one && (one.error || /^(?:I couldn’t|I could not|I can't|Failed to|Error:)/i.test(String(one.text || '')))) v = { status: 'failed', note: String(one.error || one.text).slice(0, 220) };
+      else {
+        const pre = prePromise ? await prePromise : null;
+        v = await verify(s, one, pre);
+        if (v.status === 'unverified' && !v.note) v.note = 'JARVIS replied, but this action has no direct completion check yet.';
+      }
+      v.undoable = undoable;
+      v.undoLabel = undoable ? undoLabelAtStart : '';
+      if (id && typeof ActionReceipts !== 'undefined') ActionReceipts.update(id, v);
+      log(v.status === 'failed' ? 'warn' : 'agent', 'receipt: ' + (v.note || v.status));
+      if (v.status === 'failed') jarvisSay({ text: '⚠ I tried to ' + s.text + ', but the check failed: ' + v.note + '.', intent: 'AGENT_CHECK', noPersona: true, noTTS: true });
     })();
+    return id;
   }
   function preSingle(p) {
     if (!/^(OPEN_APPLICATION|CLOSE_APPLICATION)$/.test(p.intent)) return null;

@@ -50,7 +50,7 @@ const store = (() => {
   let timer = null;
   // What this tab last knew to be on the server for the lists that several tabs edit (their ids), so the server can tell "I deleted it" from "another tab added it"
   // when this tab saves a whole list (statemerge.js). Updated when the page loads, when another tab's change is taken, and when a save is acknowledged.
-  const MERGE_KEYS = /^jarvis\.(todos|deadlines|classes|studyPlans|expenses|habits|memory|marks|attendance)$/;
+  const MERGE_KEYS = /^jarvis\.(todos|deadlines|classes|studyPlans|expenses|habits|memory|marks|attendance|actionReceipts)$/;
   const idsOf = s => { try { const v = JSON.parse(s); if (Array.isArray(v)) return v.every(x => x && typeof x === 'object' && x.id !== undefined && x.id !== null) ? v.map(x => x.id) : null; return v && typeof v === 'object' ? Object.keys(v) : null; } catch (e) { return null; } };
   const synced = {}, sentSeq = {};
   for (const k of Object.keys(cache)) if (MERGE_KEYS.test(k)) { const ids = idsOf(cache[k]); if (ids) synced[k] = ids; }
@@ -750,14 +750,15 @@ function awaitAnswer(show, ms = 600000) {
     show(fin);
   });
 }
-function askApproval(action, paths) {
+function askApproval(action, paths, kind) {
   if (approvalsBlocked > 0) return Promise.resolve(false);
   const wasBusy = typeof busy !== 'undefined' ? busy : false;
   if (typeof busy !== 'undefined') { busy = false; }
   if (typeof idleState === 'function') idleState();
   return awaitAnswer(done => {
     const list = paths.map(p => '`' + p + '`').join(' and ');
-    jarvisSay({ text: '⚠ JARVIS wants to **' + (APPROVAL_VERB[action] || action) + '** ' + list + '.\nThat is outside `~/jarvis`, so I need your permission. _(You can also just say **yes**.)_', intent: 'APPROVAL', noPersona: true, noTTS: true,
+    const reason = kind === 'homeAssistant' ? 'This changes a Home Assistant device, so I need your permission.' : 'That is outside `~/jarvis`, so I need your permission.';
+    jarvisSay({ text: '⚠ JARVIS wants to **' + (APPROVAL_VERB[action] || action) + '** ' + list + '.\n' + reason + ' _(You can also just say **yes**.)_', intent: 'APPROVAL', noPersona: true, noTTS: true,
       confirm: { yes: 'ALLOW', no: 'CANCEL', onConfirm: () => done(true), onCancel: () => done(false) } });
   }).then(ok => { if (typeof busy !== 'undefined') busy = wasBusy; return ok; });
 }
@@ -771,7 +772,7 @@ function pickPlace(r, what, redo) {
 async function callTool(endpoint, data, helloToken) {
   const j = await callToolRaw(endpoint, data, helloToken);
   if (j && j.needsApproval && !(data && data.approved)) {
-    if (!(await askApproval(j.action, j.paths || []))) return { error: approvalsBlocked > 0 ? 'That changes files outside ~/jarvis — do it at the laptop, where I can ask you first' : 'Cancelled — nothing was changed', cancelled: true };
+    if (!(await askApproval(j.action, j.paths || [], j.approvalKind))) return { error: approvalsBlocked > 0 && j.approvalKind === 'homeAssistant' ? 'Approve Home Assistant actions on the laptop' : approvalsBlocked > 0 ? 'That changes files outside ~/jarvis — do it at the laptop, where I can ask you first' : 'Cancelled — nothing was changed', cancelled: true };
     return callToolRaw(endpoint, Object.assign({}, data, { approved: true, approvalToken: j.approvalToken }), helloToken);
   }
   return j;
@@ -1271,6 +1272,13 @@ async function renderReply(o) {
     node.extraEl.appendChild(d);
   }
   if (o.trace && (settings.inspect || o.showTrace)) node.extraEl.appendChild(traceBlock(o.trace));
+  if (o.receiptId && typeof ActionReceipts !== 'undefined') {
+    const receipt = document.createElement('div'); receipt.className = 'action-receipt'; receipt.dataset.receiptId = o.receiptId;
+    const current = ActionReceipts.list().find(x => x.id === o.receiptId);
+    const badge = document.createElement('span'); badge.className = 'receipt-status ' + (current ? current.status : 'pending'); badge.textContent = current ? current.status.toUpperCase() : 'CHECKING';
+    const note = document.createElement('span'); note.className = 'receipt-note'; note.textContent = current ? current.note : 'Checking what happened…';
+    receipt.append(badge, note); node.extraEl.appendChild(receipt);
+  }
   if (text && !o.noLog) logChat('assistant', text, meta);
   messages.scrollTop = messages.scrollHeight;
   await Promise.all([typed, spoken]);
@@ -1554,7 +1562,7 @@ function tasksTick(now) {
           continue;
         }
         claimAlert('routine:' + r.id + ':' + dueAt, 6 * 3600).then(won => {
-          if (won) { log('ok', 'scheduled routine: ' + text); Routines.runById(routineId); } else log('info', 'scheduled routine "' + text + '" is run by another tab');
+          if (won) { log('ok', 'scheduled routine: ' + text); Routines.runById(routineId, true); } else log('info', 'scheduled routine "' + text + '" is run by another tab');
         });
         continue;
       }
@@ -1613,6 +1621,7 @@ if (serverScheduler && 'EventSource' in window) {
   const SYNCED = {
     'jarvis.todos': v => { todos = v; }, 'jarvis.reminders': v => { reminders = v; }, 'jarvis.deadlines': v => { deadlines = v; }, 'jarvis.classes': v => { classes = v; },
     'jarvis.attendance': v => { attendance = v || {}; }, 'jarvis.marks': v => { marks = v || []; }, 'jarvis.studyPlans': v => { studyPlans = v; }, 'jarvis.memory': v => { memory = v; },
+    'jarvis.actionReceipts': v => { if(typeof ActionReceipts!=='undefined')ActionReceipts.adopt(v); },
     'jarvis.expenses': () => {}, 'jarvis.habits': () => {}, 'jarvis.budget': () => {},       // read from the store each time they are used
   };
   // A backup was restored or imported (from this tab or another one): everything on screen is out of date, so reload rather than risk writing the old copy back.
@@ -1622,7 +1631,7 @@ if (serverScheduler && 'EventSource' in window) {
     const ev = JSON.parse(e.data), take = SYNCED[ev.key];
     if (!take || ev.src === TAB_ID) return;
     if (ev.value === null && !/budget/.test(ev.key)) return;
-    if (/memory|todos|reminders|deadlines|classes|studyPlans|expenses|habits/.test(ev.key) && !Array.isArray(ev.value)) return;
+    if (/memory|todos|reminders|deadlines|classes|studyPlans|expenses|habits|actionReceipts/.test(ev.key) && !Array.isArray(ev.value)) return;
     if (!store.adopt(ev.key, ev.value)) return;
     take(ev.value);
     try { renderTasks(); if (ev.key === 'jarvis.memory' && typeof renderMemory === 'function') renderMemory(); if (typeof renderDash === 'function') renderDash(); if (typeof Routines !== 'undefined') Routines.render(); } catch (err) { /* a panel that is not drawn yet */ }
@@ -1694,7 +1703,7 @@ if (serverScheduler && 'EventSource' in window) {
     if (!ev.lead) return;
     sfx.alarm(); log('ok', 'trigger: ' + ev.text);
     jarvisSay({ text: ev.text, intent: 'TRIGGER', noTTS: true });
-    if (typeof Routines !== 'undefined') Routines.runById(ev.routineId);
+    if (typeof Routines !== 'undefined') Routines.runById(ev.routineId, true);
   });
   // Charger plugged in / unplugged (announced by the server, needs no trigger): one tab says it out loud.
   events.addEventListener('charger', e => {
@@ -3065,6 +3074,9 @@ async function runAfter(after, aiText, p) {
 async function deliver(result, p) {
   if (!result) return;
   const items = Array.isArray(result) ? result : [result];
+  if (items[0] && !items[0].receiptId && p && p.intent && !/^(CONVERSATION|CANCELLED|CONFIRM|UNKNOWN|SYSTEM|AGENT_RUN)$/.test(p.intent) && typeof Agent !== 'undefined') {
+    items[0].receiptId = Agent.watchSingle(p, null, items[0]);
+  }
   // The inspector: this turn's trace goes with its first reply (and becomes "the last one" for "how did you understand that").
   if (turnTrace && !turnTrace.done && items[0] && !items[0].showTrace) {
     turnTrace.done = true; traceRoute(p && p.viaAI ? 'AI' : 'rules → ' + ((items[0] && items[0].tool) || (p && p.intent) || ''));
@@ -3176,6 +3188,12 @@ async function handleUser(text, source) {
     if (cmdHistory[cmdHistory.length - 1] !== text) { cmdHistory.push(text); if (cmdHistory.length > 50) cmdHistory.shift(); store.set('jarvis.cmdHistory', cmdHistory); }
     log('info', 'input (' + (source || 'text') + '): "' + text + '"');
     setState('PROCESSING', 'Understanding…');
+
+    // Opt-in Home Assistant commands are matched only after a connection exists; writes always ask first.
+    if (typeof HomeAssistant !== 'undefined') {
+      const ha = await HomeAssistant.handleCommand(text);
+      if (ha && ha.handled) { await deliver(ha, { intent: ha.intent || 'HOME_ASSISTANT', confidence: 1, text, args: {} }); return; }
+    }
 
     // Persistent research modes. Search Mode never hands retrieved evidence to any LLM.
     const modeText = String(text).trim().toLowerCase().replace(/[.!?]+$/, '').replace(/^jarvis[, ]+/, '');
@@ -3477,10 +3495,11 @@ async function handleUser(text, source) {
     if (!wantsLLM) {
       if (p.tool) { setState('EXECUTING', 'Running ' + p.tool + '…'); engine('core', true); }
       const pre = Agent.preSingle(p);          // before-state for the open/close check, requested in parallel
+      const undoBefore = typeof Undo !== 'undefined' ? Undo.size() : undefined;
       result = confirmGate(p, cmdText) || await executeTool(p, cmdText);
       engine('core', false);
       if (result && !result.askLLM) {
-        ctx.lastIntent = p.intent; ctx.lastCmd = result.confirm || ctx.pending || /\?\s*$/.test(String(result.text || '')) ? null : { text: cmdText, t: Date.now() }; Agent.watchSingle(p, pre);
+        ctx.lastIntent = p.intent; ctx.lastCmd = result.confirm || ctx.pending || /\?\s*$/.test(String(result.text || '')) ? null : { text: cmdText, t: Date.now() }; Agent.watchSingle(p, pre, result, undoBefore);
         // Pattern learning (Phase 2.9): record the intent + any app/site name.
         if (typeof Learn !== 'undefined') {
           try {
@@ -3602,10 +3621,11 @@ async function handleUser(text, source) {
         const tp = { ...ai.tool, viaAI: true };
         setState('EXECUTING', 'Running ' + tp.tool + '…'); engine('core', true);
         const pre2 = Agent.preSingle(tp);
+        const undoBefore = typeof Undo !== 'undefined' ? Undo.size() : undefined;
         let r2 = await executeTool(tp, cmdText);
         engine('core', false);
         ctx.lastIntent = tp.intent;
-        Agent.watchSingle(tp, pre2);
+        Agent.watchSingle(tp, pre2, r2, undoBefore);
         if (r2 && typeof r2.askLLM === 'string') {
           const ai2 = await askLLM(r2.askLLM, { noTools: true, imageToken: r2.imageToken, noHistory: !!r2.noHistory, limitText: cmdText });
           if (ai2 && ai2.delivered) idleState();

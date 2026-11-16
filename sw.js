@@ -9,7 +9,7 @@ const SHELL = ['index.html', 'style.css', 'themes.css', 'ui.css', 'manifest.webm
   'speechfix.js', 'places.js', 'decider.js', 'nlu.js', 'persona.js', 'emotion-intelligence.js', 'lang.js', 'study.js', 'voice.js', 'triggers.js', 'undo.js', 'speech-stream.js', 'skillrouter.js', 'skills-page.js', 'cdnpins.js', 'scanmath.js', 'wavutil.js', 'stt-page.js', 'camera-page.js', 'watch-page.js', 'ttparse.js', 'assignparse.js', 'student-page.js', 'lifeparse.js', 'life-page.js', 'services-page.js', 'traceparse.js', 'dev-page.js', 'tenderparse.js', 'tenders-page.js', 'extras-page.js',
   'palette.js', 'codepanel.js', 'tools/registry.js', 'tools/apps.js', 'tools/web.js', 'tools/tasks.js', 'tools/study.js', 'tools/system.js', 'tools/files.js', 'tools/code.js', 'tools/productivity.js', 'script.js', 'wizard.js', 'routines.js', 'agent.js',
   // added by the later commits (boot cinema, HUD, dashboard, transitions, face greeting, gestures, Qwen assist, thresholds)
-  'thresholds.js', 'nlu-qwen.js', 'boot-cinema.js', 'hud-overlay.js', 'dashboard.js', 'learn.js', 'transitions.js', 'face-greet.js', 'gesture.js', 'skill-hub.js', 'platform-ui.js',
+  'thresholds.js', 'nlu-qwen.js', 'boot-cinema.js', 'hud-overlay.js', 'dashboard.js', 'learn.js', 'transitions.js', 'face-greet.js', 'gesture.js', 'skill-hub.js', 'platform-ui.js', 'action-receipts.js', 'workspace.js',
   'boot-cinema.css', 'hud-overlay.css', 'dashboard.css', 'transitions.css'];
 
 // Express routes are case-insensitive; no spelling of an API path belongs in the offline cache.
@@ -39,7 +39,7 @@ self.addEventListener('fetch', e => {
   // Network-first: edits to the app show up on the next load; the cache only answers when the backend is unreachable.
   e.respondWith(
     fetch(req).then(res => {
-      if (res && res.ok && res.type === 'basic' && !url.pathname.startsWith('/api/')) { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
+      if (res && res.ok && res.type === 'basic') { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true }).then(hit => hit || caches.match('index.html')))
   );

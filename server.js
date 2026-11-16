@@ -1681,6 +1681,8 @@ require('./chatarchive')(app, { SANDBOX, llm, DEFAULT_MODEL });
 // A second copy of your JARVIS data in a folder on another drive: incremental, old versions kept 30 days, nothing deleted, weekly if you switch it on (mirror.js).
 require('./mirror')(app, { SANDBOX, roots: () => config.roots, blockedPath, approvedChange, snapshot: () => backup.snapshot('mirror') });
 require('./shotindex')(app, { SANDBOX, IS_WIN });   // search your screenshots by what is in them (OCR index, laptop page only)
+require('./calendar')(app, { getConfig: () => config, saveConfig });
+require('./homeassistant')(app, { getConfig: () => config, saveConfig });
 require('./devtools')(app, { llm, DEFAULT_MODEL, roots: () => config.roots, blockedPath, SANDBOX });   // git summary, commit message, "why did my build fail" (laptop page only)
 require('./whisper')(app, { SANDBOX });   // offline speech-to-text for lecture mode (whisper.cpp, installed by install-whisper.ps1; laptop page only)
 require('./studyserver')(app, { llm, DEFAULT_MODEL, SANDBOX, findAllowed, rel, readSource: async p => (/\.pdf$/i.test(p) ? (await pdf.pdfPages(p)).pages.join('\n') : fs.readFileSync(p, 'utf8')) });

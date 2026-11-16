@@ -157,13 +157,27 @@
     <div class="right-col">
       <section class="panel grow">
         <div class="tabbar" role="tablist">
-          <button class="tab active" data-tab="chat" role="tab">CHAT <em id="msgCount">0</em></button>
+          <button class="tab active" data-tab="today" role="tab">TODAY</button>
+          <button class="tab" data-tab="chat" role="tab">CHAT <em id="msgCount">0</em></button>
           <button class="tab" data-tab="tasks" role="tab">TASKS <em id="taskCount">0</em></button>
           <button class="tab" data-tab="memory" role="tab">MEMORY <em id="memCount">0</em></button>
           <button class="tab" data-tab="code" role="tab" title="JARVIS Code — its own conversation about your code">JARVIS CODE <em id="codeCount">0</em></button>
+          <button class="tab" data-tab="images" role="tab">IMAGES</button>
+          <button class="tab" data-tab="history" role="tab">HISTORY</button>
         </div>
 
-        <div class="tabpane active" data-pane="chat">
+        <div class="tabpane workspace-pane active" data-pane="today">
+          <div class="task-scroll workspace-scroll">
+            <div class="home-heading"><div><div class="eyebrow">YOUR DAY, AT A GLANCE</div><h2 id="todayDate">TODAY</h2></div><button class="btn primary" id="briefingBtn">BRIEF ME</button></div>
+            <div class="home-grid" id="todaySummary"></div>
+            <section class="home-section"><div class="home-section-head"><h3>UP NEXT</h3><button class="linkbtn" data-goto="tasks">ALL TASKS</button></div><div id="todayAgenda"></div></section>
+            <section class="home-section"><div class="home-section-head"><h3>CALENDAR</h3><button class="linkbtn" id="calendarSettingsBtn">CONNECT</button></div><div id="todayCalendar" class="home-empty">Optional read-only calendar feed. Connect one in Settings.</div></section>
+            <section class="home-section"><div class="home-section-head"><h3>HOME ASSISTANT</h3><button class="linkbtn" id="haSettingsBtn">SET UP</button></div><div id="todayHomeAssistant" class="home-empty">Connect Home Assistant in Settings to see your devices.</div></section>
+            <section class="home-section"><div class="home-section-head"><h3>SYSTEM STATUS</h3></div><div id="todaySystem" class="home-grid"></div></section>
+          </div>
+        </div>
+
+        <div class="tabpane" data-pane="chat">
           <div id="messages" role="log" aria-label="Conversation" aria-live="off"></div>
           <div id="srLive" class="sr-only" aria-live="polite" aria-atomic="true"></div>
           <div class="chat-foot"><button class="linkbtn" id="clearChatBtn">CLEAR CHAT</button><span id="brainLabel">rules + local AI</span></div>
@@ -201,6 +215,8 @@
           </div>
           <div class="chat-foot"><button class="linkbtn" id="clearMemBtn">FORGET EVERYTHING</button><span>stored on this PC</span></div>
         </div>
+        <div class="tabpane workspace-pane" data-pane="images"><div class="workspace-scroll task-scroll"><div class="home-section-head"><div><div class="eyebrow">CAMERA · SCREENSHOTS · CAPTURES</div><h2>RECENT IMAGES</h2></div><button class="btn" id="galleryRefresh">REFRESH</button></div><div id="galleryList" class="gallery-grid"></div></div></div>
+        <div class="tabpane workspace-pane" data-pane="history"><div class="workspace-scroll task-scroll"><div class="home-section-head"><div><div class="eyebrow">ATTEMPTED · VERIFIED · RECOVERABLE</div><h2>COMMAND HISTORY</h2></div><button class="btn" id="historyClear">CLEAR HISTORY</button></div><div id="historyList" class="history-list"></div></div></div>
       </section>
     </div>
   </main>
@@ -219,6 +235,17 @@
   <div id="backdrop"></div>
   <aside id="settingsDrawer" aria-label="Settings">
     <div class="s-head"><h2>CONFIGURATION</h2><button id="closeSettings" aria-label="Close settings">✕</button></div>
+    <div class="s-sec">
+      <h3>CONNECTED SERVICES</h3>
+      <div class="s-note">Both connections are optional and stay on this laptop. Calendar uses a private HTTPS iCalendar feed (read only). Home Assistant uses your local server and long-lived token; device actions always ask first.</div>
+      <h3 style="margin-top:14px">CALENDAR · READ ONLY</h3>
+      <div class="root-add" style="flex-wrap:wrap"><input type="url" id="calendarUrl" placeholder="https://…/calendar.ics" autocomplete="off" spellcheck="false"><button class="btn" id="calendarSave">CONNECT</button><button class="btn" id="calendarRemove" hidden>DISCONNECT</button></div><div class="s-note" id="calendarStatus">Not connected</div>
+      <div class="s-row"><label>Morning daily briefing<small>OPT IN · USES TODAY’S TASKS AND CONNECTED CALENDAR</small></label><input type="checkbox" id="dailyBriefingToggle"></div>
+      <div class="s-row"><label>Briefing time</label><input type="time" id="dailyBriefingTime" value="07:30"></div>
+      <div class="s-note">JARVIS speaks once a day at this time while it is running. Enable speech in Settings to hear it.</div>
+      <h3 style="margin-top:14px">HOME ASSISTANT</h3>
+      <div class="root-add" style="flex-wrap:wrap"><input type="url" id="haUrl" placeholder="http://homeassistant.local:8123" autocomplete="off" spellcheck="false"><input type="password" id="haToken" placeholder="Long-lived access token" autocomplete="new-password" spellcheck="false"><button class="btn" id="haSave">CONNECT</button><button class="btn" id="haRemove" hidden>DISCONNECT</button></div><div class="s-note" id="haStatus">Not connected</div>
+    </div>
     <div class="s-sec">
       <h3>AI BRAIN</h3>
       <div class="s-row"><label>Use AI brain<small>LOCAL OLLAMA OR YOUR OWN API KEY</small></label><button class="switch on" id="llmToggle" role="switch" aria-checked="true"></button></div>
@@ -407,6 +434,8 @@
   <script src="wizard.js"></script>
   <script src="routines.js"></script>
   <script src="agent.js"></script>
+  <script src="action-receipts.js"></script>
+  <script src="workspace.js"></script>
   <!-- Additive feature modules (all default-OFF except BootCinema, which is non-intrusive) -->
   <script src="nlu-qwen.js"></script>
   <script src="boot-cinema.js"></script>

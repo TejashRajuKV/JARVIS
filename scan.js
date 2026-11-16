@@ -261,5 +261,11 @@ module.exports = function setupScan(app, { SANDBOX, llm, DEFAULT_MODEL, rel, ope
     res.setHeader('Cache-Control', 'no-store');
     res.type('image/jpeg').sendFile(actual);
   });
+  app.get('/api/room/images', (req, res) => {
+    if (!laptopOnly(req, res)) return;
+    const dir = path.join(SANDBOX, 'Watch'); let images = [];
+    try { images = fs.readdirSync(dir, { withFileTypes: true }).filter(e => e.isFile() && /^watch-\d{8}-\d{6}(?:-\d+)?\.jpg$/i.test(e.name)).map(e => { const f = path.join(dir, e.name), s = fs.statSync(f); return { name:e.name, modified:s.mtimeMs, bytes:s.size, path:rel(f) }; }).filter(x => x.bytes <= MAX_SNAPSHOT_BYTES); } catch {}
+    images.sort((a,b)=>b.modified-a.modified); res.setHeader('Cache-Control','no-store'); res.json({success:true,images:images.slice(0,50)});
+  });
 };
 Object.assign(module.exports, { buildSearchablePdf, isJpeg, pruneSnapshots, slug, MAX_PAGES });

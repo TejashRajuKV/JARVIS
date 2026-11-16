@@ -129,6 +129,40 @@ async function cdp(wsUrl) {
     }
     check('Two Tabs', 'state updated in Tab 1 syncs to Tab 2 via SSE', tab2Todos.includes('buy milk'), tab2Todos);
 
+    // Today and History use shared server state rendered in a real second tab.
+    const today = await tab2.evaluate(`(async () => {
+      document.querySelector('.tab[data-tab="today"]').click();
+      for (let i = 0; i < 40; i++) {
+        if (document.querySelector('#todaySystem')?.textContent.includes('MEMORY')) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return { agenda: document.querySelector('#todayAgenda').textContent, system: document.querySelector('#todaySystem').textContent, automatic: document.querySelector('#dailyBriefingToggle').checked };
+    })()`, true);
+    check('Today', 'shows the shared task and live laptop telemetry while automatic briefing remains opt-in', /buy milk/.test(today?.agenda) && /CPU.*MEMORY/.test(today?.system) && today.automatic === false, today);
+    await tab1.evaluate(`(async () => {
+      const id = ActionReceipts.begin('QA verified fixture', 'QA', '', {repeatable:false});
+      ActionReceipts.update(id, {status:'verified', note:'state observed'});
+    })()`, true);
+    await tab2.evaluate(`document.querySelector('.tab[data-tab="history"]').click()`);
+    let history;
+    for (let i = 0; i < 25; i++) {
+      await sleep(200);
+      history = await tab2.evaluate(`document.querySelector('#historyList').textContent`);
+      if (history.includes('state observed')) break;
+    }
+    check('History', 'a receipt written in one tab renders in the second with its status and no repeat button', /VERIFIED.*QA verified fixture.*state observed/.test(history) && !/REPEAT|RETRY/.test(history), history);
+    const brief = await tab2.evaluate(`(async () => {
+      document.querySelector('.tab[data-tab="today"]').click();
+      document.querySelector('#briefingBtn').click();
+      for (let i = 0; i < 40; i++) {
+        const t = document.querySelector('#messages').textContent;
+        if (t.includes('Your top items today: buy milk')) return t.slice(-350);
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return '';
+    })()`, true);
+    check('Today', 'BRIEF ME generates a real chat reply using the shared task with Online tools off', /Your top items today: buy milk/.test(brief) && !/Weather for |Calendar:/.test(brief), brief);
+
     /* ---------------- Scenario 2: Closing & Reopening JARVIS During a Task ---------------- */
     // Plant an interrupted task in server state ('jarvis.agentRuns')
     const runId = 'AGT-20261021-999';

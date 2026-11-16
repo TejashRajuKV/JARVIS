@@ -122,6 +122,17 @@ module.exports = function setupShots(app, { SANDBOX, IS_WIN }) {
   const guard = (req, res) => (fromLaptopPage(req) ? true : (res.status(403).json({ error: 'Your screenshots can only be searched from JARVIS on the laptop.' }), false));
   const wrap = fn => async (req, res) => { if (!guard(req, res)) return; try { await fn(req, res); } catch (e) { if (!res.headersSent) res.status(500).json({ error: 'The screenshot index hit a problem: ' + String(e.message).slice(0, 100) }); } };
   app.get('/api/shots/status', wrap(async (req, res) => res.json({ success: true, ...(await idx.status()) })));
+  app.get('/api/shots/recent', wrap(async (req, res) => {
+    const images = (await idx.listImages()).slice(0, 50).map(x => ({ name:x.name, path:x.full, modified:x.m, bytes:x.s, indexed:idx.isIndexed(x.full), url:'/api/shots/image?path='+encodeURIComponent(x.full) }));
+    res.setHeader('Cache-Control','no-store'); res.json({success:true,images});
+  }));
+  app.get('/api/shots/image', wrap(async (req, res) => {
+    const wanted = path.resolve(String(req.query.path || ''));
+    const item = (await idx.listImages()).find(x => path.resolve(x.full) === wanted);
+    if (!item) return res.status(404).json({error:'That image is no longer in a JARVIS image folder.'});
+    let actual; try { actual=fs.realpathSync(item.full); const st=fs.statSync(actual); if(!st.isFile()||st.size>MAX_BYTES) throw new Error('invalid'); } catch { return res.status(404).json({error:'That image is unavailable.'}); }
+    res.setHeader('Cache-Control','no-store'); res.type(path.extname(actual).toLowerCase()==='.png'?'png':'jpeg').sendFile(actual);
+  }));
   app.post('/api/shots/update', wrap(async (req, res) => {
     const st = await idx.status();
     if (!IS_WIN) return res.status(501).json({ error: 'Reading screenshots needs Windows’ text recogniser, which this computer does not have.' });

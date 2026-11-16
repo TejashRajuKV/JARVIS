@@ -230,6 +230,22 @@ On first run, JARVIS shows a **guided setup** (re-open it any time: **Settings �
 
 ## 6. Using JARVIS — the interface
 
+### Today, images and command history
+
+The right panel opens on **TODAY**, which summarizes open tasks, deadlines due today, upcoming reminders/classes, focus time, attendance and laptop status. Use **BRIEF ME** to hear a short summary, including today’s connected calendar events and weather when Online tools are enabled. For an automatic spoken briefing, open **Settings → Connected Services**, enable **Morning daily briefing**, and choose a time. It is off by default, runs once per day while JARVIS is open, and requires speech output to be enabled. It does not replay a missed briefing if JARVIS starts more than ten minutes after the selected time.
+
+**IMAGES** collects recent room-watch snapshots, indexed pictures and JARVIS screenshots; preview images in place, open them in their normal viewer, or open their containing folder. **HISTORY** records action attempts and the available verification result. Eligible commands can be repeated or retried; JARVIS offers undo only when its existing undo system can reverse the latest recorded action.
+
+Action receipts distinguish **verified**, **failed** and **not checked**. Some effects have no reliable observer, so a successful response alone is not shown as proof. Receipts are shared through JARVIS's local state across its tabs and capped at 120 entries.
+
+### Safer routines
+
+The routine editor previews how each step parses and explains that unattended test runs execute only steps allowed by JARVIS's safety rules. Test runs can perform real actions, so review the preview and confirm before running. Scheduled/automatic routines can be paused or resumed from the Tasks panel; manual runs remain available.
+
+### Optional calendar and Home Assistant
+
+In **Settings → Connected Services**, you can connect a read-only HTTPS iCalendar feed and/or a Home Assistant server. Calendar events appear on Today for the next 14 days; basic ICS events are supported, but recurring-event expansion is not. The calendar feed URL and Home Assistant access token are kept in `~/jarvis/.config.json` and are never returned to the page after saving. Home Assistant exposes supported lights, switches, scenes, fans and covers on Today; each control asks before sending a change and checks the reported state afterward where possible. Natural commands such as “turn on desk lamp” are also supported when the device name matches uniquely. Sensors are shown as read-only. Disconnect either service from Settings to remove its saved credentials. These integrations remain unavailable until you connect and configure them.
+
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │ ☰  ◉ JARVIS   ● backend ● AI brain ● online      12:04   SETTINGS │
@@ -284,6 +300,7 @@ On first run, JARVIS shows a **guided setup** (re-open it any time: **Settings �
 
 - **Hold the mic** (or `Space`) to talk, or turn on **WAKE WORD** and say "Jarvis …" hands-free. The wake word survives brief network blips (it retries before giving up, and tells you if it stops).
 - **JARVIS lets you finish.** It keeps listening through pauses mid-sentence and answers once you've been quiet for a moment — "Jarvis, open VS Code … and start a focus session" runs both. Say just "Jarvis" and it waits for your command (and says "Yes, sir?" if you pause). Tap the mic again to send straight away. **Settings → Pause before I answer**: Short (1 s), Normal (1.6 s) or Long (2.5 s — handy if you think mid-sentence). Works the same in Telugu and Kannada, including the recogniser's different spellings of "జార్విస్ / ಜಾರ್ವಿಸ್".
+- **One breath, like "Hey Siri".** Say the wake word and the command together — "Hey Jarvis, open Chrome", even while you're in another app — and JARVIS takes the command straight away: no "Yes, Sir?", no repeating yourself, and the answer comes after a short pause (~0.9 s) rather than your full pause setting (which still applies when you say just the wake word and then think). The command travels with the wake event from the Windows listener; if it only catches the wake phrase, JARVIS asks as before.
 - **Telugu & Kannada:** speak or type in తెలుగు / ಕನ್ನಡ, or say "switch to Telugu". Typing in English letters works too — "volume penchu", "5 nimishalu timer pettu", "timer cancel maadu", "recursion ante enti". Replies come back in your language.
 - **Typos are fixed**: "set timr 5 min", "clse chrome", "cancle the timer" (real words are never "corrected" into commands).
 - **Misheard words are repaired** (spoken input only): "front and" / "front end" → frontend, "v s code" → vs code, "java script" → javascript, "fold her" → folder, "calculate her" → calculator… — always checked against the words around them, so "front and back of the page" stays as it is. JARVIS also waits for the recogniser's *final* words before acting (it no longer sends an unfinished "front"), and picks the best of its three guesses.
@@ -320,6 +337,7 @@ The original **“open the recently closed app”** command still reopens the mo
 - **Reminders:** "remind me to submit the form at 5pm", "remember to call mom tomorrow evening", "remind me every weekday at 8am to review notes". Reminders are fired by the **server**, so they go off even if no JARVIS tab is open (a Windows notification, and your phone if Phone alerts are on).
 - **Deadlines & timetable:** "add assignment OS lab due Friday", "what's due this week?", "add class DBMS on Monday and Wednesday at 10am", "when's my next class?". Deadline alerts 3 hours before.
 - **Timers & focus:** "set a timer for 10 minutes", "start a focus session", "focus on DBMS for 25 minutes" (logged per subject), "block distractions" (closes Discord/Steam/WhatsApp/Spotify and starts a focus session), "how productive was I today?".
+- **Suit up:** "suit up" sets the whole study scene at once — arc theme, HUD on, volume 30, closing distracting apps (it asks first), a focus session (default 45 minutes; "suit up for 25 minutes on dbms" directs it), and "with music" adds lofi study beats. A session already running is kept, never restarted, and one "undo" puts every part back.
 - **Plan my day:** "plan my day" builds a timetable for the rest of today with one-click reminders.
 - **Study planner:** "plan my GATE prep, exam on 12 Feb, topics: OS, DBMS, CN" (add `:3` after a topic that needs 3× the time). Topics are spread over the days left, every 7th study day is a review day, and the plan ends with revision and a full mock test. **ADD REMINDERS** puts one at 8 am each day. "What should I study today?", **MARK TODAY DONE**.
 - **Progress dashboard** (Tasks tab): 7-day focus chart, streak, time per subject, study-plan progress. "How was my week?" — and a weekly summary every Sunday evening.
@@ -547,6 +565,7 @@ All explicit wording; anything that changes the system asks first, and the page�
 | Control the laptop | `volume 40` · `mute` · `brightness 60` · `dark mode` · `lock the screen` |
 | Reminders & tasks | `remind me to call mom at 6pm` · `add revise graphs to my list` · `what's due this week?` |
 | Focus | `start a focus session` · `focus on DBMS for 25 minutes` · `block distractions` |
+| Suit up (the whole scene) | `suit up` · `suit up for 25 minutes on dbms with music` · `undo` puts it all back |
 | Plan study | `plan my day` · `plan my GATE prep, exam on 12 Feb, topics: OS, DBMS, CN` · `what should I study today?` |
 | Track attendance & marks | `mark dbms present` · `attendance report` · `can i bunk tomorrow?` · `add s3: 8.6 gpa, 24 credits` · `what is my cgpa?` |
 | Student extras | `start lecture mode for DBMS` · `add assignment from a photo` · `fit my study plan to my timetable` · `I got 32/40 in internals, what do I need in the end sem to get 80%?` · `turn on offline speech` |

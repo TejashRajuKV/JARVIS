@@ -56,6 +56,8 @@ const Routines = (() => {
     running = true;
     let res;
     try { res = await Agent.runUnattended(r.name, r.steps); } finally { running = false; }
+    const runId = String(res && res.meta || '').match(/AGT-\d{8}-\d{3,6}/i);
+    if (runId) { r.lastRunId = runId[0].toUpperCase(); save(); }
     bumpStat('routinesRun');
     const st = res && res.runStatus;
     const how = st === 'cancelled' ? ' cancelled, ' : st === 'partial' || st === 'failed' ? ' finished, but not every step completed, ' : ' complete, ';
@@ -63,12 +65,13 @@ const Routines = (() => {
   }
   // Two routines due at the same moment (or one due while another is still running) used to lose the second. Now it waits in line, once per routine, and runs when the first is done.
   const waitingIds = [];
-  async function runById(id) {
+  async function runById(id, scheduled = false) {
     const r = list.find(x => x.id === id);
     if (!r) return;
-    if (busy) { if (!waitingIds.includes(id)) { waitingIds.push(id); try { log('info', 'routine "' + r.name + '" waits for the one that is running'); } catch (e) { /* log is optional */ } } return; }
+    if (scheduled && r.paused) { try { log('info', 'paused routine skipped: ' + r.name); } catch {} return; }
+    if (busy) { if (!waitingIds.some(x => x.id === id)) { waitingIds.push({ id, scheduled }); try { log('info', 'routine "' + r.name + '" waits for the one that is running'); } catch (e) { /* log is optional */ } } return; }
     busy = true;
-    try { jarvisSay(await run(r)); } finally { busy = false; const nextId = waitingIds.shift(); if (nextId) setTimeout(() => runById(nextId), 0); }
+    try { jarvisSay(await run(r)); } finally { busy = false; const next = waitingIds.shift(); if (next) setTimeout(() => runById(next.id, next.scheduled), 0); }
   }
 
   /* ---- the routine builder: NEW / EDIT in the Tasks tab ----
@@ -79,6 +82,13 @@ const Routines = (() => {
       const q = NLU.classify(NLU.normalize(step, (typeof settings !== 'undefined' && settings.wakeWord) || 'jarvis'), {});
       return q.intent !== 'CONVERSATION' && q.confidence >= 0.85 ? { ok: true, intent: q.intent } : { ok: false };
     } catch (e) { return { ok: false }; }
+  }
+  function safety(intent, step) {
+    try { const tier = Agent.tierFor(intent, step)[0]; return ({ safe:'SAFE', confirm:'ASKS FIRST', explicit:'EXPLICIT APPROVAL', unknown:'NOT RUN AUTOMATICALLY' })[tier] || String(tier || 'REVIEW').toUpperCase(); }
+    catch { return 'REVIEW REQUIRED'; }
+  }
+  function canVerify(intent) {
+    return /^(OPEN_APPLICATION|CLOSE_APPLICATION|VOLUME_SET|BRIGHTNESS|DARK_MODE|FOCUS_START|TODO_ADD|REMINDER_ADD|TIMER_SET|CREATE_FOLDER|WRITE_FILE|SAVE_CODE|RENAME_FILE|MOVE_FILE|COPY_FILE|OPEN_WEBSITE)$/.test(intent || '');
   }
   function preview(stepsText) {
     const steps = parseSteps(String(stepsText || '').replace(/\r?\n/g, ', '));
@@ -126,10 +136,11 @@ const Routines = (() => {
     const sched = old && reminders.find(x => x.routineId === old.id && !x.fired);
     const schedEl = field('Schedule (optional)', Object.assign(document.createElement('input'), { value: '', placeholder: sched && typeof describeRepeat === 'function' ? 'now: ' + describeRepeat(sched.repeat, sched.at) + ' — type a new one to change it' : 'every day at 9am' })); schedEl.style.cssText = css;
     const out = document.createElement('div'); out.className = 'rt-preview'; out.setAttribute('aria-live', 'polite'); out.style.cssText = 'font-size:12px;line-height:1.6;white-space:pre-wrap'; wrap.appendChild(out);
-    const show = () => { const p = preview(stepsEl.value); out.textContent = p.rows.length ? p.rows.map((x, i) => (i + 1) + '. ' + (x.ok ? '✓ ' : '? ') + x.step + (x.ok ? '  — ' + x.intent.toLowerCase().replace(/_/g, ' ') : '  — not a command I know by itself')).join('\n') : 'No steps yet.'; };
+    const show = () => { const p = preview(stepsEl.value); out.textContent = p.rows.length ? p.rows.map((x, i) => (i + 1) + '. ' + (x.ok ? '✓ ' : '? ') + x.step + (x.ok ? '  — ' + x.intent.toLowerCase().replace(/_/g, ' ') + ' · ' + safety(x.intent,x.step) + ' · ' + (canVerify(x.intent)?'result can be checked':'may be unverified') : '  — needs review; not recognized as a direct command')).join('\n') + '\nTest run executes only steps allowed by unattended safety rules; skipped steps are reported.' : 'No steps yet.'; };
     stepsEl.addEventListener('input', show); show();
     panel.body(wrap); (old ? stepsEl : nameEl).focus();
     panel.buttons([
+      { label: 'TEST SAFE STEPS', fn: async () => { const p = preview(stepsEl.value); if (!p.steps.length) { panel.status('Add at least one step first.'); return; } if (!confirm('Test this routine now? JARVIS will execute steps allowed by unattended safety rules; skipped or unverifiable steps will be reported.')) return; panel.status('Running safe steps…'); try { const result = await Agent.runUnattended(nameEl.value || 'routine test', p.steps); const runId=String(result&&result.meta||'').match(/AGT-\d{8}-\d{3,6}/i); if(old&&runId){old.lastRunId=runId[0].toUpperCase();save();} panel.status(result && result.text ? result.text.replace(/```[^\n]*\n?|```/g, '').slice(0, 1000)+(runId?'\nRun '+runId[0]+' · reversible actions can be undone from the routine list.':'') : 'Test finished. Review the command history for verification details.'); } catch(e) { panel.status('Test failed: ' + e.message); } } },
       { label: 'SAVE', primary: true, fn: () => { const r = saveFromBuilder(old, nameEl.value, stepsEl.value, schedEl.value); if (!r.ok) { panel.status(r.text); return; } panel.close(); if (typeof jarvisSay === 'function') jarvisSay({ text: r.text, intent: 'ROUTINE', noPersona: true, noTTS: true }); } },
       { label: 'CANCEL', danger: true, fn: () => panel.close() },
     ]);
@@ -144,10 +155,12 @@ const Routines = (() => {
     for (const r of list) {
       const sched = reminders.find(x => x.routineId === r.id && !x.fired);
       const d = document.createElement('div'); d.className = 'titem routine';
-      d.innerHTML = '<span class="tx"><b></b><span class="sub"></span></span>' + (sched ? '<span class="due">↻ ' + escHtml(describeRepeat(sched.repeat, sched.at).replace(/^every /, '')) + '</span>' : '') + '<button class="sb run">RUN</button><button class="x" title="Delete">✕</button>';
+      d.innerHTML = '<span class="tx"><b></b><span class="sub"></span></span>' + (sched ? '<span class="due">↻ ' + escHtml(describeRepeat(sched.repeat, sched.at).replace(/^every /, '')) + '</span>' : '') + '<button class="sb pause"></button><button class="sb run">RUN</button><button class="x" title="Delete">✕</button>';
       d.querySelector('b').textContent = r.name;
       d.querySelector('.sub').textContent = r.steps.join(' → ');
+      const pause=d.querySelector('.pause'); pause.textContent=r.paused?'RESUME':'PAUSE'; pause.title='Pause or resume scheduled and automatic runs'; pause.onclick=()=>{r.paused=!r.paused;save();};
       d.querySelector('.run').addEventListener('click', () => handleUser('run ' + r.name, 'chip'));
+      if(r.lastRunId&&typeof Undo!=='undefined'&&Undo.countRun&&Undo.countRun(r.lastRunId)>0){const rollback=document.createElement('button');rollback.className='cbtn';rollback.textContent='UNDO LAST RUN';rollback.title='Undo reversible actions from '+r.lastRunId;rollback.onclick=()=>handleUser('undo '+r.lastRunId,'text');d.querySelector('.run').before(rollback);}
       const ed = document.createElement('button'); ed.type = 'button'; ed.className = 'cbtn rt-edit'; ed.textContent = 'EDIT'; ed.setAttribute('aria-label', 'Edit the routine ' + r.name);
       ed.addEventListener('click', () => openBuilder(r)); d.querySelector('.run').before(ed);
       d.querySelector('.x').addEventListener('click', () => { if (confirm('Delete routine "' + r.name + '"?')) remove(r); });
