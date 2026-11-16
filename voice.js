@@ -37,17 +37,17 @@ const Voice = (() => {
   }
 
   function createUtterance(opts) {
-    const o = Object.assign({ now: () => Date.now(), silenceMs: 1600, maxMs: 30000, idleMs: 8000, promptMs: 700, finalGraceMs: 1200, flushGraceMs: 700, wakeWords: null, isEcho: () => false,
+    const o = Object.assign({ now: () => Date.now(), silenceMs: 1600, maxMs: 30000, idleMs: 8000, promptMs: 700, finalGraceMs: 1200, flushGraceMs: 700, wakeWords: null, fastMs: 0, isEcho: () => false,
       onWake() {}, onPrompt() {}, onProgress() {}, onCommit() {}, onIdle() {}, onDrop() {} }, opts || {});
     const wake = Array.isArray(o.wakeWords) && o.wakeWords.length ? o.wakeWords.map(w => String(w).toLowerCase()) : null;
     let mode = wake ? 'wait' : 'capture';          // wait = listening for the wake word; capture = collecting a command
     let carry = '', from = 0, pieces = [], muted = false;
-    let text = '', spoke = false, startedAt = o.now(), lastHeard = 0, prompted = false, flushing = false, flushAt = 0;
+    let text = '', spoke = false, startedAt = o.now(), lastHeard = 0, prompted = false, flushing = false, flushAt = 0, fast = false;
 
     const sessionText = () => pieces.slice(from).map(p => p.text).join(' ');
     // The newest words are still a guess (interim): "front" is often about to become "frontend". Wait for the final.
     const pendingInterim = () => { const p = pieces[pieces.length - 1]; return pieces.length > from && !!p && !p.isFinal; };
-    function reset(toMode) { mode = toMode; carry = ''; from = pieces.length; text = ''; spoke = false; prompted = false; flushing = false; startedAt = o.now(); }
+    function reset(toMode) { mode = toMode; carry = ''; from = pieces.length; text = ''; spoke = false; prompted = false; flushing = false; fast = false; startedAt = o.now(); }
 
     function update(list) {
       pieces = Array.isArray(list) ? list : [];
@@ -58,6 +58,10 @@ const Voice = (() => {
         if (end < 0) return;
         mode = 'capture'; startedAt = o.now();
         const after = clean(full.slice(end).replace(/^[\s,.!?;:-]+/, ''));
+        // A command already said with the wake word ("hey Jarvis, what's the weather") is one complete
+        // breath: answer after a short pause like Siri — fastMs — instead of the full "pause before I
+        // answer" the settings use for a wake word said on its own (where you may still be thinking).
+        fast = !!after && +o.fastMs > 0;
         o.onWake(!!after);
       }
       let now = full;
@@ -92,7 +96,8 @@ const Voice = (() => {
       if (now - startedAt >= o.maxMs) return commit();
       // Tapped to send: go as soon as the last words are final (or after a short grace).
       if (flushing) { if (!pendingInterim() || now - flushAt >= o.flushGraceMs) commit(); return; }
-      if (now - lastHeard >= o.silenceMs && (!pendingInterim() || now - lastHeard >= o.silenceMs + o.finalGraceMs)) commit();
+      const sil = fast && o.fastMs ? Math.min(o.silenceMs, +o.fastMs) : o.silenceMs;
+      if (now - lastHeard >= sil && (!pendingInterim() || now - lastHeard >= sil + o.finalGraceMs)) commit();
     }
     // Tap again / release the mic: send what was said now (or give up quietly if nothing was) — after the
     // recogniser's final version of the last words, if it is still guessing.

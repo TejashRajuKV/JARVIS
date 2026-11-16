@@ -72,6 +72,21 @@ const WAKE = ['jarvis', 'జార్విస్', 'జార్వీస్', 
   r.final('jarvis write a note'); for (let i = 0; i < 40; i++) { r.interim('word ' + i); r.wait(900); }
   check('Wake word', 'someone talking non-stop is cut off at 30 s', r.commits().length === 1, r.commits().length);
 }
+{ // Siri-quick same-breath command: one breath → short pause, not the full "pause before I answer"
+  const r = rig({ wakeWords: WAKE, fastMs: 900, silenceMs: 1600 });
+  r.final('jarvis open chrome'); r.wait(1000);
+  check('Siri-quick', 'a command said in one breath sends after the fast pause', r.commits().join('|') === 'open chrome', r.log);
+  const s = rig({ wakeWords: WAKE, fastMs: 900, silenceMs: 1600 });
+  s.final('jarvis'); s.wait(500); s.final('open chrome'); s.wait(1000);
+  check('Siri-quick', 'a wake word said on its own still keeps the settings pause', s.commits().length === 0, s.log);
+  s.wait(700);
+  check('Siri-quick', '…and then answers (1000 + 700 = the full 1600 ms)', s.commits().join('|') === 'open chrome', s.log);
+  const g = rig({ wakeWords: WAKE, fastMs: 900, silenceMs: 1600, finalGraceMs: 600 });
+  g.final('jarvis open'); g.interim('front'); g.wait(1100);
+  check('Siri-quick', 'the fast pause still waits for the last words to become final', g.commits().length === 0, g.log);
+  g.final('frontend'); g.wait(1000);
+  check('Siri-quick', '…and then sends the corrected command', g.commits().join('|') === 'open frontend', g.log);
+}
 { // JARVIS hearing itself
   const r = rig({ wakeWords: WAKE, isEcho: x => /yes sir/.test(x) });
   r.final('jarvis'); r.u.setMuted(true); r.final('yes sir'); r.u.setMuted(false);

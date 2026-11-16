@@ -1662,6 +1662,15 @@ if (serverScheduler && 'EventSource' in window) {
       // Windows' recognizer is offline, so it can still wake JARVIS when the browser's online recognizer cannot.
       // If the browser already caught this wake and is collecting the command, let that path finish instead.
       if (micHeld || awaitingCmd) return;
+      // The command came in one breath with the wake word and the page's own listener didn't take it:
+      // run it directly — that's how fast "Hey Siri → command" should be, with no "Yes, sir?" repeat.
+      if (ev.cmd && Date.now() - lastWakeCommit > 2500) {
+        nativeWakeAt = Date.now(); sfx.wake();
+        log('ok', 'heard the wake word and the command in one breath ("' + ev.cmd.slice(0, 60) + '")');
+        setState('LISTENING', 'Heard: "' + ev.cmd + '"');
+        handleUser(ev.cmd, 'wake');
+        return;
+      }
       nativeWakeAt = Date.now(); sfx.wake();
       log('ok', 'offline Windows wake word heard in the JARVIS tab (' + Math.round(ev.conf * 100) + '%)');
       startDictation({ source: 'wake', prompt: true });
@@ -1669,10 +1678,12 @@ if (serverScheduler && 'EventSource' in window) {
     }
     nativeWakeAt = Date.now(); sfx.wake();
     log('ok', 'wake word heard while you were in another tab/app (“' + ev.text + '”, ' + Math.round(ev.conf * 100) + '%)');
+    if (ev.cmd) nativeCmdPending = ev.cmd;    // "hey jarvis open chrome" from another app: it runs when we're back in front
     const r = await callTool('/wake/front', {});
     if (r.result !== 'front') {
       // No JARVIS window to bring forward (e.g. a background tab in a browser window showing another tab).
-      try { if ('Notification' in window && Notification.permission === 'granted') { const n = new Notification('JARVIS — I heard you', { body: 'Click here, then say your command.' }); n.onclick = () => { window.focus(); n.close(); }; } } catch (x) {}
+      nativeCmdPending = '';
+      try { if ('Notification' in window && Notification.permission === 'granted') { const n = new Notification('JARVIS — I heard you' + (ev.cmd ? ': ' + ev.cmd : ''), { body: 'Click here, then say your command.' }); n.onclick = () => { window.focus(); n.close(); }; } } catch (x) {}
       toast('I heard “' + settings.wakeWord + '” — switch to JARVIS and say your command', true);
     }
     if (!document.hidden && document.hasFocus()) wakePageBack();
@@ -3637,6 +3648,10 @@ async function handleUser(text, source) {
 /* ============ speech recognition ============ */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, wakeRec = null, wakeOn = false, awaitingCmd = false, micHeld = false, wakePaused = false;
+// Same-breath wake commands: the Windows listener can hear the command you said together with the wake word
+// ("hey Jarvis, open Chrome") — nativeCmdPending holds it until the window is back in front, and lastWakeCommit
+// is when the page's own collector last took a wake command (so both listeners never run the same sentence).
+let nativeCmdPending = '', lastWakeCommit = 0;
 let analyser = null, micStream = null, micActive = false;
 async function ensureAnalyser() {
   if (analyser) return;
@@ -3845,12 +3860,12 @@ let wakeNetFails = 0, wakeUtt = null, wakeTick = 0;
 // One collector for the whole time the wake word is on: it survives recogniser restarts, so a sentence split by
 // a restart (or by pauses) still arrives whole.
 function makeWakeUtt() {
-  return Voice.createUtterance({ silenceMs: pauseMs(), maxMs: 30000, idleMs: 8000, wakeWords: Lang.wakeWords(settings.wakeWord), isEcho,
+  return Voice.createUtterance({ silenceMs: pauseMs(), fastMs: 900, maxMs: 30000, idleMs: 8000, wakeWords: Lang.wakeWords(settings.wakeWord), isEcho,
     onWake: hasCmd => { awaitingCmd = true; sfx.wake(); log('ok', hasCmd ? 'wake word + command' : 'wake word detected'); setState('LISTENING', 'Listening… I’ll answer when you pause'); },
     // Only if you said just "Jarvis" and then nothing for a moment: answer "Yes, sir?" (muted, so it isn't heard as a command).
     onPrompt: () => { const yes = Persona.say('wake'); setState('LISTENING', yes); speak(yes); },
     onProgress: showHeard,
-    onCommit: t => { awaitingCmd = false; showHeard(''); log('ok', 'heard: "' + t + '"'); handleUser(t, 'wake'); },
+    onCommit: t => { awaitingCmd = false; lastWakeCommit = Date.now(); showHeard(''); log('ok', 'heard: "' + t + '"'); handleUser(t, 'wake'); },
     onIdle: () => { awaitingCmd = false; showHeard(''); if (state === 'LISTENING') setState('LISTENING', 'Say "' + settings.wakeWord + '" to wake me'); },
     onDrop: () => { awaitingCmd = false; showHeard(''); } });
 }
@@ -3970,7 +3985,19 @@ let nativeWakeAt = 0;
 function wakePageBack() {
   if (!wakeOn) return;
   if (wakeHidden) { wakeHidden = false; wakeEndedAt = Date.now(); loopWake(); }
-  if (Date.now() - nativeWakeAt < 8000 && !micHeld) { nativeWakeAt = 0; startDictation({ source: 'wake', prompt: true }); }
+  if (Date.now() - nativeWakeAt < 8000 && !micHeld) {
+    nativeWakeAt = 0;
+    // The command was already said in one breath with the wake word ("hey jarvis, open chrome") —
+    // run it now instead of asking "Yes, sir?" and making you say it again.
+    if (nativeCmdPending) {
+      const cmd = nativeCmdPending; nativeCmdPending = '';
+      log('ok', 'took the command you said with the wake word: "' + cmd.slice(0, 60) + '"');
+      setState('LISTENING', 'Heard: "' + cmd + '"');
+      handleUser(cmd, 'wake');
+      return;
+    }
+    startDictation({ source: 'wake', prompt: true });
+  }
 }
 document.addEventListener('visibilitychange', () => {
   if (!wakeOn) return;

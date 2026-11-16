@@ -138,6 +138,41 @@ function fakeRun() {
   n.stop();
 }
 
+{ // the command said in the same breath as the wake word arrives with the event (Siri-quick)
+  const events = []; let t = 1e6;
+  const f = fakeRun();
+  const n = W.createNativeWake({ isWin: true, broadcast: e => events.push(e), run: f.run, now: () => t });
+  n.set(true);
+  f.spawned[0].p.say({ ready: 'en-US' });
+  f.spawned[0].p.say({ wake: 'hey jarvis open chrome', conf: 0.9, grammar: 'wake' });
+  check('Same-breath command', 'the text after the wake phrase travels with the wake event', events.length === 1 && events[0].cmd === 'open chrome', events[0]);
+  t += 3000;
+  f.spawned[0].p.say({ wake: 'hey jarvis, remind me to call mom', conf: 0.85, grammar: 'other' });
+  check('Same-breath command', 'a full sentence from the catch-all grammar still wakes, with the command', events.length === 2 && events[1].cmd === 'remind me to call mom', events[1]);
+  t += 3000;
+  f.spawned[0].p.say({ wake: 'the kitchen is a mess', conf: 0.9, grammar: 'other' });
+  check('Same-breath command', 'ordinary speech without the wake phrase does not wake', events.length === 2, events);
+  t += 3000;
+  f.spawned[0].p.say({ wake: 'hey jarvis', conf: 0.9, grammar: 'wake' });
+  check('Same-breath command', 'a bare wake word still wakes (no command attached)', events.length === 3 && events[2].cmd === undefined, events[2]);
+  n.stop();
+}
+
+{ // Ordinary speech from the catch-all grammar doesn't wake — and must not pollute the calibration samples
+  const events = []; let t = 1e6;
+  const f = fakeRun();
+  const n = W.createNativeWake({ isWin: true, broadcast: e => events.push(e), run: f.run, now: () => t });
+  n.set(true);
+  f.spawned[0].p.say({ ready: 'en-US' });
+  f.spawned[0].p.say({ text: 'noise', conf: 0.99, grammar: 'other', wake: 'the kitchen is a mess' });
+  check('Same-breath command', 'catch-all speech without the wake phrase: no event, no calibration sample',
+    events.length === 0 && n.calibration().samples === 0, { events, cal: n.calibration() });
+  f.spawned[0].p.say({ wake: 'hey jarvis what is the weather', conf: 0.88, grammar: 'other' });
+  check('Same-breath command', 'catch-all speech WITH the wake phrase wakes and carries the command (and calibrates)',
+    events.length === 1 && events[0].cmd === 'what is the weather' && n.calibration().samples === 1, { events, cal: n.calibration() });
+  n.stop();
+}
+
 // ---- Calibration feature: confidence samples → suggested preset ----
 { // With fewer than 3 samples, calibration returns "need more data"
   const events = []; let t = 1e6;

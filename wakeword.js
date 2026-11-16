@@ -7,6 +7,9 @@
    /api/wake/front to bring the JARVIS window forward and then takes the command with the browser recogniser as usual
    (English, Telugu, Kannada). Runs only while the wake word is switched on. */
 const { spawn } = require('child_process');
+// The page's own wake-phrase matcher (exact spellings + one-letter-off whole words, in any script):
+// the server uses the same rule so what counts as "Jarvis" is identical on both sides.
+const { wakeEnd } = require('./voice.js');
 
 // Long-lived listener. Prints one JSON line per event: {ready}, {wake, conf}, {error}.
 const LISTEN = `
@@ -25,12 +28,16 @@ try {
   $other.Name = 'other'
   $e.LoadGrammar($wake); $e.LoadGrammar($other)
   $e.SetInputToDefaultAudioDevice()
+  // The catch-all grammar is preferred, so "hey jarvis, open chrome" comes back as the WHOLE sentence (the
+  // page splits off the wake phrase); a bare "hey jarvis" still matches it, and the page strips the phrase.
+  $other.Priority = 3
+  $wake.Priority = 1
   [Console]::Out.WriteLine('{"ready":"' + $rec.Culture.Name + '"}'); [Console]::Out.Flush()
   $min = [double]$env:JARVIS_MINCONF
   while ($true) {
     $r = $e.Recognize([TimeSpan]::FromSeconds(10))
-    if ($r -and $r.Grammar.Name -eq 'wake' -and $r.Confidence -ge $min) {
-      [Console]::Out.WriteLine('{"wake":"' + $r.Text + '","conf":' + [Math]::Round($r.Confidence, 2) + '}'); [Console]::Out.Flush()
+    if ($r -and $r.Confidence -ge $min) {
+      [Console]::Out.WriteLine('{"wake":"' + $r.Text + '","conf":' + [Math]::Round($r.Confidence, 2) + ',"grammar":"' + $r.Grammar.Name + '"}'); [Console]::Out.Flush()
     }
   }
 } catch { [Console]::Out.WriteLine('{"error":"' + ($_.Exception.Message -replace '["\\\\]', ' ') + '"}') }
@@ -94,8 +101,20 @@ function createNativeWake({ isWin, broadcast, run = spawn, now = () => Date.now(
     let j; try { j = JSON.parse(line); } catch { return; }
     if (j.ready) { ready = j.ready; error = ''; restarts = 0; }
     if (j.error) error = j.error;
+    if (!j.wake) return;
+    // "hey jarvis, open chrome" is one utterance: everything after the wake phrase is the command, so the
+    // page can run it the way Siri takes what follows "Hey Siri". A bare wake phrase (or a phrase the
+    // recogniser half-heard) still wakes with no command — the page then asks "Yes, sir?" as before.
+    const full = String(j.wake);
+    const end = wakeEnd(full, wakePhrases(persona));
+    // Ordinary speech caught by the catch-all grammar only counts as a wake if the text really contains
+    // the wake phrase — anything else is just conversation and must not wake JARVIS (or the calibration).
+    if (j.grammar && j.grammar !== 'wake' && end < 0) return;
     // One "Jarvis" can come out as two results ("hey" + "jarvis"): one event per 2 seconds.
-    if (j.wake && now() - lastWake > 2000) { lastWake = now(); recordConf(j.conf); broadcast({ type: 'wake', text: j.wake, conf: j.conf }); }
+    if (now() - lastWake <= 2000) return;
+    lastWake = now(); recordConf(j.conf);
+    const cmd = end >= 0 ? full.slice(end).replace(/^[\s,.!?;:-]+/, '').trim() : '';
+    broadcast({ type: 'wake', text: full, conf: j.conf, cmd: cmd || undefined });
   }
   function start() {
     if (proc || !isWin) return;
