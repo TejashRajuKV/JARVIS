@@ -49,19 +49,21 @@ const PROVIDERS = {
   googleShopping: { name: 'Google Shopping / other sellers', domains: ['google.com/shopping', 'google.com/search'], query: q => q + ' Google Shopping price India' },
   abhibus: { name: 'AbhiBus', domains: ['abhibus.com'], query: q => 'site:abhibus.com ' + q + ' bus fare' },
   redbus: { name: 'redBus', domains: ['redbus.in'], query: q => 'site:redbus.in ' + q + ' bus fare' },
-  government: { name: 'Government bus services', domains: ['gov.in', 'ksrtc.in', 'apsrtconline.in', 'tsrtconline.in', 'msrtc.maharashtra.gov.in', 'tnstc.in', 'keralartc.com'], query: q => 'official government state transport bus booking ' + q + ' fare' }
+  government: { name: 'Government bus services', domains: ['gov.in', 'nic.in', 'ksrtc.in', 'apsrtconline.in', 'tsrtconline.in', 'msrtc.maharashtra.gov.in', 'tnstc.in', 'keralartc.com'], query: q => 'official government state transport bus booking ' + q + ' fare' }
 };
-function hostOf(href) { try { return new URL(href).hostname.toLowerCase().replace(/^www\./, ''); } catch { return ''; } }
 function providerMatch(provider, href) {
-  const host = hostOf(href);
-  if (!host) return false;
-  if (provider === 'googleShopping') { const u = new URL(href); return (host === 'google.com' && (u.pathname.startsWith('/shopping') || u.searchParams.get('tbm') === 'shop')) || /shopping\.google\./i.test(host); }
+  let url;
+  try { url = new URL(href); } catch { return false; }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return false;
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  if (provider === 'googleShopping') return (host === 'google.com' || host === 'google.co.in') &&
+    (/^\/shopping(?:\/|$)/.test(url.pathname) || url.searchParams.get('tbm') === 'shop');
   return PROVIDERS[provider].domains.some(d => host === d || host.endsWith('.' + d));
 }
 function parsePriceCandidates(text) {
   const s = String(text || '').replace(/\u00a0/g, ' ');
   const out = [], seen = new Set();
-  const re = /(?:₹\s*|INR\s*|Rs\.?\s*)(\d{1,3}(?:,\d{2,3})+|\d{3,7})(?:\.(\d{1,2}))?/gi;
+  const re = /(?:₹\s*|INR\s*|Rs\.?\s*)(\d{1,3}(?:,\d{2,3})+|\d{2,9})(?:\.(\d{1,2}))?(?!\d|[,.]\d)/gi;
   let m;
   while ((m = re.exec(s)) && out.length < 4) {
     const amount = Number((m[1] || '').replace(/,/g, '') + (m[2] ? '.' + m[2] : ''));
@@ -78,24 +80,24 @@ function relevanceScore(text, query) {
   return words.filter(w => hay.includes(w)).length / words.length;
 }
 function comparisonPlan(body) {
-  const b = body || {}, type = String(b.type || '');
+  const b = body || {}, type = String(b.type || 'product');
   if (type === 'product') {
     const query = clean(b.query, 160);
     if (!query) return { error: 'Enter the product name and, if possible, the exact model or variant.' };
-    const requested = String(b.provider || 'all').toLowerCase().replace(/\\s+/g, '');
-    const providerKey = requested === 'googleshopping' ? 'googleShopping' : requested;
+    const requested = String(b.provider || 'all').trim().toLowerCase();
+    const providerKey = ['shopping', 'googleshopping'].includes(requested) ? 'googleShopping' : requested;
     const keys = requested === 'all' ? ['amazon', 'flipkart', 'googleShopping'] : [providerKey];
     if (keys.some(key => !['amazon', 'flipkart', 'googleShopping'].includes(key))) return { error: 'Unsupported product provider.' };
     return { type, query, entries: keys.map(key => ({ key, ...PROVIDERS[key], search: PROVIDERS[key].query(query) })) };
   }
   if (type === 'bus') {
-    const from = clean(b.from, 80), to = clean(b.to, 80), date = clean(b.date, 40);
+    const from = clean(b.from, 100), to = clean(b.to, 100), date = clean(b.date, 40);
     if (!from || !to || from.toLowerCase() === to.toLowerCase()) return { error: 'Enter different departure and destination cities.' };
     const route = from + ' to ' + to + (date ? ' on ' + date : '');
-    const requested = String(b.provider || 'all');
+    const requested = String(b.provider || 'all').trim().toLowerCase();
     const keys = requested === 'all' ? ['abhibus', 'redbus', 'government'] : [requested];
     if (keys.some(k => !['abhibus', 'redbus', 'government'].includes(k))) return { error: 'Unsupported bus provider.' };
-    return { type, query: route, entries: keys.map(key => ({ key, ...PROVIDERS[key], search: PROVIDERS[key].query(route) })) };
+    return { type, query: route, route: { from, to, date }, entries: keys.map(key => ({ key, ...PROVIDERS[key], search: PROVIDERS[key].query(route) })) };
   }
   return { error: 'Comparison type must be product or bus.' };
 }
@@ -137,14 +139,17 @@ async function comparePublicListings(body, deps) {
         snippet: 'No matching public result with a reliable price was found. Open this provider search to check current availability and final price.',
         relevance: 1, priceCandidates: [], priceSource: null, priceVerified: false, fallback: true });
     }
-    return { key: p.key, name: p.name, results, status: results.some(r => !r.fallback) ? 'results' : 'provider_search_fallback' };
+    return { key: p.key, id: p.key === 'googleShopping' ? 'shopping' : p.key, name: p.name, results, status: results.some(r => !r.fallback) ? 'results' : 'provider_search_fallback' };
   }));
   const candidates = providers.flatMap(p => p.results.map(r => ({ provider: p.name, title: r.title, url: r.url, ...(r.priceCandidates[0] || {}), priceSource: r.priceSource, priceVerified: false, relevance: r.relevance })))
-    .filter(x => Number.isFinite(x.amount) && x.amount > 0);
+    .filter(x => Number.isFinite(x.amount) && x.amount > 0 && x.relevance >= 0.25);
   candidates.sort((a, b) => a.amount - b.amount);
+  const lowest = new Set(candidates.map(x => x.provider)).size >= 2 ? candidates[0] : null;
   return {
-    success: true, type: plan.type, query: plan.query, providers,
-    lowestObserved: candidates.length ? { ...candidates[0], display: candidates[0].display + ' (observed; unverified)' } : null,
+    success: true, type: plan.type, query: plan.query, route: plan.route, providers,
+    lowestObserved: lowest ? { ...lowest, value: lowest.amount, verifiedCheckout: false } : null,
+    priceComparisonStatus: lowest ? 'lowest_observed_candidate_not_checkout_verified' : 'insufficient_comparable_prices',
+    note: 'Prices are observations from public listings. Verify the final checkout total with the provider.',
     checkedAt: new Date().toISOString(),
     limitations: ['Public search snippets and readable pages can be stale or variant-mismatched.', 'Final delivery, booking fees, coupons, bank offers and availability may change at checkout.', 'No provider is labelled cheapest unless comparable, verified final prices are available.'],
     verifiedCheapest: null

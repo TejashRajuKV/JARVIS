@@ -1,6 +1,6 @@
 # Registered API routes
 
-Observed on the isolated app via its mounted Express stack. Static files and the separate Phone Hub HTTPS gateway are not in this inventory. A call may verify validation or refusal rather than a successful effect.
+Observed on the isolated app via its mounted Express stack. Static files and the separate Phone Hub HTTPS gateway are not in this inventory. A call may exercise validation or refusal. Rows marked Fixture success also have a positive-path check in tests/positive-routes.test.js.
 
 | Method and path | Baseline | Final API gate |
 |---|---|---|
@@ -9,7 +9,7 @@ Observed on the isolated app via its mounted Express stack. Static files and the
 | `DELETE /api/facegreet/enroll` | Called | Called |
 | `DELETE /api/homeassistant/config` | Omitted from scanner | Called |
 | `DELETE /api/llm/providers/:id` | Called | Called |
-| `DELETE /api/phonehub/devices/:id` | Unexplained | Called |
+| `DELETE /api/phonehub/devices/:id` | Unexplained | Called + fixture success |
 | `DELETE /api/research/sessions/:id` | Omitted from scanner | Called |
 | `DELETE /api/state` | Called | Called |
 | `DELETE /api/workflows` | Called | Called |
@@ -23,7 +23,7 @@ Observed on the isolated app via its mounted Express stack. Static files and the
 | `GET /api/browser-recovery` | Called | Called |
 | `GET /api/calendar/events` | Omitted from scanner | Called |
 | `GET /api/calendar/status` | Omitted from scanner | Called |
-| `GET /api/calling/status` | Unexplained | Called |
+| `GET /api/calling/status` | Unexplained | Called + fixture success |
 | `GET /api/chatarchive/status` | Called | Called |
 | `GET /api/codeTools` | Called | Called |
 | `GET /api/config` | Called | Called |
@@ -45,27 +45,27 @@ Observed on the isolated app via its mounted Express stack. Static files and the
 | `GET /api/mirror/status` | Called | Called |
 | `GET /api/ocr/status` | Called | Called |
 | `GET /api/phone/auth` | Called | Called |
-| `GET /api/phonehub/status` | Unexplained | Called |
+| `GET /api/phonehub/status` | Unexplained | Called + fixture success |
 | `GET /api/platform/status` | Omitted from scanner | Called |
 | `GET /api/portwatch/status` | Omitted from scanner | Called |
 | `GET /api/rag/status` | Called | Called |
 | `GET /api/remote/status` | Called | Called |
 | `GET /api/research/sessions` | Omitted from scanner | Called |
 | `GET /api/research/sessions/:id` | Omitted from scanner | Called |
-| `GET /api/room/image` | Unexplained | Called |
-| `GET /api/room/images` | Unexplained | Called |
+| `GET /api/room/image` | Unexplained | Called + fixture success |
+| `GET /api/room/images` | Unexplained | Called + fixture success |
 | `GET /api/scan/status` | Called | Called |
 | `GET /api/setup/status` | Called | Called |
-| `GET /api/shots/image` | Unexplained | Called |
-| `GET /api/shots/recent` | Unexplained | Called |
+| `GET /api/shots/image` | Unexplained | Called + fixture success |
+| `GET /api/shots/recent` | Unexplained | Called + fixture success |
 | `GET /api/shots/status` | Called | Called |
 | `GET /api/skills` | Called | Called |
 | `GET /api/state.js` | Called | Called |
 | `GET /api/sys/dashboard` | Called | Called |
 | `GET /api/sys/wifi` | Called | Called |
 | `GET /api/tool/sandboxInfo` | Called | Called |
-| `GET /api/tool/screenshots` | Unexplained | Called |
-| `GET /api/tool/screenshots/:id` | Unexplained | Called |
+| `GET /api/tool/screenshots` | Unexplained | Called + fixture success |
+| `GET /api/tool/screenshots/:id` | Unexplained | Called + fixture success |
 | `GET /api/tool/systemInfo` | Called | Called |
 | `GET /api/undo/pending` | Omitted from scanner | Called |
 | `GET /api/update/check` | Documented exemption | Exempt: contacts GitHub |
@@ -86,7 +86,7 @@ Observed on the isolated app via its mounted Express stack. Static files and the
 | `POST /api/backup/preview` | Called | Called |
 | `POST /api/backup/restore` | Called | Called |
 | `POST /api/browser-recovery/open/:id` | Called | Called |
-| `POST /api/calling/call` | Unexplained | Called |
+| `POST /api/calling/call` | Unexplained | Called + fixture success |
 | `POST /api/chat` | Called | Called |
 | `POST /api/chatarchive/append` | Called | Called |
 | `POST /api/chatarchive/backfill` | Called | Called |
@@ -95,7 +95,7 @@ Observed on the isolated app via its mounted Express stack. Static files and the
 | `POST /api/claim` | Called | Called |
 | `POST /api/code/apply` | Omitted from scanner | Called |
 | `POST /api/code/generate` | Omitted from scanner | Called |
-| `POST /api/commerce/compare` | Unexplained | Called |
+| `POST /api/commerce/compare` | Unexplained | Called + fixture success |
 | `POST /api/config` | Called | Called |
 | `POST /api/csv/analyze` | Called | Called |
 | `POST /api/csv/chart` | Called | Called |
@@ -147,8 +147,8 @@ Observed on the isolated app via its mounted Express stack. Static files and the
 | `POST /api/phone/auth/check` | Called | Called |
 | `POST /api/phone/auth/setup` | Called | Called |
 | `POST /api/phone/reply` | Documented exemption | Exempt: sends a phone notification |
-| `POST /api/phonehub/devices/:id/grant` | Unexplained | Called |
-| `POST /api/phonehub/pairing` | Unexplained | Called |
+| `POST /api/phonehub/devices/:id/grant` | Unexplained | Called + fixture success |
+| `POST /api/phonehub/pairing` | Unexplained | Called + fixture success |
 | `POST /api/portwatch/check` | Omitted from scanner | Called |
 | `POST /api/portwatch/enable` | Omitted from scanner | Called |
 | `POST /api/project/wiki` | Called | Called |
@@ -266,7 +266,7 @@ Observed on the isolated app via its mounted Express stack. Static files and the
 | `POST /api/translate` | Called | Called |
 | `POST /api/tts` | Documented exemption | Exempt: network text-to-speech voice |
 | `POST /api/vision/ask` | Called | Called |
-| `POST /api/vision/saved-image` | Unexplained | Called |
+| `POST /api/vision/saved-image` | Unexplained | Called + fixture success |
 | `POST /api/wake/front` | Documented exemption | Exempt: moves the JARVIS window in front of your apps |
 | `POST /api/wake/native` | Called | Called |
 | `POST /api/watch/add` | Called | Called |
@@ -279,4 +279,4 @@ Observed on the isolated app via its mounted Express stack. Static files and the
 | `PUT /api/calendar/config` | Omitted from scanner | Called |
 | `PUT /api/homeassistant/config` | Omitted from scanner | Called |
 
-Express also registers explicit pages at `GET /home` and `GET /welcome`. One observed duplicate declaration for `POST /api/commerce/compare` is counted once.
+Express also registers explicit pages at `GET /home` and `GET /welcome`. Round 2 removed the duplicate `POST /api/commerce/compare` handler. The positive-route test checks that Express mounts exactly one handler for it.
