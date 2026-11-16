@@ -165,6 +165,15 @@ const check = (d, ok) => results.push([d, !!ok]);
   check('…the install runs, then the backend is started again', calls.indexOf('/tool/installDeps') >= 0 && calls.lastIndexOf('/tool/startProcess') > calls.indexOf('/tool/installDeps'));
   check('…the restarted server is verified as answering', /installed dependencies .*backend on port 5000 is answering/.test(healed.text));
   check('…and the rest of the plan carries on, verified', /frontend is answering/.test(healed.text));
+  calls.length = 0; global.callTool = devTools({
+    '/tool/processStatus': b => b.which === 'backend' && calls.includes('/tool/installDeps')
+      ? { error: 'status unavailable' } : { found: false }
+  });
+  await envRun(DEPS);
+  const restartedSteps = Agent.lastRuns(1)[0].steps;
+  const unchecked = restartedSteps.find(s => s.args?.which === 'backend');
+  check('dependency recovery cannot verify a restarted backend when the status endpoint fails',
+    unchecked?.status === 'unverified' && /could not check/i.test(unchecked.note), unchecked || restartedSteps);
   calls.length = 0; said.length = 0;
   global.jarvisSay = o => { said.push(o); if (o.confirm) setTimeout(() => (o.intent === 'AGENT_CONFIRM' ? o.confirm.onCancel() : o.confirm.onConfirm()), 0); };
   const declined = await envRun(DEPS);

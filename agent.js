@@ -194,7 +194,7 @@ const Agent = (() => {
     const label = port ? which + ' on port ' + port : which;
     for (let i = 0; i < 3; i++) {
       const st = await callTool('/tool/processStatus', { name, which });
-      if (!st || st.found === undefined) return { status: 'verified', note: port ? which + ' listening on port ' + port : which + ' running' };
+      if (!st || st.error || typeof st.found !== 'boolean') return { status: 'unverified', note: 'could not check whether the ' + label + ' is running' };
       if (!st.found || st.alive === false) return { status: 'failed', note: which + ' stopped right after starting' + (st.tail ? ': ' + lastLine(st.tail) : '') };
       if (st.responding === true) return { status: 'verified', note: label + ' is answering' };
       if (st.responding === null) return { status: 'unverified', note: which + ' running (no port to check)' };
