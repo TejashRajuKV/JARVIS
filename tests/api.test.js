@@ -37,18 +37,6 @@ const NOT_TESTABLE = {
   'POST /api/ocr/screen': 'captures your screen',
 };
 
-// Every route declared in the server files, as "METHOD /path" with :params, for the gate.
-const ROUTE_FILES = ['server.js', 'system-tools.js', 'agent-tools.js', 'rag.js', 'skills.js', 'scheduler.js', 'backup.js', 'codetools.js',
-  'hotkey.js', 'hello.js', 'applock.js', 'llm.js', 'update.js', 'tts.js', 'autostart.js', 'wakeword.js',
-  'skillpack.js', 'aihealth.js', 'workflow-memory.js', 'browser-recovery.js', 'diagnostics.js', 'watchdog.js', 'nearby.js', 'csvtools.js', 'projectwiki.js', 'imagegen.js', 'pdftools.js', 'diskcare.js', 'ocr.js', 'scan.js', 'chatarchive.js', 'studyserver.js', 'keepalive.js', 'mirror.js', 'shotindex.js', 'devtools.js', 'whisper.js'];
-const ROUTES = [];
-for (const f of ROUTE_FILES) {
-  const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
-  for (const m of src.matchAll(/app\.(get|post|put|delete)\(\s*(\[[^\]]*\]|'[^']*')/g)) {
-    const paths = m[2].startsWith('[') ? [...m[2].matchAll(/'([^']*)'/g)].map(x => x[1]) : [m[2].slice(1, -1)];
-    for (const p of paths) if (p.startsWith('/api/')) ROUTES.push(m[1].toUpperCase() + ' ' + p);
-  }
-}
 // wttr.in's j1 shape, trimmed to what server.js reads. "/Bengaluru" → a normal city; "/" (no city) → an IP lookup that
 // only found the country (whole-degree coordinates); anything else → 404, like a place wttr.in doesn't know.
 function fakeWttr() {
@@ -70,20 +58,25 @@ function fakeWttr() {
   return new Promise(r => srv.listen(0, '127.0.0.1', () => r({ url: 'http://127.0.0.1:' + srv.address().port, close: () => srv.close() })));
 }
 const hit = new Set();
-const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); return m === method && new RegExp('^' + rp.replace(/:[^/]+/g, '[^/]+') + '$', 'i').test(p.split('?')[0]); });
 
 (async () => {
   // A fake wttr.in (JARVIS_WTTR_URL), so the weather route's parsing is tested on a real response shape without the internet.
   const wttr = await fakeWttr();
   // the disk-care temp cleaner is pointed at a throwaway folder named Temp, never at the real %TEMP%
   const diskTemp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'api-disk-')), 'Temp'); fs.mkdirSync(diskTemp);
-  const S = await startServer({ env: { JARVIS_TEMP_DIR: diskTemp, GIT_AUTHOR_NAME: 'JARVIS test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'JARVIS test', GIT_COMMITTER_EMAIL: 'test@example.invalid',
+  const S = await startServer({ recordRoutes: true, env: { JARVIS_PHONEHUB_HOST: '', JARVIS_CALLING_ENABLED: 'false', JARVIS_CALL_ON_REMINDERS: 'false', JARVIS_TEMP_DIR: diskTemp, GIT_AUTHOR_NAME: 'JARVIS test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'JARVIS test', GIT_COMMITTER_EMAIL: 'test@example.invalid',
     JARVIS_WTTR_URL: wttr.url, JARVIS_WHISPER_DIR: path.join(diskTemp, '..', 'no-whisper-here'),
     npm_config_update_notifier: 'false', npm_config_fund: 'false', npm_config_audit: 'false' } });   // a fresh profile would make npm check the network for updates, which can take longer than the 4 s the dev-server checks allow
+  const ROUTES = [...new Set(S.routes.filter(([, p]) => typeof p === 'string' && p.startsWith('/api/')).map(([m, p]) => m + ' ' + p))];
+  const routeOf = (method, p) => ROUTES.find(r => {
+    const [m, route] = r.split(' ');
+    return m === method && require('path-to-regexp')(route, [], { end: true }).test(p.split('?')[0]);
+  });
   let lastReq = ''; const rec = (method, p) => { lastReq = method + ' ' + p; const r = routeOf(method, p); if (r) hit.add(r); };
   const post = (p, b, x) => { rec('POST', p); return S.post(p, b, x); };
   const get = (p, x) => { rec('GET', p); return S.get(p, x); };
   const del = (p, b) => { rec('DELETE', p); return S.api('DELETE', p, b); };
+  const put = (p, b) => { rec('PUT', p); return S.api('PUT', p, b); };
   const SB = S.sandbox;
   try {
     /* ---------- security ---------- */
@@ -949,6 +942,89 @@ const routeOf = (method, p) => ROUTES.find(r => { const [m, rp] = r.split(' '); 
       fs.writeFileSync(path.join(S.home, 'Documents', 'twin-note.txt'), 'a'); fs.writeFileSync(path.join(desk, 'twin-note.txt'), 'b');
       z = await post('/api/tool/readFile', { name: 'twin-note.txt' });
       check('Access', 'a name found in two places asks which one', z.status === 300 && (z.json.choices || []).length === 2, z.json);
+    }
+
+    /* ---------- additional API surface ---------- */
+    {
+      let v = await get('/api/calling/status');
+      check('Calling', 'disabled in an unconfigured test install', v.status === 200 && v.json.enabled === false, v.json);
+      v = await post('/api/calling/call', { message: 'Test announcement' });
+      check('Calling', 'a disabled provider refuses the call before any external request', v.status === 503 && v.json.error === 'CALLING_NOT_CONFIGURED', v.json);
+      v = await get('/api/phonehub/status');
+      check('Phone Hub', 'gateway off and no paired devices in a fresh profile', v.status === 200 && v.json.gateway === false && v.json.devices.length === 0, v.json);
+      v = await post('/api/phonehub/pairing', {});
+      check('Phone Hub', 'owner can request a short-lived pairing code', v.status === 201 && /^\d{6}$/.test(v.json.code) && v.json.expiresAt > v.json.createdAt, v.status);
+      v = await post('/api/phonehub/devices/unknown/grant', { capabilities:['voice'] });
+      check('Phone Hub', 'grant for an unknown device is refused', v.status === 404 && v.json.error === 'DEVICE_NOT_FOUND', v.json);
+      v = await del('/api/phonehub/devices/unknown');
+      check('Phone Hub', 'revoking an unknown device returns a clear error', v.status === 404 && v.json.error === 'DEVICE_NOT_FOUND', v.json);
+      v = await post('/api/commerce/compare', { type:'bus', from:'Bengaluru' });
+      check('Commerce', 'comparison without a complete route refuses before web access', v.status === 400 && /destination/i.test(v.json.error), v.json);
+      v = await post('/api/services/prepare', { type:'invalid' });
+      check('Commerce', 'unknown hand-off is refused', v.status === 400 && !!v.json.error, v.json);
+      v = await get('/api/tool/screenshots');
+      check('Gallery', 'isolated profile returns a screenshot array', v.status === 200 && Array.isArray(v.json.screenshots), v.status);
+      v = await get('/api/tool/screenshots/invalid');
+      check('Gallery', 'invalid screenshot identifier is refused', v.status === 400 && /invalid screenshot/i.test(v.json.error), v.json);
+      v = await post('/api/vision/saved-image', { path: path.join(SB, 'missing.png') });
+      check('Gallery', 'an invalid saved image is refused before any model call', [400, 403, 404].includes(v.status) && !!v.json.error, v.json);
+      v = await get('/api/room/images');
+      const roomImage = v.json.images?.[0];
+      check('Gallery', 'the earlier room snapshot is listed', v.status === 200 && /^watch-/.test(roomImage?.name || ''), v.json);
+      v = await get('/api/room/image?name=' + encodeURIComponent(roomImage?.name || 'missing'));
+      check('Gallery', 'returns the recorded snapshot bytes', v.status === 200 && v.text.length > 8, v.status);
+      v = await get('/api/shots/recent');
+      check('Gallery', 'indexed image listing responds', v.status === 200 && Array.isArray(v.json.images), v.json);
+      v = await get('/api/shots/image?path=' + encodeURIComponent(path.join(SB, 'not-indexed.png')));
+      check('Gallery', 'unindexed photo cannot be read from the index', [400, 404].includes(v.status) && !!v.json.error, v.json);
+      v = await get('/api/calendar/status');
+      check('Calendar', 'feed is disconnected by default', v.status === 200 && v.json.configured === false, v.json);
+      v = await put('/api/calendar/config', { url:'http://calendar.example.test/private.ics' });
+      check('Calendar', 'cleartext feed refused', v.status === 400 && /HTTPS/.test(v.json.error), v.json);
+      v = await get('/api/calendar/events');
+      check('Calendar', 'disconnected feed has no events route result', v.status === 404 && /connect/i.test(v.json.error), v.json);
+      v = await del('/api/calendar/config');
+      check('Calendar', 'disconnect is idempotent', v.status === 200 && v.json.success, v.json);
+      v = await get('/api/homeassistant/status');
+      check('Home Assistant', 'disconnected by default', v.status === 200 && v.json.configured === false, v.json);
+      v = await put('/api/homeassistant/config', { url:'file:///test', token:'fake' });
+      check('Home Assistant', 'non-HTTP connection is refused', v.status === 400 && /HTTP/.test(v.json.error), v.json);
+      v = await get('/api/homeassistant/entities');
+      check('Home Assistant', 'entity list explains that configuration is required', v.status === 502 && /Settings/.test(v.json.error), v.json);
+      v = await get('/api/homeassistant/entity/invalid');
+      check('Home Assistant', 'invalid entity cannot be read', v.status === 400 && /entity/i.test(v.json.error), v.json);
+      v = await post('/api/homeassistant/service', { domain:'sensor', service:'turn_on', entity_id:'sensor.temperature' });
+      check('Home Assistant', 'sensors cannot be changed', v.status === 400 && /not supported/.test(v.json.error), v.json);
+      v = await del('/api/homeassistant/config');
+      check('Home Assistant', 'disconnect is idempotent', v.status === 200 && v.json.success, v.json);
+      v = await get('/api/platform/status');
+      check('Agent Platform', 'status advertises validation only', v.status === 200 && v.json.phases?.workflowValidation?.validationOnly === true, v.json);
+      v = await post('/api/workflows/validate', { steps: [] });
+      check('Agent Platform', 'invalid workflow is refused', v.status === 400 && v.json.ok === false, v.json);
+      const question = 'Offline fixture research question';
+      v = await post('/api/research/sessions', { question, findings: 'Example notes' });
+      const researchId = v.json.session?.id;
+      check('Agent Platform', 'research session is saved', v.status === 201 && !!researchId, v.json);
+      v = await get('/api/research/sessions');
+      check('Agent Platform', 'saved session appears in the notebook', v.status === 200 && v.json.sessions?.some(x => x.id === researchId), v.json);
+      v = await get('/api/research/sessions/' + researchId);
+      check('Agent Platform', 'saved question is read back', v.status === 200 && v.json.session?.question === question, v.json);
+      v = await get('/api/audit/events');
+      check('Agent Platform', 'audit contains save metadata without question text', v.status === 200 && v.json.events?.some(x => x.action === 'save-research-session') && !v.text.includes(question), v.json);
+      v = await del('/api/research/sessions/' + researchId);
+      check('Agent Platform', 'deleting a saved session removes it', v.status === 200 && (await get('/api/research/sessions/' + researchId)).status === 404, v.json);
+      v = await post('/api/code/generate', {});
+      check('JARVIS Code', 'missing prompt refused before model call', v.status === 400 && /build or change/.test(v.json.error), v.json);
+      v = await post('/api/code/apply', {});
+      check('JARVIS Code', 'empty apply refused', v.status === 400 && /no files/i.test(v.json.error), v.json);
+      v = await get('/api/undo/pending');
+      check('Undo', 'pending undo feed returns a bounded list', v.status === 200 && Array.isArray(v.json.items) && v.json.items.length <= 40, v.json);
+      v = await get('/api/portwatch/status');
+      check('Portwatch', 'status responds before starting the watcher', v.status === 200 && v.json.enabled === false, v.json);
+      v = await post('/api/portwatch/enable', { on:false });
+      check('Portwatch', 'turning the watcher off is accepted', v.status === 200 && v.json.enabled === false, v.json);
+      v = await post('/api/portwatch/check', {});
+      check('Portwatch', 'read-only check reports ports or an explicit OS limitation', (v.status === 200 && Array.isArray(v.json.ports)) || (v.status === 501 && /unavailable/i.test(v.json.error)), v.status);
     }
 
     /* ---------- erase all (guarded; allowed here because Hello isn't enrolled in the temp install) ---------- */

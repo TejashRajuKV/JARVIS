@@ -12,8 +12,13 @@ const freePort = () => new Promise((resolve, reject) => {
   s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
 });
 
-async function startServer({ env = {}, keepHome = false, home: reuseHome } = {}) {
+async function startServer({ env = {}, keepHome = false, home: reuseHome, recordRoutes = false } = {}) {
   const home = reuseHome || fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-test-'));
+  const routeLog = path.join(home, 'test-routes.json');
+  if (recordRoutes) {
+    const preload = path.join(__dirname, 'record-routes.js').split(path.sep).join('/');
+    env = { ...env, JARVIS_ROUTE_LOG: routeLog, NODE_OPTIONS: (env.NODE_OPTIONS || process.env.NODE_OPTIONS || '') + ' --require "' + preload + '"' };
+  }
   const port = await freePort();
   const child = spawn(process.execPath, [path.join(ROOT, 'server.js')], {
     cwd: ROOT, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
@@ -52,7 +57,8 @@ async function startServer({ env = {}, keepHome = false, home: reuseHome } = {})
     }
     if (!keepHome) for (let i = 0; i < 5; i++) { try { fs.rmSync(home, { recursive: true, force: true }); break; } catch { await new Promise(r => setTimeout(r, 300)); } }
   }
-  return { port, base, home, sandbox, api, post, get, stop, log: () => log };
+  const routes = recordRoutes ? JSON.parse(fs.readFileSync(routeLog, 'utf8')) : undefined;
+  return { port, base, home, sandbox, api, post, get, stop, routes, log: () => log };
 }
 
 // A tiny check/report helper shared by the suites: prints FAIL lines and a "name: passed/total" summary.
