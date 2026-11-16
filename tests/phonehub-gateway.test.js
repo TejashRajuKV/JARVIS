@@ -114,13 +114,51 @@ async function call(handler, options) {
     assert.match(gatewaySource, /text.event-stream/);
     assert.match(gatewaySource, /req\.on\('close', close\)/);
   });
-  check('gateway exposes voice and call endpoints only behind explicit capabilities', () => {
-    const source = gatewaySource;
-    assert.match(source, /VOICE_ROUTE/);
-    assert.match(source, /auth\.authorize\(\{ token: tokenMatch \? tokenMatch\[1\] : '', nonce \}, 'voice'\)/);
-    assert.match(source, /auth\.authorize\(\{ token: tokenMatch \? tokenMatch\[1\] : '', nonce \}, 'calls'\)/);
-    assert.match(source, /CALL_RATE_LIMITED/);
-    assert.match(source, /CALLING_NOT_CONFIGURED/);
+  let nonce = 0, providerError = null;
+  const providerMessages = [];
+  const scoped = createPhoneHubRequestHandler({ auth, host: '192.168.1.10',
+    respondToVoice: async text => 'Heard: ' + text,
+    makeCall: async ({ message }) => {
+      if (providerError) throw Object.assign(new Error(providerError), { code:providerError });
+      providerMessages.push(message); return { status:'queued' };
+    }
+  });
+  const scopedPost = (url, body) => call(scoped, { method:'POST', url, body, headers:{
+    'content-type':'application/json', authorization:'Bearer ' + paired.token, 'x-jarvis-nonce':'scoped_test_nonce_' + ++nonce
+  } });
+  const voice = '/v1/voice/respond', announcement = '/v1/call';
+  res = await scopedPost(voice, {text:'Test phrase'});
+  const noCall = await scopedPost(announcement, {message:'Test announcement'});
+  check('a newly paired device receives neither voice nor call permission', () => {
+    assert.equal(res.statusCode, 403);
+    assert.equal(noCall.statusCode, 403);
+    assert.deepEqual(providerMessages, []);
+  });
+  auth.grant(paired.device.id, ['voice']);
+  res = await scopedPost(voice, {text:'Test phrase'});
+  const stillNoCall = await scopedPost(announcement, {message:'Test announcement'});
+  check('voice permission returns a reply but cannot place a call', () => {
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.json().reply, 'Heard: Test phrase');
+    assert.equal(stillNoCall.statusCode, 403);
+  });
+  auth.grant(paired.device.id, ['calls']);
+  res = await scopedPost(announcement, {message:'Meet at 5 PM, room\u0000 12.'});
+  const noVoice = await scopedPost(voice, {text:'Test phrase'});
+  check('calls permission forwards the full announcement after stripping controls, without enabling voice', () => {
+    assert.equal(res.statusCode, 202);
+    assert.equal(noVoice.statusCode, 403);
+    assert.deepEqual(providerMessages, ['Meet at 5 PM, room 12.']);
+  });
+  providerError = 'CALL_RATE_LIMITED';
+  res = await scopedPost(announcement, {message:'Test announcement'});
+  check('call rate limitation is reported as 429', () => {
+    assert.equal(res.statusCode, 429); assert.equal(res.json().error, 'CALL_RATE_LIMITED');
+  });
+  providerError = 'CALLING_NOT_CONFIGURED';
+  res = await scopedPost(announcement, {message:'Test announcement'});
+  check('unconfigured calling provider is reported as 503', () => {
+    assert.equal(res.statusCode, 503); assert.equal(res.json().error, 'CALLING_NOT_CONFIGURED');
   });
   console.log('phonehub-gateway: ' + total + ' checks passed');
 })().catch(() => { process.exitCode = 1; });

@@ -5,6 +5,7 @@
 const fs = require('node:fs');
 const https = require('node:https');
 const net = require('node:net');
+const { cleanMessage } = require('./calling-service');
 
 const DEFAULT_MAX_BODY_BYTES = 4096;
 const DEFAULT_PORT = 18443;
@@ -138,7 +139,7 @@ function createPhoneHubRequestHandler(options = {}) {
         if (!result.ok) return json(res, result.error === 'CAPABILITY_DENIED' ? 403 : 401, { error: result.error });
         if (!makeCall) return json(res, 503, { error: 'CALLING_UNAVAILABLE' });
         const body = await readJsonBody(req, maxBodyBytes);
-        const message = String(body.message || '').replace(/[\\u0000-\\u001f\\u007f]/g, ' ').trim().slice(0, 600);
+        const message = cleanMessage(body.message);
         if (!message) return json(res, 400, { error: 'CALL_MESSAGE_REQUIRED' });
         try {
           const call = await makeCall({ message }, { source: 'phone' });
