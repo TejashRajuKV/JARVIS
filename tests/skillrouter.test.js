@@ -9,7 +9,7 @@ const check = (n, ok, x) => { total++; if (!ok) { fail++; console.log('FAIL  ' +
 
 const loaded = SP.loadAll(path.join(__dirname, '..', 'skills-bundled'), path.join(__dirname, 'no-such-folder'));
 const skills = loaded.skills.map(s => SP.publicView(s));
-check('the bundled skills load with keywords, and the two internal ones are kept out of suggestions', skills.length === 10 && skills.find(s => s.name === 'research').keywords.length > 5 && skills.filter(s => s.suggest === false).map(s => s.name).sort().join() === 'csv-insights,image-prompt', skills.map(s => [s.name, s.suggest]));
+check('the bundled skills load with keywords, and the two internal ones are kept out of suggestions', skills.length === 13 && skills.find(s => s.name === 'research').keywords.length > 5 && skills.filter(s => s.suggest === false).map(s => s.name).sort().join() === 'csv-insights,image-prompt', skills.map(s => [s.name, s.suggest]));
 
 const name = (t, list = skills) => { R.reset(); const p = R.pick(t, list); return p ? p.name : null; };
 /* ---------- messages that should suggest a skill ---------- */
@@ -50,8 +50,8 @@ check('pick: two skills fitting about equally → say nothing rather than guess 
 check('stemming: reviewing / reviews / reviewed meet "review"; sources meets source', R.stem('reviewing') === R.stem('review') + '' || R.content('reviewing reviews reviewed').length === 1);
 R.reset(); const explicit = R.pick('please research this topic with sources and evidence', skills);
 R.reset(); const buried = R.pick('I was talking about how to research this topic with sources and evidence', skills);
-check('an explicit trigger after a polite lead-in is recognized', explicit && explicit.name === 'research' && explicit.phrase === true, explicit);
-check('a trigger phrase buried in a sentence is not marked explicit for auto-run', buried && buried.name === 'research' && buried.phrase === false, buried);
+check('an explicit trigger after a polite lead-in is recognized', explicit && explicit.name === 'research-brief' && explicit.phrase === true, explicit);
+check('a trigger phrase buried in a sentence is not marked explicit for auto-run', buried && buried.name === 'research-brief' && buried.phrase === false, buried);
 check('stop words and short words are dropped', R.content('what is the best way to do it').join() === 'best');
 check('words keep # and + (c++, c#) and hyphens split', R.content('c++ and c# step-by-step').includes('c++') && R.content('step-by-step').includes('step'));
 

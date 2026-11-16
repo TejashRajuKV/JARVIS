@@ -85,7 +85,7 @@ check('scan: a missing folder is fine', P.loadAll(path.join(tmp, 'nope'), path.j
 {
   const real = P.scanDir(path.join(__dirname, '..', 'skills-bundled'), 'bundled');
   const got = real.skills.map(s => s.name).sort();
-  check('bundled: research, plan-then-act, quick, code-review, csv-insights and image-prompt all load', JSON.stringify(got) === '["code-review","csv-insights","image-prompt","plan-then-act","quick","research"]' && !real.skipped.length, { got, skipped: real.skipped });
+  check('bundled: all shipped skills load', JSON.stringify(got) === '["career-helper","code-review","csv-insights","debugging-coach","image-prompt","meeting-notes","plan-then-act","project-planner","quick","research","research-brief","study-coach","study-sprint"]' && !real.skipped.length, { got, skipped: real.skipped });
   const by = n => real.skills.find(s => s.name === n) || {};
   check('bundled: uses wired up', by('research').uses === 'research' && by('plan-then-act').uses === 'plan' && by('code-review').uses === 'files' && by('quick').uses === '' && by('csv-insights').uses === '' && by('image-prompt').uses === '');
   check('bundled: none is cut or empty; the user-facing ones have trigger phrases (csv-insights is called by the CSV tool, not by words)', real.skills.every(s => !s.truncated && s.body.length > 80 && (s.triggers.length || ['csv-insights', 'image-prompt'].includes(s.name))));
