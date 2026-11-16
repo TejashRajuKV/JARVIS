@@ -1,5 +1,5 @@
 'use strict';
-const assert = require('node:assert/strict');
+const assert = require('./lib/assertions')('calling-service');
 const { createCallingService, escapeXml, cleanMessage, isQuietHours } = require('../calling-service');
 
 (async () => {
@@ -55,5 +55,5 @@ const { createCallingService, escapeXml, cleanMessage, isQuietHours } = require(
   const missing = createCallingService({ env: {} });
   assert.equal(missing.status().enabled, false);
   await assert.rejects(() => missing.call({ message: 'Hello' }), e => e.code === 'CALLING_NOT_CONFIGURED');
-  console.log('calling-service: configuration, safe TwiML, opt-in, quiet hours and rate-limit cases defined');
+  assert.report();
 })().catch(error => { console.error(error); process.exitCode = 1; });

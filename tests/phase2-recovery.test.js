@@ -1,6 +1,6 @@
 'use strict';
 // Load the real checkpoint code with a disposable browser store and a controlled clock.
-const assert = require('node:assert/strict');
+const assert = require('./lib/assertions')('phase2-recovery');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -15,7 +15,8 @@ let writes = 0;
 const agent = vm.runInNewContext(source + '\nAgent', {
   store:{ get:(k, fallback) => structuredClone(state.get(k) ?? fallback),
     set:(k, value) => { writes++; state.set(k, structuredClone(value)); } },
-  getJSON: async () => ({}), setTimeout:() => 0, setInterval:() => 0
+  getJSON: async () => ({}), setTimeout:() => 0, setInterval:() => 0, clearInterval() {},
+  performance, log() {}, bumpStat() {}, Persona: {sir:() => 'sir'}, plural: (n, word) => n + ' ' + word + 's'
 });
 assert.equal(agent.recoverySummary().ok, false, 'no interruption has been recorded yet');
 const interrupted = agent.sweepInterrupted(now);
@@ -32,4 +33,10 @@ assert.equal(summary.checkpoint.steps[1].status, 'notrun');
 assert.ok(!JSON.stringify(summary).includes('fixture private text'), 'the summary omits executable arguments');
 assert.equal(agent.sweepInterrupted(now).length, 0, 'interruption reporting is idempotent');
 assert.equal(writes, 1, 'sweeping again and reading the checkpoint do not write');
-console.log('phase2-recovery: stale checkpoint, private argument filtering and idempotence passed');
+(async () => {
+  await agent.execute({goal: 'Empty fixture plan', steps: []}, {unattended: true});
+  const written = state.get(key).find(record => record.goal === 'Empty fixture plan');
+  assert.equal(written?.checkpointVersion, 1, 'a checkpoint written by the executor carries a schema version');
+  assert.equal(agent.active().length, 0, 'the dashboard active-runs accessor is empty after completion');
+  assert.report();
+})().catch(error => { console.error(error); process.exitCode = 1; });

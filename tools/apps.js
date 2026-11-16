@@ -8,6 +8,10 @@ ToolHandlers.add('apps', async function (p, raw, s, a) {
     case 'OPEN_APPLICATION': {
       const q = a.app || s;
       const app = NLU.findApp(q);
+      const site = NLU.findSite(q);
+      const target = q.replace(/^(open|launch|start|run|fire up|boot up|boot|pull up|bring up|load|show me)\s+(up\s+)?(the\s+|my\s+)?/, '');
+      // An explicit web alias such as "WhatsApp Web" takes priority over a partial app name.
+      if (site && (!app || (site.names.includes(target) && !app.names.includes(target)))) return openSite(site);
       if (app) {
         toolStep('openApplication → ' + app.k);
         const r = await callTool('/tool/openApplication', { app: app.k });
@@ -16,10 +20,8 @@ ToolHandlers.add('apps', async function (p, raw, s, a) {
         { const at = Date.now(); Undo.push('opened ' + app.n, async () => { if (Date.now() - at > 5 * 6e4) throw new Error('it was opened more than 5 minutes ago, so I won’t close it (you may have work in it)'); const x = await callTool('/tool/closeApplication', { app: app.k }); if (!x.success) throw new Error(x.error || 'it isn’t running'); return 'Closed ' + app.n + ' again.'; }); }
         return { text: pick(['Opening ', 'Launching ', 'Starting ']) + '**' + app.n + '**.', speak: 'Opening ' + app.n, tool: 'openApplication' };
       }
-      const site = NLU.findSite(q);
-      if (site) return openSite(site);
       if (/\b(folder|directory)\b/.test(s)) return executeTool({ ...p, intent: 'OPEN_FOLDER' }, raw);
-      const what = s.replace(/^(open|launch|start|run|fire up|boot up|boot|pull up|bring up|load|show me)\s+(up\s+)?(the\s+|my\s+)?/, '');
+      const what = target;
       return { text: 'I couldn’t find an app called "' + what + '" on this laptop. I can open anything in your Start menu by its name — or any website.', suggestions: ['Open ' + what + '.com', 'Search Google for ' + what] };
     }
     case 'RECENT_CLOSED_APP_STATUS': {

@@ -52,6 +52,11 @@ R.reset(); const explicit = R.pick('please research this topic with sources and 
 R.reset(); const buried = R.pick('I was talking about how to research this topic with sources and evidence', skills);
 check('an explicit trigger after a polite lead-in is recognized', explicit && explicit.name === 'research-brief' && explicit.phrase === true, explicit);
 check('a trigger phrase buried in a sentence is not marked explicit for auto-run', buried && buried.name === 'research-brief' && buried.phrase === false, buried);
+const coreResearch = skills.filter(skill => skill.name !== 'research-brief');
+R.reset(); const coreExplicit = R.pick('please research this topic with sources and evidence', coreResearch);
+R.reset(); const coreBuried = R.pick('I was talking about how to research this topic with sources and evidence', coreResearch);
+check('the original research skill still recognizes its trigger with a polite lead-in', coreExplicit?.name === 'research' && coreExplicit.phrase === true, coreExplicit);
+check('the original research skill still refuses to mark a buried trigger explicit', coreBuried?.name === 'research' && coreBuried.phrase === false, coreBuried);
 check('stop words and short words are dropped', R.content('what is the best way to do it').join() === 'best');
 check('words keep # and + (c++, c#) and hyphens split', R.content('c++ and c# step-by-step').includes('c++') && R.content('step-by-step').includes('step'));
 

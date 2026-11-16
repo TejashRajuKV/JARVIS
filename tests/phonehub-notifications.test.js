@@ -1,6 +1,6 @@
 'use strict';
 
-const assert = require('node:assert/strict');
+const assert = require('./lib/assertions')('phonehub-notifications');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createPhoneHubNotifications } = require('../phonehub-notifications');
@@ -37,4 +37,4 @@ const scheduler = fs.readFileSync(path.join(__dirname, '..', 'scheduler.js'), 'u
 assert.match(server, /getNotifications: async \(\) => phoneHubNotifications\.list\(50\)/);
 assert.match(scheduler, /app\.locals\.phoneHubNotify\(\{ type: ev\.type, title, body/);
 assert.match(scheduler, /title: 'JARVIS trigger', body: label/);
-console.log('phonehub-notifications: bounded queue and scheduler integration cases defined');
+assert.report();

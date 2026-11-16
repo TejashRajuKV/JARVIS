@@ -1,6 +1,6 @@
 // Persistent personal-memory regression tests. Run manually: node tests/memory.test.js
 // This file deliberately does not run as part of the assistant's automated editing workflow.
-const assert = require('node:assert/strict');
+const assert = require('./lib/assertions')('memory');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -91,4 +91,4 @@ api.memDel(entry.id);
 assert.ok(!api.memory.some(row => row.id === entry.id), 'deleting one item removes it');
 undo.at(-1).fn();
 assert.equal(api.memory[0].id, entry.id, 'undo restores the deleted record');
-console.log('memory: migration, validation, persistence, search, clear, delete and undo passed');
+assert.report();

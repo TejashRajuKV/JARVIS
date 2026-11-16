@@ -199,6 +199,38 @@ if (followOpen.intent !== 'OPEN_APPLICATION' || !followOpen.contextResolved || N
 const repeatRisk = NLU.classify(NLU.normalize('do that again', 'jarvis'), { lastIntent: 'DELETE_FILE', lastCmd: { text: 'delete report.pdf', t: Date.now() } });
 if (repeatRisk.intent === 'DELETE_FILE') { fail++; console.log('FAIL  [context] repeating a destructive command must not be inferred'); }
 
-const total = CASES.length + 2 + ROMAN.length + NOT_ROMAN.length + NEGATION_CASES.length + FUZZY_STRENGTHEN_CASES.length;
-console.log(`${total - fail}/${total} passed`);
-process.exit(fail ? 1 : 0);
+const navigation = [
+  ['open WhatsApp', '/tool/openApplication', 'whatsapp'],
+  ['open WhatsApp Web', '/tool/openUrl', 'https://web.whatsapp.com'],
+  ['open BookMyShow', '/tool/openUrl', 'https://in.bookmyshow.com/explore/movies'],
+  ['open redBus', '/tool/openUrl', 'https://www.redbus.in'],
+  ['open IRCTC', '/tool/openUrl', 'https://www.irctc.co.in'],
+  ['open it', '/tool/openUrl', 'https://www.youtube.com']
+];
+
+(async () => {
+  const vm = require('node:vm');
+  const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  const calls = [];
+  let dispatch;
+  const box = vm.createContext({
+    NLU, ToolHandlers: {add: (name, handler) => { dispatch = handler; }},
+    callTool: (endpoint, data) => { calls.push([endpoint, data.url || data.app]); return {success: true}; },
+    toolStep() {}, Undo: {push() {}}, ctx: {}, pick: options => options[0]
+  });
+  const script = read('script.js');
+  vm.runInContext(script.slice(script.indexOf('async function openSite('), script.indexOf('function enableOnlineAction(')), box);
+  vm.runInContext(read('tools/apps.js'), box);
+  for (const [input, endpoint, target] of navigation) {
+    calls.length = 0;
+    const p = input === 'open it' ? followOpen : NLU.classify(NLU.normalize(input, 'jarvis'), {});
+    await dispatch(p, input, p.text, p.args || {});
+    if (calls.length !== 1 || calls[0][0] !== endpoint || calls[0][1] !== target) {
+      fail++;
+      console.log('FAIL  [dispatch] ' + input + ' expected ' + endpoint + ' ' + target + ', got ' + JSON.stringify(calls));
+    }
+  }
+  const total = CASES.length + 2 + ROMAN.length + NOT_ROMAN.length + NEGATION_CASES.length + FUZZY_STRENGTHEN_CASES.length + navigation.length;
+  console.log(`${total - fail}/${total} passed`);
+  process.exitCode = fail ? 1 : 0;
+})().catch(error => { console.error(error); process.exitCode = 1; });
