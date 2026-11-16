@@ -32,7 +32,7 @@ const ask = async (intent, args, conf) => { reply = { success: true, intent, con
     if (!out || !real.has(out.intent)) bad.push(k + ' → ' + (out && out.intent));
   }
   check('every intent the model may name becomes an intent that script.js really has a handler for (none are dead)', bad.length === 0, bad);
-  o = await ask('COMMERCE_COMPARE', { type: 'bus', from: 'Bengaluru', to: 'Mysuru', date: 'tomorrow', provider: 'all' });
+  let o = await ask('COMMERCE_COMPARE', { type: 'bus', from: 'Bengaluru', to: 'Mysuru', date: 'tomorrow', provider: 'all' });
   check('Qwen commerce intent maps to the existing comparison tool with bounded route fields', o.intent === 'COMMERCE_COMPARE' && o.tool === 'web' && o.args.type === 'bus' && o.args.from === 'Bengaluru' && o.args.to === 'Mysuru', o);
   o = await ask('COMMERCE_COMPARE', { type: 'bus', from: 'Bengaluru' });
   check('Qwen commerce intent with a missing destination falls back safely', o === null);
@@ -47,7 +47,7 @@ const ask = async (intent, args, conf) => { reply = { success: true, intent, con
   check('an aborted Qwen request falls back to the existing rule result', timedOut === null && NLUQ.describe().last.reason === 'timeout', { result: timedOut, last: NLUQ.describe().last });
   check('the timeout timer is also cleared after an abort', timerCleared);
   triggerTimeout = false;
-  let o = await ask('CLOSE_APPLICATION', { app: 'x'.repeat(500) });
+  o = await ask('CLOSE_APPLICATION', { app: 'x'.repeat(500) });
   check('close-application targets are bounded before reaching the tool', o.args.app.length === 100, o && o.args.app.length);
   o = await ask('CLOSE_APPLICATION', { name: '  notepad\n  ' });
   check('close-application aliases are normalized like other model-provided text', o.args.app === 'notepad', o && o.args.app);
