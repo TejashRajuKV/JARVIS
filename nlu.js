@@ -639,6 +639,9 @@ const NLU = (() => {
     ['STOP_PROCESS', /^stop\s+(?:the\s+|my\s+)?.+?(?:'s)?\s+(?:backend|frontend|server|app)\b/, .95, 'stopProcess'],
 
     // productivity
+    // "suit up" — the whole study scene (theme, HUD, volume, focus, and closing distractions after your OK).
+    // Placed before BLOCK_DISTRACTIONS / FOCUS_START so a combined "suit up and start focus" isn't read as only a focus start.
+    ['SUIT_UP', /\bsuit\s+(?:itself\s+|me\s+)?up\b|\bgear me up\b|\bbattle stations\b/, .95, 'productivity'],
     ['BLOCK_DISTRACTIONS', /^concentrate$|\b(block|kill|close|remove|stop|no more|no)( all)?( the| my)? distract(?:ions?|ing)( apps?| programs?| stuff)?\b|\b(deep work|distraction[- ]free|do not disturb|dnd|monk|beast) mode\b|\bget me focused\b|\bhelp me (focus|concentrate)\b/, .95, 'distractions'],
     ['SHOW_DESKTOP', /\b(show (me )?(the |my )?desktop|minimi[sz]e (all|everything|all (the )?windows)|hide (all )?(the )?windows|go to (the )?desktop)\b/, .95, 'showDesktop'],
     ['OPEN_KNOWN_FOLDER', /\b(open|show|go to)\b\s+(?:up\s+)?(?:me\s+)?(?:my\s+|the\s+)?(downloads|desktop|pictures|photos|music|videos)(?:\s+folder)?$/, .94, 'openKnownFolder'],

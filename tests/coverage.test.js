@@ -60,6 +60,7 @@ const FEATURES = [
   ['Laptop', 'MEDIA_PREV', ['previous song', 'go back a track']], ['Laptop', 'MEDIA_STOP', ['stop the music', 'stop playback']],
   ['Laptop', 'PANIC_ON', ['panic', 'stop everything']], ['Laptop', 'PANIC_OFF', ['resume', 'all clear']],
   ['Laptop', 'UNDO', ['undo', 'undo that']], ['Laptop', 'BACKUP', ['back up my data', 'export all my data']],
+  ['Laptop', 'REOPEN_RECENT_APP', ['open the recently closed app', 'reopen the last app']], ['Laptop', 'RECENT_CLOSED_APP_STATUS', ['which app did i just close', 'what was the last app i closed']],
   // ---- clipboard
   ['Clipboard', 'READ_CLIPBOARD', ["what's in my clipboard", 'clipboard']], ['Clipboard', 'WRITE_CLIPBOARD', ['copy hello world to the clipboard', 'put my email to the clipboard']],
   ['Clipboard', 'CLIP_HISTORY', ['clipboard history', 'what did i copy earlier']],
@@ -89,6 +90,7 @@ const FEATURES = [
   ['Study', 'SET_TIMER', ['set a timer for 10 minutes', 'timer 5 min']], ['Study', 'CANCEL_TIMERS', ['cancel all timers', 'stop the timer']],
   ['Study', 'FOCUS_START', ['start a focus session', 'start a 45-minute session']], ['Study', 'FOCUS_STOP', ['stop the focus session', 'stop studying']],
   ['Study', 'BLOCK_DISTRACTIONS', ['block distractions', 'close distracting apps']],
+  ['Study', 'SUIT_UP', ['suit up', 'suit up on dbms with music']],
   ['Study', 'ADD_DEADLINE', ['add assignment os lab record due friday', 'i have a dbms quiz on monday']],
   ['Study', 'LIST_DEADLINES', ["what's due this week", 'deadlines']],
   ['Study', 'ADD_CLASS', ['add class dbms on monday at 10am', 'add class os on tuesday at 11am']],

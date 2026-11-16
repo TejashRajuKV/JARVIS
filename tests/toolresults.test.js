@@ -15,8 +15,9 @@ function sandbox(replies) {
     callTool: async (ep, data) => { calls.push([ep, data]); const r = replies[ep]; return typeof r === 'function' ? r(data) : JSON.parse(JSON.stringify(r || OFFLINE)); },
     fetch: async () => ({ json: async () => ({}) }),
     toolStep: () => {}, setFocus: () => {}, setResults: () => {}, log: () => {},
-    jarvisSay: m => said.push(m), startFocus: m => focus.push(m), stopFocus: () => true,
+    jarvisSay: m => said.push(m), startFocus: m => { focus.push(m); return m; }, stopFocus: () => true,
     Undo: { push: l => undo.push(l) }, settings: { focusMin: 25 }, ctx: {},
+    saveFocus: () => {}, Persona: { sir: () => 'sir' },
     Agent: { DISTRACTORS: ['discord', 'steam', 'whatsapp', 'spotify'] },
     NLU: { APPS: [{ k: 'discord', n: 'Discord' }, { k: 'steam', n: 'Steam' }, { k: 'whatsapp', n: 'WhatsApp' }, { k: 'spotify', n: 'Spotify' }] },
     Thresholds: { isBatteryLow: l => l < 20 },
@@ -75,6 +76,44 @@ function sandbox(replies) {
   }
   s = sandbox({ '/tool/cancelShutdown': { success: true, nothingPending: true } }); r = await s.run('SYS_CANCEL_SHUTDOWN', 'cancel shutdown');
   check('cancel shutdown: nothing pending is said plainly (not "Cancelled")', /no shutdown or restart pending/.test(r.text) && !/^Cancelled/.test(r.text), r);
+
+  // ---- suit up (the whole study scene)
+  const suitHarness = s => ({
+    applyTheme: t => { s.appliedTheme.push(t); },
+    HUDOverlay: { active: false, activate: () => { s.HUDOverlay.active = true; s.hudOn.push(true); }, deactivate: () => { s.HUDOverlay.active = false; } },
+    executeTool: async p => ({ text: '▶ Playing **Lofi study beats** on YouTube.', ok: true }),
+    _reset: () => { s.appliedTheme = []; s.hudOn = []; delete s.startCalled; },
+  });
+  // nothing open → the whole scene runs straight away: theme, HUD, volume, focus, one composite undo entry
+  s = sandbox({ '/tool/runningApps': { success: true, checked: ['discord', 'steam', 'whatsapp', 'spotify'], running: [] }, '/sys/volume': d => (d.level === undefined ? { level: 40 } : { level: d.level }) });
+  Object.assign(s, suitHarness(s)); s._reset();
+  r = await s.run('SUIT_UP', 'suit up for 45 minutes');
+  check('suit up: nothing open → the scene runs now: theme applied, HUD started, focus started, volume set to 30, one composite undo', /Suit up/.test(r.text) && /45 minutes/.test(r.text) && s.appliedTheme.includes('arc') && s.focus.length === 1 && s.hudOn.length === 1 && s.calls.some(c => c[0] === '/sys/volume' && c[1] && c[1].level === 30) && s.undo.length === 1, r);
+  check('suit up: nothing open → the reply names the scene, never pretends apps were closed', !/Closed \*\*/.test(r.text) && !/I will close/.test(r.text), r.text);
+  // unreadable process list → honest note, the quiet parts of the scene still run, nothing closed
+  s = sandbox({ '/tool/runningApps': { success: true, checked: [], running: [], error: 'could not read the process list' }, '/sys/volume': d => (d.level === undefined ? { level: 40 } : { level: d.level }) });
+  Object.assign(s, suitHarness(s)); s._reset();
+  r = await s.run('SUIT_UP', 'suit up');
+  check('suit up: unreadable process list → says "couldn’t check" and still runs the quiet parts of the scene', /couldn’t check/.test(r.text) && s.focus.length === 1 && r.ok === true, r);
+  // something open → asks first; the confirm closes what it can, starts the scene, and reports a partial close honestly
+  s = sandbox({
+    '/tool/runningApps': { success: true, checked: ['discord', 'steam', 'whatsapp', 'spotify'], running: ['discord', 'steam'] },
+    '/tool/closeApplication': d => (d.app === 'discord' ? { success: true } : { error: 'access denied' }),
+    '/sys/volume': d => (d.level === undefined ? { level: 40 } : { level: d.level }),
+  });
+  Object.assign(s, suitHarness(s)); s._reset();
+  r = await s.run('SUIT_UP', 'suit up on dbms with music');
+  check('suit up: distracting apps open → tells what it will do and asks first, nothing applied before the OK', /I will close \*\*Discord, Steam\*\*/.test(r.text) && !!r.confirm && s.focus.length === 0 && s.appliedTheme.length === 0, r);
+  await r.confirm.onConfirm();
+  const suitMsg = (s.said[0] || {}).text || '';
+  check('suit up: after the OK — Discord closed, Steam refused (named honestly), subject kept, music played, theme + HUD + volume + focus ran, one composite undo', /Closed Discord\./.test(suitMsg) && /\*\*Steam\*\* didn’t close/.test(suitMsg) && /dbms/.test(suitMsg) && /lofi study beats/.test(suitMsg) && s.appliedTheme.includes('arc') && s.hudOn.length === 1 && s.focus.length === 1 && s.undo.length === 1, suitMsg);
+  // a session already running is kept, never silently restarted (the FOCUS_START rule)
+  s = sandbox({ '/tool/runningApps': { success: true, checked: ['discord'], running: [] }, '/sys/volume': d => (d.level === undefined ? { level: 40 } : { level: d.level }) });
+  Object.assign(s, suitHarness(s)); s._reset();
+  s.focus = { phase: 'focus', min: 25, end: Date.now() + 12 * 6e4, subject: undefined };   // a session already running
+  s.startFocus = () => { s.startCalled = true; };
+  r = await s.run('SUIT_UP', 'suit up');
+  check('suit up: a running focus session is kept and named, and startFocus is not called again', /Kept your running \*\*25-minute\*\*/.test(r.text) && !s.startCalled && s.appliedTheme.includes('arc') && s.hudOn.length === 1, r);
 
   console.log(`toolresults: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;

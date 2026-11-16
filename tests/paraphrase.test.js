@@ -30,6 +30,7 @@ const CASES = [
   [['FOCUS_START'], ['start a focus session', 'i wanna study for 45 mins', 'start a 45 minute session', 'focus mode on', 'enable focus mode', 'lets do a pomodoro', 'begin study session for 30 minutes', 'i need to focus for an hour']],
   [['FOCUS_STOP'], ['stop the focus session', 'end focus', 'stop studying', 'cancel my pomodoro', 'i am done with focus']],
   [['BLOCK_DISTRACTIONS'], ['block distractions', 'close distracting apps', 'close all the distracting apps', 'kill distractions', 'no distractions please', 'help me concentrate']],
+  [['SUIT_UP'], ['suit up', 'suit up, jarvis', 'suit me up', 'time to suit up', 'suit up for 45 minutes', 'suit up on dbms with music', 'gear me up']],
   [['SET_TIMER'], ['set a timer for 10 minutes', 'timer 10 min', '10 minute timer', 'start a timer for 5 mins', 'countdown 2 minutes', 'set timer 90 seconds']],
   [['REMIND'], ['remind me to call mom at 6pm', 'remind me in 10 minutes to drink water', 'set a reminder for 7am to wake up', 'dont let me forget to submit the form tomorrow', 'remind me at 9 to revise dbms', 'pay fees every year in july']],
   [['ADD_TODO'], ['add milk to my to-do list', 'add revise dbms to my todo', 'new task: finish the lab record', 'put buy pens on my list', 'todo: call the hostel office', 'add submit assignment to tasks']],

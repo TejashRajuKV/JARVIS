@@ -33,6 +33,8 @@ const CASES = [
   ['mute', 'VOLUME_MUTE'], ['next song', 'MEDIA_NEXT'], ['take a screenshot', 'SCREENSHOT'], ['show desktop', 'SHOW_DESKTOP'],
   ['save that code as bfs.py', 'SAVE_CODE'], ['run bfs.py', 'RUN_FILE'], ['open it in vs code', 'OPEN_IN_EDITOR'], ['upcoming contests', 'CONTESTS'],
   ['make flashcards on normalization', 'FLASH_MAKE'], ['plan my day', 'PLAN_DAY'], ['block distractions', 'BLOCK_DISTRACTIONS'],
+  // suit up — the whole study scene in one command (distinct from the "study mode" routine)
+  ['suit up', 'SUIT_UP'], ['suit up for 25 minutes on dbms with music', 'SUIT_UP'], ['gear me up, jarvis', 'SUIT_UP'],
   ['HI JARVIS ARE YOU THERE', 'PRESENCE'], ['jarvis?', 'PRESENCE'], ['good job', 'PRAISE'], ["i'm home", 'HOME'], ['thanks jarvis', 'THANKS'],
   // "lock jarvis" is JARVIS's own lock; the Windows screen lock keeps its phrases
   ['lock jarvis', 'LOCK_JARVIS'], ['lock yourself', 'LOCK_JARVIS'], ['lock the app', 'LOCK_JARVIS'], ['secure jarvis', 'LOCK_JARVIS'],

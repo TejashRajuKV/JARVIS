@@ -128,6 +128,7 @@ module.exports = function agentTools({ APPS, safePath, anyPath, llm, DEFAULT_MOD
     DISPLAY_OFF: ['confirm', 'This turns the screen off.'],
     CLOSE_APPLICATION: ['confirm', 'This closes the app; unsaved work in it may be lost.'],
     BLOCK_DISTRACTIONS: ['confirm', 'This closes apps like WhatsApp, Discord and Spotify.'],
+    SUIT_UP: ['confirm', 'Suit up closes distracting apps, changes the theme and the volume, and starts a focus session.'],
     RUN_FILE: ['confirm', 'This runs a program on your laptop.'],
     PASTE_TO_EDITOR: ['confirm', 'This types into whichever window is in front.'],
     SCREEN_READ: ['confirm', 'This captures everything visible on your screen, including anything private.'],

@@ -44,6 +44,72 @@ ToolHandlers.add('productivity', async function (p, raw, s, a) {
         jarvisSay({ text: (shut.length ? 'Closed ' + nm(shut) + '.' : 'I couldn’t close any of them.') + (left.length ? ' **' + nm(left) + '** didn’t close — please close ' + (left.length > 1 ? 'them' : 'it') + ' yourself.' : '') + (withFocus ? ' Focus session running for **' + min + ' minutes** — you have got this.' : ''), intent: 'BLOCK_DISTRACTIONS' });
       } } };
     }
+    case 'SUIT_UP': {
+      /* "suit up" — the whole study scene in one command: arc theme, HUD, volume to 30 and a focus session;
+         distracting apps are closed only after your OK (the same close flow "block distractions" uses).
+         "suit up for 25 minutes on dbms with music" directs it; "undo" puts back everything it changed.
+         A session that is already running is kept, never silently restarted (the FOCUS_START rule). */
+      const orig = String(p.original || s || '').toLowerCase();
+      const asked = +a.minutes || +((orig.match(/(\d+)\s*(?:minutes?|mins?)\b/) || [0, 0])[1]) || 0;
+      const want = asked || 45;
+      const subjM = orig.match(/\b(?:on|for)\s+(?!\d|a\b|an\b|the\b|my\b|me\b)([A-Za-z][\w+#. -]{1,28}?)(?=\s+(?:with|music|lofi|playlist|song|session|\d)|[.,!?]?$)/i);
+      const subject = subjM ? subjM[1].trim().replace(/\s+/g, ' ') : '';
+      const withMusic = /\b(music|lofi|playlist|song)\b/.test(orig);
+      const themeName = (typeof THEMES !== 'undefined' && THEMES && THEMES.arc ? THEMES.arc.label : 'Arc reactor');
+      toolStep('suitUp');
+      toolStep('runningApps');
+      const pr = await callTool('/tool/runningApps', { apps: Agent.DISTRACTORS });
+      const probed = !pr.error && Array.isArray(pr.checked) && !!pr.checked.length;
+      const running = probed ? (pr.running || []) : null;   // null = the process list could not be read: nothing is closed
+      const prevTheme = settings.theme;
+      const prevVol = await callTool('/sys/volume', {});
+      const sceneText = startedMin => 'Suit up ⚡\n- Theme **' + themeName + '**\n'
+        + (turnedHudOn ? '- HUD on\n' : '') + '- Volume **30%**\n'
+        + (startedMin ? '- Focus session running for **' + startedMin + ' minutes**' + (subject ? ' on **' + subject + '**' : '') + '\n' : keptMin ? '- Kept your running **' + keptMin + '-minute** focus session\n' : '')
+        + (musicNote ? '- Music: ' + musicNote + '\n' : '')
+        + 'Say **undo** to put it all back.';
+      let turnedHudOn = false, keptMin = 0, startedMin = 0, musicNote = '';
+      const scene = async shut => {
+        if (typeof applyTheme === 'function') applyTheme('arc');
+        if (!settings.hudOverlay && typeof HUDOverlay !== 'undefined') { try { HUDOverlay.activate(); turnedHudOn = true; } catch (e) { log('warn', 'suit up: HUD could not start: ' + (e && e.message)); } }
+        const vr = await callTool('/sys/volume', { level: 30 });
+        if (vr && vr.error) log('warn', 'suit up: volume failed: ' + vr.error);
+        const already = typeof focus !== 'undefined' && focus && focus.phase === 'focus';
+        if (already) { keptMin = focus.min; }                     // a running session is kept, not restarted
+        else { const m1 = startFocus(want); startedMin = typeof m1 === 'number' && m1 ? m1 : want; if (subject && focus) { focus.subject = subject; saveFocus(); } }
+        if (withMusic && typeof executeTool === 'function') {
+          try { const m2 = await executeTool({ intent: 'YOUTUBE', args: { query: 'lofi hip hop study beats' }, text: '', viaAgent: true }, ''); if (m2 && m2.ok === false) log('warn', 'suit up: ' + (m2.error || 'music failed')); } catch (e) { log('warn', 'suit up: music failed: ' + (e && e.message)); }
+          musicNote = '**lofi study beats** on YouTube.';
+        }
+        const volBack = prevVol && typeof prevVol.level === 'number' ? prevVol.level : null;
+        Undo.push('suit up scene', async () => {
+          const parts = [];
+          for (const k of shut) { const x = await callTool('/tool/openApplication', { app: k }); if (x && !x.error) parts.push((NLU.APPS.find(y => y.k === k) || { n: k }).n); }
+          if (typeof applyTheme === 'function') applyTheme(prevTheme);
+          if (turnedHudOn && typeof HUDOverlay !== 'undefined') { try { HUDOverlay.deactivate(); } catch (e) { /* already gone */ } }
+          if (volBack !== null) { const x = await callTool('/sys/volume', { level: volBack }); if (x && x.error) throw new Error(x.error); }
+          if (startedMin && !keptMin) { if (stopFocus(true)) parts.push('the focus session stopped'); }
+          return 'The study scene is back the way it was' + (parts.length ? (': ' + parts.join(' · ') + '.') : ' — nothing else needed changing.');
+        });
+      };
+      const speakLine = () => 'Scene set' + (startedMin ? ': theme, HUD, volume and a ' + startedMin + '-minute focus session. Good luck.' : keptMin ? ': theme, HUD, volume and your ' + keptMin + '-minute session kept. Carry on.' : '.');
+      if (running === null || !running.length) {
+        await scene([]);
+        let text = sceneText(startedMin);
+        if (running === null) text = 'I couldn’t check which apps are open, so I didn’t close anything.\n\n' + text;
+        toolStep('suitUp scene');
+        return { text, speak: speakLine(), tool: 'suitUp', op: { kind: 'suit_up', min: startedMin || keptMin || want }, suggestions: ['How productive was I today?'] };
+      }
+      const names = running.map(k => (NLU.APPS.find(x => x.k === k) || { n: k }).n);
+      return { text: 'Suit up: I will close **' + names.join(', ') + '**' + (withMusic ? ', open lofi study beats' : '') + ', apply the **' + themeName + '** theme, turn the HUD on, set the volume to 30 and start a **' + want + '-minute**' + (asked ? '' : ' (the suit-up default)') + ' focus session' + (subject ? ' on **' + subject + '**' : '') + '. Unsaved chats/music will stop.', op: { kind: 'suit_up', close: running }, confirm: { yes: 'SUIT UP', no: 'CANCEL', onConfirm: async () => {
+        const nm = ks => ks.map(k => (NLU.APPS.find(x => x.k === k) || { n: k }).n).join(', ');
+        const shut = [];
+        for (const k of running) { toolStep('closeApplication → ' + k); const c = await callTool('/tool/closeApplication', { app: k }); if (c && c.success) shut.push(k); }
+        await scene(shut);
+        const speak = 'Scene set' + (startedMin ? ': a ' + startedMin + '-minute focus session. Good luck, ' + Persona.sir() + '.' : ': carry on, ' + Persona.sir() + '.');
+        jarvisSay({ speak, text: (shut.length ? 'Closed ' + nm(shut) + '. ' : 'I couldn’t close any of them. ') + (running.filter(k => !shut.includes(k)).length ? '**' + nm(running.filter(k => !shut.includes(k))) + '** didn’t close — please close ' + (running.length > 1 ? 'them' : 'it') + ' yourself.\n' : '') + sceneText(startedMin), intent: 'SUIT_UP' });
+      } } };
+    }
     case 'SHOW_DESKTOP': { toolStep('showDesktop'); const r = await callTool('/tool/showDesktop'); return r.error ? { text: 'I couldn’t minimise the windows: ' + r.error, error: r.error } : { text: 'Minimised everything.', noTTS: true, tool: 'showDesktop' }; }
     case 'OPEN_KNOWN_FOLDER': {
       const m = s.match(/\b(downloads|desktop|pictures|photos|music|videos)\b/);
