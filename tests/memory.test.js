@@ -10,11 +10,12 @@ const start = source.indexOf('const MEMORY_MAX_ITEMS = 300;');
 const end = source.indexOf('\nlet todos = store.get', start);
 assert.ok(start >= 0 && end > start, 'memory policy and initializer should be present');
 const memFnsStart = source.indexOf('function memSet(key, value) {', end);
-const memFnsEnd = source.indexOf('\n// Undo helpers:', memFnsStart);
+const memFnsEnd = source.indexOf('\n}', source.indexOf('\nfunction memClearAll()', memFnsStart)) + 2;
 assert.ok(memFnsStart >= 0 && memFnsEnd > memFnsStart, 'memory operations should be present');
 
 const values = new Map();
 let nextId = 0;
+const undo = [];
 const context = {
   store: {
     get: (key, fallback) => values.has(key) ? values.get(key) : fallback,
@@ -23,6 +24,8 @@ const context = {
   rid: () => 'test-' + (++nextId),
   renderMemory: () => {},
   pulse: () => {},
+  Undo: { push: (label, fn) => undo.push({ label, fn }) },
+  plural: (n, word) => n + ' ' + word + (n === 1 ? '' : 's'),
   Date,
   String,
   Number,
@@ -63,6 +66,7 @@ assert.equal(api.memGet('long').length, 500, 'values should be bounded');
 assert.equal(api.memSet('k'.repeat(120), 'value'), true);
 assert.equal(api.memory.at(-1).key.length, 80, 'keys should be bounded');
 
+assert.equal(api.memSearch('UPDATED')[0].value, 'Updated', 'memory search is case-insensitive');
 for (let i = 0; i < 350; i++) api.memAdd('note', 'fact-' + i);
 assert.ok(api.memory.length <= 300, 'persistent memory should have a fixed upper bound');
 assert.equal(values.get('jarvis.memory').length, api.memory.length, 'normalized memory should be persisted');
@@ -70,8 +74,8 @@ assert.equal(values.get('jarvis.memory').length, api.memory.length, 'normalized 
 
 
 
-// Search and explicit clear operations stay within personal memory.
-assert.equal(api.memSearch('UPDATED')[0].value, 'Updated', 'memory search is case-insensitive');
+// The cap evicts the oldest item; search and clear stay within personal memory.
+assert.equal(api.memSearch('UPDATED').length, 0, 'oldest memory is evicted');
 assert.equal(api.memSearch('missing').length, 0, 'search excludes unrelated records');
 const beforeClear = api.memory.length;
 assert.ok(beforeClear > 0);
@@ -79,4 +83,12 @@ assert.equal(api.memClearAll(), beforeClear, 'clear reports the number of remove
 assert.equal(api.memory.length, 0, 'clear empties the current memory');
 assert.equal(values.get('jarvis.memory').length, 0, 'clear persists the empty list');
 
-console.log('memory.test.js: assertions defined and ready to run.');
+assert.equal(undo.at(-1).label, 'cleared memory');
+undo.at(-1).fn();
+assert.equal(api.memory.length, beforeClear, 'undo restores the cleared records');
+const [entry] = api.memory;
+api.memDel(entry.id);
+assert.ok(!api.memory.some(row => row.id === entry.id), 'deleting one item removes it');
+undo.at(-1).fn();
+assert.equal(api.memory[0].id, entry.id, 'undo restores the deleted record');
+console.log('memory: migration, validation, persistence, search, clear, delete and undo passed');
