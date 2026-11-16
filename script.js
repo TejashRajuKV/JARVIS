@@ -2188,7 +2188,7 @@ async function doResearch(q, extraSuggestions) {
   const sources = '\n\n**Sources**\n' + r.results.slice(0, 4).map((x, i) => (i + 1) + '. [' + x.title + '](' + x.url + ')').join('\n');
   // Search Mode is terminal: render retrieved evidence and return before any LLM prompt is built.
   const evidence = r.results.slice(0, 5).map((x, i) => {
-    const page = (r.pages || []).find(p => p.url === x.url) || (r.pages || [])[i];
+    const page = (r.pages || []).find(p => p.url === x.url);
     const excerpt = String((page && page.text) || x.snippet || '').replace(/\s+/g, ' ').trim().slice(0, 650);
     return '### [' + (i + 1) + '] [' + (x.title || x.url) + '](' + x.url + ')\n' + (excerpt || x.snippet || 'No readable passage was extracted from this page.');
   }).join('\n\n');
@@ -2197,7 +2197,11 @@ async function doResearch(q, extraSuggestions) {
   if (!llmReady()) return { text: directEvidence + '\n\n_The local model is unavailable, so I have shown the evidence without synthesis._', suggestions: extraSuggestions, noPersona: true, tool: 'research' };
   if (typeof isCloudModel === 'function' && isCloudModel(llm.model))
     return { text: directEvidence + '\n\n_AI Research Mode requires a local model. Your selected model appears to be cloud-hosted, so I did not send the research question or evidence to it. Select a local Ollama model to enable synthesis._', suggestions: ['Choose a local Ollama model'], noPersona: true, tool: 'research' };
-  const pages = r.pages.map((x, i) => '[' + (i + 1) + '] ' + x.title + ' (' + x.url + ')\n' + ((x.text || '').length > 200 ? x.text : x.snippet).slice(0, 3000)).join('\n\n');
+  const pages = r.results.slice(0, 4).map((x, i) => {
+    const page = (r.pages || []).find(p => p.url === x.url);
+    const extracted = String(page?.text || '').trim();
+    return '[' + (i + 1) + '] ' + x.title + ' (' + x.url + ')\n' + (extracted || String(x.snippet || '')).slice(0, 3000);
+  }).join('\n\n');
   // Something that changes (a winner, a price, news): a small model will happily "remember" a years-old answer, so the
   // code decides. Results that don't even mention the question's key words are reported as such, without the AI.
   const changing = TIME_SENSITIVE.test(q.toLowerCase()) || /\b(last|recent|now|right now|score|standings)\b/i.test(q);

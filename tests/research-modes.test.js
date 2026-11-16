@@ -44,9 +44,14 @@ const check = (name, ok, detail) => {
   sandbox.settings.researchMode = 'ai';
   const synthesized = await sandbox.runResearch('compare search systems');
   check('AI Research Mode builds a grounded synthesis prompt with citations', !!synthesized.askLLM && synthesized.askLLM.includes('[1] Official documentation') && synthesized.askLLM.includes('Retrieved evidence from a research paper.'));
+  sandbox.callTool = async () => ({ ...sample, pages: [sample.pages[1]] });
+  const partial = await sandbox.runResearch('compare search systems');
+  check('missing page uses its own snippet and never cites another page under the wrong URL',
+    partial.askLLM?.includes('[1] Official documentation (https://example.test/docs)\nA short official result.') &&
+    partial.askLLM?.includes('[2] Research paper (https://example.test/paper)\nRetrieved evidence from a research paper.'));
   sandbox.isCloudModel = () => true;
   const cloudBlocked = await sandbox.runResearch('compare search systems');
   check('AI Research Mode blocks cloud-model synthesis', !cloudBlocked.askLLM && cloudBlocked.text.includes('requires a local model'));
   if (process.exitCode) process.exit(process.exitCode);
-  console.log('3/3 research mode checks passed');
+  console.log('5/5 research mode checks passed');
 })().catch(e => { console.error(e.stack || e); process.exit(1); });
