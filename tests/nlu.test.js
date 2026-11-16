@@ -22,7 +22,7 @@ const CASES = [
   ['add class OS on monday at 10am', 'ADD_CLASS'], ['whats my next class', 'NEXT_CLASS'], ['start a focus session', 'FOCUS_START'],
   ['255 to binary', 'BASE_CONVERT'], ['1.5 gb to mb', 'DATA_SIZE'], ['100 f to c', 'UNIT_CONVERT'], ['12 xor 7', 'BITWISE'],
   ['play lofi beats on youtube', 'YOUTUBE'],
-  ['open WhatsApp', 'OPEN_SITE'], ['open BookMyShow', 'OPEN_SITE'], ['open redBus', 'OPEN_SITE'], ['open IRCTC', 'OPEN_SITE'], ['open amazon.com', 'OPEN_URL'], ['OPEN SIH 2026 PROBLEM STATEMENTS', 'OPEN_WEB'],
+  ['open WhatsApp', 'OPEN_APPLICATION'], ['open WhatsApp Web', 'OPEN_APPLICATION'], ['open BookMyShow', 'OPEN_APPLICATION'], ['open redBus', 'OPEN_APPLICATION'], ['open IRCTC', 'OPEN_APPLICATION'], ['open amazon.com', 'OPEN_URL'], ['OPEN SIH 2026 PROBLEM STATEMENTS', 'OPEN_WEB'],
   ['search stack overflow for segfault', 'SITE_SEARCH'], ['whats the weather in bangalore', 'WEATHER'], ['what is the weather in manali', 'WEATHER'],
   ['open', 'ASK_WHAT'], ['launch', 'ASK_WHAT'], ['what is the weather like on mars', 'CONVERSATION'], ['temperature of the sun', 'CONVERSATION'],
   ['how is the climate in mysore today', 'WEATHER'], ['hows it outside', 'WEATHER'], ['what is climate change', 'CONVERSATION'], ['explain the climate of india', 'CONVERSATION'], ['what is a deadlock', 'CONVERSATION'],
@@ -192,8 +192,8 @@ for (const [text, lang, want] of ROMAN) {
 // "who is odu" may be flagged at the loose threshold, but it is not a command, so handleUser ignores it (it needs score ≥ 3 then).
 for (const text of NOT_ROMAN) if (NLU.romanLang(text, 3)) { fail++; console.log(`FAIL  ${text.padEnd(62)} wrongly read as Telugu/Kannada`); }
 
-const followOpen = NLU.classify(NLU.normalize('open it', 'jarvis'), { lastIntent: 'OPEN_SITE', lastCmd: { text: 'open YouTube', t: Date.now() } });
-if (followOpen.intent !== 'OPEN_SITE' || !followOpen.contextResolved) { fail++; console.log('FAIL  [context] open it should resolve to the last successful navigation'); }
+const followOpen = NLU.classify(NLU.normalize('open it', 'jarvis'), { lastIntent: 'OPEN_APPLICATION', lastCmd: { text: 'open YouTube', t: Date.now() } });
+if (followOpen.intent !== 'OPEN_APPLICATION' || !followOpen.contextResolved || NLU.findSite(followOpen.text)?.n !== 'YouTube') { fail++; console.log('FAIL  [context] open it should resolve to the last successful navigation'); }
 const repeatRisk = NLU.classify(NLU.normalize('do that again', 'jarvis'), { lastIntent: 'DELETE_FILE', lastCmd: { text: 'delete report.pdf', t: Date.now() } });
 if (repeatRisk.intent === 'DELETE_FILE') { fail++; console.log('FAIL  [context] repeating a destructive command must not be inferred'); }
 
