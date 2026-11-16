@@ -179,9 +179,9 @@ A laptop GPU helps the local model (e.g. an RTX 3050 6 GB runs `qwen3.5:4b` comf
 | **Start automatically at every sign-in** | Settings → Data → **Start with Windows**. JARVIS then runs quietly in the background after every reboot, so the desktop icon (or the installed app) opens instantly. |
 | **First-time setup** | The very first launch shows its progress in a window; every later launch is silent. |
 
-If JARVIS is already running, double-clicking the icon starts Ollama if needed, then opens the existing JARVIS page. JARVIS remembers its port, so the same address works every time.
+If JARVIS is already running, double-clicking the icon starts Ollama if needed, then opens the existing JARVIS page at **http://localhost:3002**.
 
-**Only one JARVIS runs at a time.** However it is started (desktop icon, `npm start`, an AI tool, a VS Code terminal), a second start finds the running copy through `~/jarvis/.jarvis.lock`, prints its address and exits. So there is one chat, one phone (ntfy) connection and one wake-word listener, whatever launched it. Your address is the one JARVIS remembers (`~/jarvis/.jarvis-port`).
+**Only one JARVIS runs at a time.** However it is started (desktop icon, `npm start`, an AI tool, a VS Code terminal), a second start finds the running copy through `~/jarvis/.jarvis.lock`, prints its address and exits. So there is one chat, one phone (ntfy) connection and one wake-word listener, whatever launched it. The launcher records that port in `~/jarvis/.jarvis-port`.
 
 ### The command-line way
 
@@ -190,11 +190,7 @@ npm install
 npm start
 ```
 
-Then open the address it prints (**http://localhost:3000** the first time; after that, the remembered one). If JARVIS is already running, `npm start` just tells you where. To choose the port on a first start (PowerShell):
-
-```bash
-$env:PORT=3002; npm start
-```
+Then open **http://localhost:3002**. If JARVIS is already running, `npm start` just tells you where. The test harness chooses its own isolated ports and profiles.
 
 > Open JARVIS through `http://localhost:PORT` — **not** by double-clicking `index.html`. The server only accepts requests from its own page.
 >
@@ -207,6 +203,8 @@ ollama pull qwen3.5:4b
 ```
 
 Any Ollama chat model works — pick it in **Settings → Model**. The first reply after starting is slow (~1 minute) while Ollama loads the model; JARVIS warms it up in the background. `qwen3.5:4b` also understands images, which powers screen vision.
+
+Optional environment settings: `OLLAMA_URL` and `JARVIS_MODEL` select the default local provider and model; `JARVIS_WHISPER_DIR` points to a custom offline speech installation; `NTFY_URL` and `NTFY_TOKEN` configure a custom ntfy service.
 
 ### Useful addresses
 
@@ -732,7 +730,7 @@ Everything starts in `handleUser(text, source)` in `script.js`. `source` is `tex
 
 A few properties worth knowing when debugging:
 - **Order is meaning.** Skills run before routines, before the multi-step router, before the classifier. A phrase that "does the wrong thing" is often being taken by an earlier stage — check the inspector's *Route* row first.
-- **The classifier is first-match.** `nlu.js` tries its rule table (`R`, ~180 intents) top to bottom and returns the first rule that matches, then applies a few *sanity checks* that can change or downgrade the result (e.g. a device word inside a question drops to 0.6). Rule **order** therefore matters.
+- **The classifier is first-match.** `nlu.js` tries its rule table (`R`, 186 distinct intents) top to bottom and returns the first rule that matches, then applies a few *sanity checks* that can change or downgrade the result (e.g. a device word inside a question drops to 0.6). Rule **order** therefore matters.
 - **0.85 is the line.** At or above it a command runs directly; below it the request goes to the decider's fallbacks / the AI. The decider sits *on top of* the classifier and may overrule a weak match (for example "open the nearest ATM" is caught by the generic "open a web page" rule, but the decider sends it to Maps).
 
 ### 11.3 Understanding layer
@@ -1030,7 +1028,15 @@ When **Settings → Show how I understood you** is on (or you ask "how did you u
 | `style.css`, `themes.css`, `ui.css` | Look & feel (`ui.css` is the current clean-HUD layout) |
 | `landing.html` | Cinematic landing page (`/welcome`) |
 | `vendor/qrcode.js` | QR codes for the phone setup (MIT) |
-| `docs/` | Two standalone pages about the project: `jarvis-study-guide.html` (a reading guide: architecture, where data is stored, security, questions to expect) and `jarvis-lesson.html` (a slide deck) |
+| `workspace.js`, `action-receipts.js`, `statemerge.js` | Today, Images and History; receipt presentation and state merging across tabs |
+| `calendar.js`, `homeassistant.js`, `approvals.js` | Read-only calendar connection, Home Assistant device controls, and one-time approvals |
+| `skill-hub.js`, `browser-recovery.js`, `workflow-memory.js`, `diagnostics.js` | Skill Hub UI, safe browser recovery, saved workflows and read-only diagnostics |
+| `agent-platform.js`, `platform-ui.js` | Research notebook, workflow validation and audit metadata |
+| `phonehub.html`, `phonehub-ui.js`, `phonehub.css`, `phonehub-auth.js`, `phonehub-gateway.js`, `phonehub-notifications.js` | Phone Hub owner UI, pairing, gateway and notifications |
+| `calling.html`, `calling-ui.js`, `calling-service.js`, `android/phonehub/` | Outbound calling and the Android companion |
+| `emotion-intelligence.js`, `commerce-compare.js`, `safewrite.js` | Tone cues, observed-price extraction and path-checked writes |
+| `jarvis-shortcut.vbs`, `jarvis-msg.vbs`, `package.json`, `package-lock.json` | Desktop shortcuts and messages, project commands and pinned dependencies |
+| `docs/` | Setup, architecture and QA evidence. Learning pages: `docs/jarvis-study-guide.html` and `docs/jarvis-lesson.html` |
 | `tests/` | Test suites (`npm test`) |
 | `_backup_original/` | An older version, kept for reference |
 
@@ -1058,13 +1064,15 @@ Opt-in checks on the real laptop — sets volume and brightness and opens/closes
 npm run test:live
 ```
 
-95 suites check every feature, not just the phrases:
+The automated runner discovers 122 suites on this revision; opting in to the live laptop checks adds one. Coverage includes real isolated APIs and headless browser flows, plus hardware/provider simulations. See the [QA audit](docs/QA-AUDIT.md) for its scope and manual checks. The table below is a guide to the suites; use the generated report for current per-suite results.
 
 | Suite | Checks | What it covers |
 |---|---|---|
-| `coverage.test.js` | 389 | Every command JARVIS has (180) is understood from its test phrases; fails if a new command has none |
-| `api.test.js` | 324 | Every server route (205; 163 called, the rest listed with a reason) on a real, isolated server, including the new tools (CSV, project wiki, PDFs, watchdog, AI health, images): files and access zones, projects (including recognising a crash on missing dependencies vs. a code bug, and whether a started server really answers on its port), weather parsing against a fake wttr.in, git, backup, reminders firing, phone codes, security; routes that would act on the laptop are listed with the reason instead |
-| `e2e.test.js` | 440 | The real page in headless Edge/Chrome: ~50 end-to-end flows (to-dos, reminders, focus, weather replies and their web-search fallback, attendance, marks, routines, triggers, multi-step plans, "there" / "open it" / "the second one", "did you mean…?", saving code into a new folder…) plus every command run through the chat, with laptop actions faked. Without Edge/Chrome or on Node < 22 it is shown as **NOT RUN** (never as ✓) |
+| `coverage.test.js` | 395 | Phrase checks for all 186 rule intents, plus special handling such as negation; fails if a new rule intent has no phrase |
+| `api.test.js` | 427 on audit Windows host | On a real, isolated server, the coverage gate accounts for 274 distinct mounted API routes: 232 receive a request and the other 42 have documented reasons. Some checks verify refusal paths; this is not 232 positive end-to-end flows. |
+| `e2e.test.js` | 452 | Runs browser flows, then samples the command catalogue in chat. It fakes laptop actions. Without Edge/Chrome or on Node < 22 it is shown as **NOT RUN**. |
+| `browser-scenarios.test.js` | 15 | Two Edge/Chrome tabs, Today and History, checkpoint interruption and actual rollback in the isolated home |
+| `connected-services.test.js` | 11 | Fake Home Assistant, approval and readback, ICS parsing and URL guard checks |
 | `live.test.js` | 11 | Opt-in (`npm run test:live`) reversible checks on the real laptop |
 | `nlu.test.js` | 281 | Understanding commands (intents, typos, dates, languages) |
 | `agent.test.js` | 74 + 132 | Multi-step routing and safety (validator, refusals), the execution inspector card, undo tagging of plan runs |
