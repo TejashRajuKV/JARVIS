@@ -382,8 +382,8 @@
     check('Reload', 'a session whose time ran out while the page was closed is NOT revived', restoreFocus() === false && focus === null && store.get('jarvis.focusState', null) === null);
     const r1 = Routines.create('e2e queue one', ['what is the date']), r2 = Routines.create('e2e queue two', ['what time is it']);
     const msgs0 = document.querySelectorAll('#messages .msg').length;
-    Routines.runById(r1.id); Routines.runById(r2.id); Routines.runById(r2.id);
-    check('Routines', 'a second routine due while one is running waits in line (once, not dropped, not doubled)', Routines.waiting.length === 1 && Routines.waiting[0] === r2.id, Routines.waiting);
+    Routines.runById(r1.id); Routines.runById(r2.id, true); Routines.runById(r2.id, true);
+    check('Routines', 'a second scheduled routine waits once and retains its scheduled flag', Routines.waiting.length === 1 && Routines.waiting[0].id === r2.id && Routines.waiting[0].scheduled === true, Routines.waiting);
     check('Routines', '…and then both ran, one after the other', await waitUntil(() => Routines.waiting.length === 0 && /Today is/.test(document.querySelector('#messages').innerText) && [...document.querySelectorAll('#messages .msg')].length >= msgs0 + 2, 20000));
     Routines.remove(r1); Routines.remove(r2);
   }

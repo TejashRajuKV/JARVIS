@@ -55,7 +55,7 @@ const tick = () => new Promise(r => setTimeout(r, 10));
   R.runById(a.id); await tick();
   check('run: the first routine starts', runs.join() === 'alpha' && ctx.busy === true);
   R.runById(b.id); R.runById(c.id); R.runById(b.id);
-  check('run: routines due while one runs wait in line, each once, in the order they were due', R.waiting.join() === [b.id, c.id].join(), R.waiting);
+  check('run: routines due while one runs wait in line, each once, in the order they were due', R.waiting.map(x => x.id).join() === [b.id, c.id].join() && R.waiting.every(x => x.scheduled === false), R.waiting);
   check('run: …and say so in the log', logs.some(l => /beta.*waits/.test(l[1])));
   release(); await tick(); await tick();
   check('run: when the first ends, its result is said and the next starts', said.some(m => /ran alpha/.test(m.text)) && runs.join() === 'alpha,beta', runs);
