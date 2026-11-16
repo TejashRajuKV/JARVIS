@@ -204,7 +204,13 @@ ollama pull qwen3.5:4b
 
 Any Ollama chat model works — pick it in **Settings → Model**. The first reply after starting is slow (~1 minute) while Ollama loads the model; JARVIS warms it up in the background. `qwen3.5:4b` also understands images, which powers screen vision.
 
-Optional environment settings: `OLLAMA_URL` and `JARVIS_MODEL` select the default local provider and model; `JARVIS_WHISPER_DIR` points to a custom offline speech installation; `NTFY_URL` and `NTFY_TOKEN` configure a custom ntfy service.
+| Environment variable | Purpose | Default |
+|---|---|---|
+| `OLLAMA_URL` | Base URL for the Ollama server | `http://127.0.0.1:11434` |
+| `JARVIS_MODEL` | Default model ID | `qwen3.5:4b` |
+| `JARVIS_WHISPER_DIR` | Directory containing the offline Whisper executable and model | Searches `.whisper` next to JARVIS and in `~/jarvis` |
+| `NTFY_URL` | Base URL for the ntfy publish and subscription endpoints | `https://ntfy.sh` |
+| `NTFY_TOKEN` | Bearer token for an ntfy server that requires authentication | Unset |
 
 ### Useful addresses
 
@@ -1083,7 +1089,7 @@ Opt-in checks on the real laptop — sets volume and brightness and opens/closes
 npm run test:live
 ```
 
-The automated runner discovers 122 suites on this revision; opting in to the live laptop checks adds one. Coverage includes real isolated APIs and headless browser flows, plus hardware/provider simulations. See the [QA audit](docs/QA-AUDIT.md) for its scope and manual checks. The table below is a guide to the suites; use the generated report for current per-suite results.
+The automated runner discovers 123 suites on this revision. The opt-in live laptop checks add one suite. Windows CI runs `npm ci` and `npm test` on Node 22 and 24. Set `JARVIS_REQUIRE_ALL=1` locally to require browser suites as well. [QA audit and manual checks](docs/QA-AUDIT.md)
 
 | Suite | Checks | What it covers |
 |---|---|---|
@@ -1091,9 +1097,10 @@ The automated runner discovers 122 suites on this revision; opting in to the liv
 | `api.test.js` | 427 on audit Windows host | On a real, isolated server, the coverage gate accounts for 274 distinct mounted API routes: 232 receive a request and the other 42 have documented reasons. Some checks verify refusal paths; this is not 232 positive end-to-end flows. |
 | `e2e.test.js` | 452 | Runs browser flows, then samples the command catalogue in chat. It fakes laptop actions. Without Edge/Chrome or on Node < 22 it is shown as **NOT RUN**. |
 | `browser-scenarios.test.js` | 15 | Two Edge/Chrome tabs, Today and History, checkpoint interruption and actual rollback in the isolated home |
-| `connected-services.test.js` | 11 | Fake Home Assistant, approval and readback, ICS parsing and URL guard checks |
+| `connected-services.test.js` | 14 | Fake Home Assistant status, outages, recovery, approval and readback, plus ICS parsing and URL guards |
+| `positive-routes.test.js` | 18 | Success paths for the 14 previously unexplained routes, using fake calling, shopping, image and phone fixtures |
 | `live.test.js` | 11 | Opt-in (`npm run test:live`) reversible checks on the real laptop |
-| `nlu.test.js` | 281 | Understanding commands (intents, typos, dates, languages) |
+| `nlu.test.js` | 344 | Understanding commands (intents, typos, dates, languages), including six checks of the dispatched app or URL |
 | `agent.test.js` | 74 + 132 | Multi-step routing and safety (validator, refusals), the execution inspector card, undo tagging of plan runs |
 | `llm.test.js` | 66 | AI providers, streaming, retries, key handling (with a fake server) |
 | `student.test.js` | 60 | Attendance & bunk maths, marks → SGPA/CGPA, monthly/yearly repeats |

@@ -29,5 +29,8 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Run test suite
-        run: npm test
+        shell: pwsh
+        run: |
+          Remove-Item Env:JARVIS_REQUIRE_ALL -ErrorAction SilentlyContinue
+          npm test
         timeout-minutes: 15
