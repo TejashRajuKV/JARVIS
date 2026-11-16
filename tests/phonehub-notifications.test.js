@@ -13,10 +13,10 @@ const first = feed.publish({ type: 'reminder', title: '  Assignment due ', body:
 assert.equal(liveEvent.id, first.id, 'subscribers receive published events immediately');
 unsubscribe();
 liveEvent = null;
-feed.publish({ title: 'After unsubscribe', body: 'Must not reach listener' });
+const afterUnsubscribe = feed.publish({ title: 'After unsubscribe', body: 'Must not reach listener' });
 assert.equal(liveEvent, null);
 assert.equal(first.title, 'Assignment due');
-assert.equal(feed.list()[0].id, first.id);
+assert.deepEqual(feed.list().map(item => item.id), [afterUnsubscribe.id, first.id], 'feed lists newest first');
 assert.equal(feed.publish({ title: '', body: 'No title' }), null);
 assert.equal(feed.publish({ title: 'No body', body: '   ' }), null);
 feed.publish({ type: 'deadline', title: 'Deadline', body: 'Project submission' });

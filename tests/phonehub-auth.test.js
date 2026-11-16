@@ -107,7 +107,8 @@ try {
   revoker.revoke(pd.device.id);
   check('device revocation survives restart', createPhoneHubAuth({ now: () => now, stateFile })
     .listDevices().find(d => d.id === pd.device.id).revoked);
-  check('state file uses owner-only permissions where supported', (fs.statSync(stateFile).mode & 0o777) === 0o600);
+  if (process.platform === 'win32') console.log('SKIP POSIX state-file mode check: Windows uses access control lists');
+  else check('state file uses POSIX owner-only permissions', (fs.statSync(stateFile).mode & 0o777) === 0o600);
   const corruptFile = path.join(tempDir, 'corrupt.json');
   fs.writeFileSync(corruptFile, '{not-json');
   let rejected = false;
