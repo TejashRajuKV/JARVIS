@@ -32,8 +32,10 @@ const { createCallingService, escapeXml, cleanMessage, isQuietHours } = require(
   assert.equal(result.status, 'queued');
   assert.equal(result.to.endsWith('0101'), true);
   assert.equal(requests.length, 1);
-  assert.match(requests[0].form, /Twiml=/);
-  assert.match(decodeURIComponent(requests[0].form), /Assignment due &lt;tomorrow&gt; &amp; check/);
+  const form = new URLSearchParams(requests[0].form);
+  assert.equal(form.get('To'), env.JARVIS_CALL_TO_NUMBER);
+  assert.equal(form.get('From'), env.JARVIS_TWILIO_FROM_NUMBER);
+  assert.equal(form.get('Twiml'), '<Response><Say>Assignment due &lt;tomorrow&gt; &amp; check.</Say><Pause length="1"/></Response>');
   await assert.rejects(() => service.call({ message: '   ' }), e => e.code === 'CALL_MESSAGE_REQUIRED');
 
   const disabled = createCallingService({ env: { ...env, JARVIS_CALL_ON_REMINDERS: 'false' }, request: async () => { throw new Error('must not call'); } });
