@@ -237,6 +237,13 @@ const claims = new Map();
 app.post('/api/claim', (req, res) => {
   const key = String((req.body && req.body.key) || '').slice(0, 120);
   if (!key) return res.status(400).json({ error: 'key required' });
+  // Keep the morning claim across a restart inside the ten-minute window.
+  if (/^daily-briefing:\d{4}-\d{2}-\d{2}$/.test(key)) {
+    if (appState['jarvis.lastDailyBriefing'] === key) return res.json({ success: true, won: false });
+    appState['jarvis.lastDailyBriefing'] = key;
+    writeStateNow();
+    return res.json({ success: true, won: true });
+  }
   const now = Date.now(), ttl = Math.max(1, Math.min(86400, Math.round(Number(req.body.ttlSec) || 3600))) * 1000;
   for (const [k, until] of claims) if (until <= now) claims.delete(k);
   if (claims.has(key)) return res.json({ success: true, won: false });

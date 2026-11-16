@@ -7,7 +7,8 @@ const check = (n, ok, x) => { total++; if (!ok) { fail++; console.log('FAIL  ' +
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
-  const s = await startServer();
+  let s = await startServer({ keepHome: true });
+  const home = s.home;
   const events = [], names = [];
   // a second tab: just a listener on the event stream (same headers the page sends)
   const req = http.get(s.base + '/api/events', { headers: { Origin: s.base, 'Sec-Fetch-Site': 'same-origin', Accept: 'text/event-stream' } }, res => {
@@ -62,10 +63,22 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     check('claim: after its time is up the same alert can be claimed again (e.g. next week)', c4.json.won === true, c4.json);
     check('claim: no key is a 400', (await s.post('/api/claim', {})).status === 400);
 
+    await save('tabA', { 'jarvis.actionReceipts': [{ id: 'r1', at: 1, status: 'verified' }] }); await sleep(300);
+    check('action receipt arrives in the other tab over the event stream', got('jarvis.actionReceipts').length === 1 && got('jarvis.actionReceipts')[0].value[0].id === 'r1', got('jarvis.actionReceipts'));
     const bad = await save('tabA', { 'not a key': 1 });
     check('a bad key is still refused', bad.status === 400);
+    const daily = { key: 'daily-briefing:2026-11-16' };
+    const [first, second] = await Promise.all([s.post('/api/claim', daily), s.post('/api/claim', daily)]);
+    check('two tabs claim the daily briefing and exactly one wins', [first, second].filter(r => r.json.won === true).length === 1);
+    req.destroy();
+    await s.stop();
+    s = await startServer({ home, keepHome: true });
+    const afterRestart = await s.post('/api/claim', daily);
+    check('the briefing cannot replay after server restart', afterRestart.status === 200 && afterRestart.json.won === false, afterRestart.json);
+    check('the next day is a fresh claim', (await s.post('/api/claim', { key: 'daily-briefing:2026-11-17' })).json.won === true);
   } finally {
     req.destroy(); await s.stop();
+    require('node:fs').rmSync(home, { recursive: true, force: true, maxRetries: 4, retryDelay: 150 });
   }
   console.log(`statesync: ${total - fail}/${total}`);
   process.exitCode = fail ? 1 : 0;
