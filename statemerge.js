@@ -39,15 +39,28 @@ function mergeKeyed(server, client, baseKeys) {
 }
 
 const LIST_KEYS = new Set(['jarvis.todos', 'jarvis.deadlines', 'jarvis.classes', 'jarvis.studyPlans', 'jarvis.expenses', 'jarvis.habits', 'jarvis.memory', 'jarvis.marks']);
+const RECEIPTS = 'jarvis.actionReceipts';
 const KEYED_KEYS = new Set(['jarvis.attendance']);
 
 // → { value, changed } where `changed` says the result differs from what the tab sent (so the tab must take it)
 function mergeState(key, serverValue, clientValue, base) {
   let merged = null;
-  if (LIST_KEYS.has(key)) merged = mergeIdList(serverValue, clientValue, base);
+  if (key === RECEIPTS && hasIds(clientValue)) {
+    // A newly opened tab with no receipts has no base. Keep other tabs' writes
+    // and prefer the checked version when a stale tab still has the pending one.
+    const previous = hasIds(serverValue) ? serverValue : [];
+    const byId = new Map(previous.map(r => [String(r.id), r]));
+    merged = mergeIdList(previous, clientValue, Array.isArray(base) ? base : [])
+      .map(r => {
+        const saved = byId.get(String(r.id));
+        return saved && (Number(saved.checkedAt) || 0) > (Number(r.checkedAt) || 0) ? saved : r;
+      })
+      .sort((a, b) => (Number(a.at) || 0) - (Number(b.at) || 0)).slice(-120);
+  }
+  else if (LIST_KEYS.has(key)) merged = mergeIdList(serverValue, clientValue, base);
   else if (KEYED_KEYS.has(key)) merged = mergeKeyed(serverValue, clientValue, base);
   if (merged === null) return { value: clientValue, changed: false, merged: false };
   return { value: merged, changed: JSON.stringify(merged) !== JSON.stringify(clientValue), merged: true };
 }
 
-module.exports = { mergeIdList, mergeKeyed, mergeState, LIST_KEYS, KEYED_KEYS };
+module.exports = { mergeIdList, mergeKeyed, mergeState, LIST_KEYS, KEYED_KEYS, RECEIPTS };

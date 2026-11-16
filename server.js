@@ -230,7 +230,7 @@ app.get('/api/state.js', (req, res) => {
 });
 // The lists that more than one tab (or the phone page) can change. When one changes, every OTHER tab is told at once and takes the new copy, so a tab that was
 // open all morning no longer writes its old todos/classes/expenses over what another tab just saved (the page writes whole lists, so the last writer used to win).
-const SYNC_KEYS = new Set(['jarvis.todos', 'jarvis.reminders', 'jarvis.deadlines', 'jarvis.classes', 'jarvis.attendance', 'jarvis.marks', 'jarvis.studyPlans', 'jarvis.expenses', 'jarvis.habits', 'jarvis.memory', 'jarvis.budget']);
+const SYNC_KEYS = new Set(['jarvis.todos', 'jarvis.reminders', 'jarvis.deadlines', 'jarvis.classes', 'jarvis.attendance', 'jarvis.marks', 'jarvis.studyPlans', 'jarvis.expenses', 'jarvis.habits', 'jarvis.memory', 'jarvis.budget', StateMerge.RECEIPTS]);
 // "Only one tab says it": every open tab runs the same alert checks, so each would announce the same class or warning. A tab asks to CLAIM an alert first; the first asker
 // wins for `ttlSec` seconds and every other tab is told no. (In memory only: after a restart, the first tab to ask wins again.)
 const claims = new Map();
@@ -253,7 +253,7 @@ app.post('/api/state', (req, res) => {
     let v = v0;
     const before = SYNC_KEYS.has(k) ? JSON.stringify(appState[k]) : null;
     // A whole list from a tab that was not up to date: keep what another tab added meanwhile, honour this tab's deletions (statemerge.js).
-    if (v !== null && k in appState && base[k] !== undefined) { const m = StateMerge.mergeState(k, appState[k], v, base[k]); if (m.merged) { v = m.value; if (m.changed) mergedBack[k] = v; } }
+    if (v !== null && (k === StateMerge.RECEIPTS || (k in appState && base[k] !== undefined))) { const m = StateMerge.mergeState(k, appState[k], v, base[k]); if (m.merged) { v = m.value; if (m.changed) mergedBack[k] = v; } }
     if (v === null) delete appState[k];
     // The server fires reminders; a tab's stale copy must not un-fire or rewind them (scheduler.js).
     else if (k === 'jarvis.reminders') appState[k] = scheduler.mergeReminders(appState[k], v);

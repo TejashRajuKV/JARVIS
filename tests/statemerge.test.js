@@ -60,6 +60,18 @@ const ids = l => l.map(x => x.id).join();
     r = await save('A', { 'jarvis.attendance': { DBMS: { held: 5, attended: 4, log: [] } } }, { 'jarvis.attendance': ['DBMS'] });
     const att = r.json.merged && r.json.merged['jarvis.attendance'];
     check('attendance: the stale tab\'s new DBMS numbers win and the other tab\'s OS is kept', att && att.DBMS.held === 5 && att.OS && att.OS.held === 1, r.json);
+    const key = 'jarvis.actionReceipts';
+    const receipt = (id, at, checkedAt) => ({ id, at, status: checkedAt ? 'verified' : 'pending', checkedAt });
+    await save('A', { [key]: [receipt('first', 1, 3)] });
+    r = await save('B', { [key]: [receipt('second', 2)] });
+    check('two tabs starting without history retain both action receipts in order', ids(r.json.merged?.[key] || []) === 'first,second', r.json);
+    r = await save('B', { [key]: [receipt('first', 1), receipt('second', 2, 4)] }, { [key]: ['first', 'second'] });
+    check('a stale pending receipt cannot replace a checked receipt', r.json.merged?.[key]?.every(x => x.status === 'verified'), r.json);
+    const many = Array.from({ length: 120 }, (_, i) => receipt('item' + i, i + 3));
+    r = await save('C', { [key]: [receipt('older', 0), ...many] });
+    check('merged receipts retain the 120 newest entries', ids(r.json.merged?.[key] || []) === ids(many), r.json);
+    const state = JSON.parse((await s.get('/api/state.js')).text.replace(/^window.JARVIS_STATE = /, '').slice(0, -1));
+    check('the 120-receipt cap is stored server-side', ids(state[key]) === ids(many), state[key].length);
     // lists with items that have no ids are not merged
     r = await save('A', { 'jarvis.cmdHistory': ['x', 'y'] }, {}); check('other keys are untouched by merging', r.status === 200 && Object.keys(r.json.merged).length === 0);
   } finally { await s.stop(); }
