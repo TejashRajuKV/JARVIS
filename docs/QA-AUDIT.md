@@ -1,5 +1,7 @@
 # JARVIS QA audit — 16–17 November 2026 (IST)
 
+[Round 2 follow-up and clean-checkout verification](QA-ROUND2.md)
+
 Scope: the working tree at audit start, including existing local edits. Branch: `codex/jarvis-qa-audit`. Node 24.16.0, npm 11.14.1, Windows, headless Edge. Provider and laptop simulations are identified below. No production settings, phone connections, or laptop controls were changed. The live process remained on `http://localhost:3002`.
 
 ## Baseline and running log
