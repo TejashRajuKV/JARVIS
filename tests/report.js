@@ -18,7 +18,9 @@ for (const f of files) {
   const r = spawnSync(process.execPath, [path.join(__dirname, f)], { encoding: 'utf8', env, timeout: f === 'e2e.test.js' ? 600000 : 180000 });
   const lines = String(r.stdout || '').split(/\r?\n/).filter(l => l.trim());
   const summary = lines.filter(l => /\d+\/\d+/.test(l) && !/^FAIL/.test(l)).join(' · ') || lines.slice(-1)[0] || '';
-  suites.push({ f, ok: r.status === 0, summary, fails: lines.filter(l => /^FAIL/.test(l)), s: Math.round((Date.now() - t0) / 1000) });
+  const skipped = r.status === 0 && lines.find(l => /^[\w-]+: skipped\b/.test(l));
+  const result = skipped ? 'NOT RUN' : r.status === 0 ? 'PASS' : 'FAIL';
+  suites.push({ f, result, summary: skipped || summary, s: Math.round((Date.now() - t0) / 1000) });
   console.log((r.status === 0 ? '✓ ' : '✗ ') + summary + ' (' + suites[suites.length - 1].s + 's)');
 }
 const load = n => { try { return JSON.parse(fs.readFileSync(path.join(dir, n + '.json'), 'utf8')); } catch { return null; } };
@@ -28,18 +30,19 @@ const mark = ok => ok === undefined ? '–' : ok ? '✓' : '✗';
 const esc = s => String(s).replace(/\|/g, '\\|');
 
 const out = [];
-const allOk = suites.every(s => s.ok);
+const counts = Object.fromEntries(['PASS', 'FAIL', 'NOT RUN'].map(status => [status, suites.filter(s => s.result === status).length]));
+const allOk = counts.FAIL === 0 && (process.env.JARVIS_REQUIRE_ALL !== '1' || counts['NOT RUN'] === 0);
 out.push('# JARVIS feature report', '', '_Generated ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + ' by `npm run test:report`' + (live ? ' --live' : '') + '._', '');
-out.push(allOk ? '**Every suite passed.**' : '**Some checks failed — see ✗ below.**', '');
+out.push(allOk && !counts['NOT RUN'] ? '**Every suite passed.**' : '**Some suites failed or were not run — see ✗ below.**', '');
 out.push('## Suites', '', '| Suite | Result | Time |', '|---|---|---|');
-for (const s of suites) out.push('| `' + s.f + '` | ' + (s.ok ? '✓ ' : '✗ ') + esc(s.summary) + ' | ' + s.s + 's |');
+for (const s of suites) out.push('| `' + s.f + '` | ' + s.result + ' ' + esc(s.summary) + ' | ' + s.s + 's |');
 out.push('');
 
 // ---- one row per feature
 out.push('## Features', '', 'Understood = every test phrase reaches the right command. In the page = the example phrase, run through the real chat in a headless browser (laptop actions faked), answered without errors.', '');
 const byArea = {};
 for (const f of features) (byArea[f.area] = byArea[f.area] || []).push(f);
-let nF = 0, nOk = 0;
+let nF = 0, nUnderstood = 0, nInPage = 0, nBoth = 0;
 for (const [area, list] of Object.entries(byArea)) {
   out.push('### ' + area, '', '| Command | Example | Understood | In the page |', '|---|---|---|---|');
   for (const f of list) {
@@ -47,12 +50,15 @@ for (const [area, list] of Object.entries(byArea)) {
     const understood = c.length ? c.every(x => x.ok) : undefined;
     const sw = e2e && e2e.find(x => x.feature === 'Sweep · ' + area && x.desc.startsWith(f.intent + ' '));
     const inPage = sw ? sw.ok : undefined;
-    nF++; if (understood && inPage !== false) nOk++;
+    nF++;
+    if (understood) nUnderstood++;
+    if (inPage) nInPage++;
+    if (understood && inPage) nBoth++;
     out.push('| ' + f.intent + ' | “' + esc(f.example) + '” | ' + mark(understood) + ' | ' + mark(inPage) + ' |');
   }
   out.push('');
 }
-out.splice(out.indexOf('## Features') + 4, 0, '**' + nOk + ' of ' + nF + ' commands pass.**', '');
+out.splice(out.indexOf('## Features') + 4, 0, '**' + nUnderstood + ' of ' + nF + ' commands passed phrase checks; ' + nInPage + ' passed browser checks; ' + nBoth + ' passed both.**', '');
 
 // ---- deep checks
 const group = (title, rows, intro) => {
@@ -90,5 +96,5 @@ out.push('## Known limitations found while testing', '',
 
 fs.writeFileSync(path.join(__dirname, 'report.md'), out.join('\n'));
 try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
-console.log('\nwrote tests/report.md — ' + nOk + '/' + nF + ' commands pass' + (allOk ? ', all suites green' : ', some suites failed'));
+console.log('\nwrote tests/report.md: ' + counts.PASS + ' PASS, ' + counts.FAIL + ' FAIL, ' + counts['NOT RUN'] + ' NOT RUN');
 process.exitCode = allOk ? 0 : 1;

@@ -19,6 +19,7 @@ for (const f of files) {
   if (!ok) failed++;
   if (skip) skipped.push(f + ' (' + skip.replace(/^[\w-]+: skipped\W*/, '') + ')');
   console.log((!ok ? '✗ ' : skip ? '– ' : '✓ ') + f.padEnd(22) + (skip || lines.filter(l => /\d+\/\d+/.test(l)).join(' · ') || lines.slice(-1)[0] || ''));
+  for (const line of lines.filter(l => /^SKIP\b/.test(l))) console.log('    ' + line);
   if (!ok) {
     if (r.error) console.log('    runner error: ' + r.error.message);
     if (r.error && (r.error.code === 'ETIMEDOUT' || /timed out/i.test(r.error.message))) {
@@ -34,6 +35,7 @@ for (const f of files) {
   }
 }
 const ran = files.length - skipped.length;
+if (skipped.length && failed) console.log(skipped.length + ' NOT RUN: ' + skipped.join('; '));
 console.log(failed ? `\n${failed} suite(s) failed` : skipped.length ? `\n${ran} suites passed · ${skipped.length} NOT RUN: ${skipped.join('; ')}` : `\nAll ${files.length} suites passed`);
 // JARVIS_REQUIRE_ALL=1 (e.g. before a release): a suite that couldn't run counts as a failure.
 if (!failed && skipped.length && process.env.JARVIS_REQUIRE_ALL === '1') { console.log('JARVIS_REQUIRE_ALL=1: skipped suites count as failures'); failed = skipped.length; }
