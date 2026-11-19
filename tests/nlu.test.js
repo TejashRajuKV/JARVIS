@@ -27,6 +27,7 @@ const CASES = [
   ['open', 'ASK_WHAT'], ['launch', 'ASK_WHAT'], ['what is the weather like on mars', 'CONVERSATION'], ['temperature of the sun', 'CONVERSATION'],
   ['how is the climate in mysore today', 'WEATHER'], ['hows it outside', 'WEATHER'], ['what is climate change', 'CONVERSATION'], ['explain the climate of india', 'CONVERSATION'], ['what is a deadlock', 'CONVERSATION'],
   ['take a note: revise trees', 'NOTE_APPEND'], ['list my files', 'LIST_FILES'], ['lock the screen', 'SYS_LOCK'], ["what's my ip", 'SYS_NETWORK'],
+  ['read task-result.md', 'READ_FILE'], ['show weather.txt', 'READ_FILE'], ['display my task list.md', 'READ_FILE'],
   ['check whether DSA sprint folder exists', 'CHECK_EXISTS'], ['does the notes file exist', 'CHECK_EXISTS'], ['is there a folder called dsa', 'CHECK_EXISTS'],
   ['do I have a file called bfs.py', 'CHECK_EXISTS'], ['check off milk', 'DONE_TODO'], ['mark 2 as done', 'DONE_TODO'],
   ['git status', 'GIT_STATUS'], ['is port 3000 free', 'CHECK_PORT'], ['give me my briefing', 'BRIEFING'], ['volume up', 'VOLUME_UP'],

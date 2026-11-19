@@ -57,7 +57,9 @@ async function call(handler, options) {
   const handler = createPhoneHubRequestHandler({
     auth, host: '192.168.1.10', port: DEFAULT_PORT,
     getStatus: async () => ({ battery: 87 }),
-    getNotifications: async () => [{ id: 'n1', title: 'Build complete' }]
+    getNotifications: async () => [{ id: 'n1', title: 'Build complete' }],
+    getMarksStatus: async () => ({ available: true, tasks: [{ id: '00000000-0000-0000-0000-000000000001', status: 'completed' }] }),
+    getMarksReport: async id => id.endsWith('1') ? { report: 'Owner-reviewed report' } : null,
   });
   let res = await call(handler, { encrypted: false, url: '/health' });
   check('plaintext requests are rejected even if handler is mis-mounted', () => assert.equal(res.statusCode, 426));
@@ -100,6 +102,21 @@ async function call(handler, options) {
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.json().data, [{ id: 'n1', title: 'Build complete' }]);
   });
+  const marksGet = (url, nonce) => call(handler, { url, headers: { authorization: 'Bearer ' + paired.token, 'x-jarvis-nonce': 'gateway_marks_' + nonce } });
+  res = await marksGet('/v1/marks', 'ungranted');
+  check('Marks access is excluded from pairing defaults', () => assert.equal(res.statusCode, 403));
+  auth.grant(paired.device.id, ['status', 'notifications', 'marks.read']);
+  res = await marksGet('/v1/status', 'status');
+  check('status advertises Marks to a granted device only', () => assert.equal(res.json().data.marksAvailable, true));
+  res = await marksGet('/v1/marks', 'granted');
+  check('a granted device can read Marks task status', () => assert.equal(res.json().data.tasks[0].status, 'completed'));
+  res = await marksGet('/v1/marks/reports/00000000-0000-0000-0000-000000000001', 'reviewed');
+  check('a granted device can read an explicitly shared report', () => assert.equal(res.json().data.report, 'Owner-reviewed report'));
+  res = await marksGet('/v1/marks/reports/00000000-0000-0000-0000-000000000002', 'unshared');
+  check('unshared Marks reports return 404', () => assert.equal(res.statusCode, 404));
+  auth.grant(paired.device.id, ['status', 'notifications']);
+  res = await marksGet('/v1/marks', 'revoked');
+  check('removing the Marks grant applies to the next request', () => assert.equal(res.statusCode, 403));
   res = await call(handler, { method: 'POST', url: '/v1/pair', headers: { 'content-type': 'application/json' }, body: '{invalid json' });
   check('malformed JSON receives a 400 error', () => assert.equal(res.statusCode, 400));
   res = await call(createPhoneHubRequestHandler({ auth, host: '192.168.1.10', maxBodyBytes: 32 }), {

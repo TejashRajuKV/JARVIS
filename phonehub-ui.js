@@ -6,6 +6,7 @@
   const CAPABILITY_LABELS = {
     status: 'Device status',
     notifications: 'Notifications',
+    'marks.read': 'Marks task status and shared reports',
     'sms.read': 'Read SMS',
     'sms.send': 'Send SMS',
     'contacts.read': 'Read contacts',

@@ -1,0 +1,21 @@
+'use strict';
+(()=>{
+ const status=$('#managedBrowserStatus'),host=$('#managedBrowserControls');let snapshot=null,busy=false;
+ async function run(fn){if(busy)return;busy=true;try{await fn();}catch(error){status.textContent=error.message;}finally{busy=false;}}
+ async function refresh(){const result=await getJSON('/browser/status');$('#managedBrowserEnabled').checked=result.enabled===true;status.textContent=result.error||(result.running?'Isolated browser is running.':'Isolated browser is closed.');}
+ async function act(control,action,value,expected){if(!snapshot)throw Error('Inspect the page first.');const selected=snapshot;switchTab('chat');const result=await callTool('/browser/action',{token:selected.token,controlId:control.id,action,value,expected});if(!result.cancelled){snapshot=null;host.replaceChildren();}status.textContent=result.error||(result.cancelled?'Cancelled.':result.verified?'Result verified.':'Action accepted; inspect the page to verify its effect.');jarvisSay({text:status.textContent,noPersona:true,noTTS:true});}
+ function render(){host.replaceChildren();for(const c of snapshot.controls){const row=document.createElement('article'),label=document.createElement('strong');label.textContent=c.id+' · '+(c.name||'(unnamed)')+' · '+c.type;row.append(label);if(!c.enabled){host.append(row);continue;}
+  const expected=document.createElement('input');expected.placeholder='Expected new page text after action (optional)';expected.setAttribute('aria-label','Expected result for '+c.id);row.append(expected);
+  const direction=document.createElement('select');direction.setAttribute('aria-label','Scroll direction for '+c.id);
+  for(const [value,text]of [['','Into view'],['up','Up'],['down','Down'],['left','Left'],['right','Right']]){const option=document.createElement('option');option.value=value;option.textContent=text;direction.append(option);}row.append(direction);
+  for(const action of ['click','scroll','focus']){const button=document.createElement('button');button.type='button';button.className='btn';button.textContent='Review '+action;button.onclick=()=>void run(()=>act(c,action,action==='scroll'?direction.value:'',expected.value));row.append(button);}
+  if(c.type==='input'||c.type==='textarea'){const value=document.createElement('textarea');value.maxLength=2000;value.setAttribute('aria-label','Text for '+c.id);const button=document.createElement('button');button.type='button';button.className='btn';button.textContent='Review fill';button.onclick=()=>void run(()=>act(c,'fill',value.value,expected.value));row.append(value,button);}
+  if(c.options){const select=document.createElement('select');select.setAttribute('aria-label','Option for '+c.id);for(const option of c.options)select.add(new Option(option.label,option.value));const button=document.createElement('button');button.type='button';button.className='btn';button.textContent='Review selection';button.onclick=()=>void run(()=>act(c,'select',select.value,expected.value));row.append(select,button);}
+  host.append(row);
+ }}
+ $('#managedBrowserPanel').addEventListener('toggle',()=>{if($('#managedBrowserPanel').open)void run(refresh);});
+ $('#managedBrowserEnabled').onchange=()=>void run(async()=>{switchTab('chat');const result=await callTool('/browser/configure',{enabled:$('#managedBrowserEnabled').checked});if(result.error)throw Error(result.error);await refresh();});
+ $('#managedBrowserOpen').onsubmit=event=>{event.preventDefault();void run(async()=>{switchTab('chat');const result=await callTool('/browser/open',{url:$('#managedBrowserUrl').value});status.textContent=result.error||(result.cancelled?'Cancelled.':'Page opened; read its controls before acting.');});};
+ $('#managedBrowserInspect').onclick=()=>void run(async()=>{const result=await callTool('/browser/inspect',{});if(result.error)throw Error(result.error);snapshot=result;$('#managedBrowserText').textContent=result.text;status.textContent=(result.handoff?'Manual login or verification required. ':'')+result.controls.length+' controls; '+result.frames+' iframe(s). Frame contents are not inspected.';render();});
+ $('#managedBrowserClose').onclick=()=>void run(async()=>{const result=await callTool('/browser/close',{});snapshot=null;host.replaceChildren();if(result.error)throw Error(result.error);await refresh();});
+})();

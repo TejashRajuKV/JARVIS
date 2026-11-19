@@ -3,6 +3,7 @@
    Moved unchanged out of script.js (tools/registry.js). Called as handler(p, raw, s, a) with s = p.text and a = p.args || {}; the globals it uses
    (callTool, toolStep, settings, todos…) come from script.js at call time. An intent that is not this area's returns ToolHandlers.NONE. */
 ToolHandlers.add('files', async function (p, raw, s, a) {
+  if (typeof Understanding !== 'undefined' && Understanding.exclusion(raw || s)) return { error: 'EXCLUSION_REVIEW_REQUIRED', text: 'I need to review the included files and preserve your exclusion before changing anything.' };
   switch (p.intent) {
     /* ---- files (~/jarvis) ---- */
     case 'DESTRUCTIVE':

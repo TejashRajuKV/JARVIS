@@ -28,6 +28,65 @@ function parseICS(text) {
   }
   return events;
 }
+function availabilityEvents(text, from, to) {
+  const ICAL = require('ical.js');
+  const component = new ICAL.Component(ICAL.parse(text));
+  const timezones = new Map();
+  for (const definition of component.getAllSubcomponents('vtimezone')) {
+    const tzid = definition.getFirstPropertyValue('tzid');
+    if (tzid) timezones.set(tzid, new ICAL.Timezone({ component: definition, tzid }));
+  }
+  const events = [], main = new Map(), exceptions = [];
+  let incomplete = false, iterations = 0;
+  const normalizeZones = event => {
+    for (const property of event.getAllProperties()) {
+      const tzid = property.getParameter('tzid');
+      if (!tzid) continue;
+      let zone = timezones.get(tzid);
+      if (!zone) {
+        try { new Intl.DateTimeFormat('en', { timeZone: tzid }); }
+        catch { incomplete = true; continue; }
+        // Without a VTIMEZONE definition, only UTC can be resolved exactly here.
+        if (/^(?:UTC|Etc\/UTC|GMT)$/i.test(tzid)) zone = ICAL.Timezone.utcTimezone;
+        else { incomplete = true; continue; }
+      }
+      for (const value of property.getValues()) if (value instanceof ICAL.Time) value.zone = zone;
+    }
+  };
+  for (const row of component.getAllSubcomponents('vevent')) {
+    normalizeZones(row);
+    const event = new ICAL.Event(row);
+    if (event.isRecurrenceException()) exceptions.push(event);
+    else if (event.uid) main.set(event.uid, event);
+    else main.set(Symbol(), event);
+  }
+  for (const event of exceptions) {
+    if (main.has(event.uid)) main.get(event.uid).relateException(event);
+    else main.set(Symbol(), event);
+  }
+  const add = (item, start, end) => {
+    if (/^(?:CANCELLED)$/i.test(item.component.getFirstPropertyValue('status') || '') ||
+        /^(?:TRANSPARENT)$/i.test(item.component.getFirstPropertyValue('transp') || '')) return;
+    const startAt = +start.toJSDate(), endAt = +end.toJSDate();
+    if (startAt < to && endAt > from && endAt > startAt)
+      events.push({ title: String(item.summary || 'Busy').slice(0, 180), start: startAt, end: endAt });
+  };
+  for (const event of main.values()) {
+    try {
+      if (!event.startDate) { incomplete = true; continue; }
+      if (!event.isRecurring()) { add(event, event.startDate, event.endDate); continue; }
+      const iterator = event.iterator();
+      for (let occurrence; (occurrence = iterator.next());) {
+        if (++iterations > 20000) { incomplete = true; break; }
+        if (+occurrence.toJSDate() >= to) break;
+        const item = event.getOccurrenceDetails(occurrence);
+        add(item.item, item.startDate, item.endDate);
+      }
+    } catch { incomplete = true; }
+  }
+  if (events.length > 500) incomplete = true;
+  return { events: events.sort((a, b) => a.start - b.start).slice(0, 500), incomplete };
+}
 const privateIp = ip => {
   if (net.isIPv4(ip)) { const p = ip.split('.').map(Number); return p[0] === 0 || p[0] === 10 || p[0] === 127 || p[0] >= 224 || (p[0] === 100 && p[1] >= 64 && p[1] <= 127) || (p[0] === 169 && p[1] === 254) || (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 192 && [0,2,168].includes(p[1])) || (p[0] === 198 && (p[1] === 18 || p[1] === 19 || p[1] === 51)) || (p[0] === 203 && p[1] === 0); }
   const s = ip.toLowerCase(); if (s === '::' || s === '::1' || s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe8') || s.startsWith('fe9') || s.startsWith('fea') || s.startsWith('feb') || s.startsWith('::ffff:')) return true;
@@ -59,25 +118,31 @@ async function fetchFeed(u) {
   });
 }
 module.exports = function setupCalendar(app, { getConfig, saveConfig }) {
-  let cache = { at: 0, events: [] };
+  let cache = { at: 0, events: [], text: '' };
   const feed = () => String((getConfig().integrations || {}).calendarFeed || '');
   app.get('/api/calendar/status', (req,res) => { let host = ''; try { host = new URL(feed()).hostname; } catch {} res.setHeader('Cache-Control','no-store'); res.json({ configured: !!feed(), host }); });
   app.put('/api/calendar/config', async (req,res) => {
-    try { const u = await validateFeed(req.body && req.body.url), text=await fetchFeed(u); if(!/BEGIN:VCALENDAR/.test(text))throw new Error('The URL did not return an iCalendar feed.'); const c = getConfig(); c.integrations = { ...(c.integrations || {}), calendarFeed: u.href }; saveConfig(); cache = { at: Date.now(), events: parseICS(text) }; res.json({ success: true, host: u.hostname }); }
+    try { const u = await validateFeed(req.body && req.body.url), text=await fetchFeed(u); if(!/BEGIN:VCALENDAR/.test(text))throw new Error('The URL did not return an iCalendar feed.'); const c = getConfig(); c.integrations = { ...(c.integrations || {}), calendarFeed: u.href }; saveConfig(); cache = { at: Date.now(), events: parseICS(text), text }; res.json({ success: true, host: u.hostname }); }
     catch (e) { res.status(400).json({ error: e.message }); }
   });
-  app.delete('/api/calendar/config', (req,res) => { const c = getConfig(); if (c.integrations) { delete c.integrations.calendarFeed; saveConfig(); } cache = { at: 0, events: [] }; res.json({ success: true }); });
+  app.delete('/api/calendar/config', (req,res) => { const c = getConfig(); if (c.integrations) { delete c.integrations.calendarFeed; saveConfig(); } cache = { at: 0, events: [], text: '' }; res.json({ success: true }); });
   app.get('/api/calendar/events', async (req,res) => {
     const url = feed(); if (!url) return res.status(404).json({ error: 'Connect an HTTPS calendar feed in Settings first.' });
     try {
       if (Date.now() - cache.at > 180000) {
         const u = await validateFeed(url), text = await fetchFeed(u); if (!/BEGIN:VCALENDAR/.test(text)) return res.status(502).json({ error: 'The feed did not contain an iCalendar calendar.' });
-        cache = { at: Date.now(), events: parseICS(text) };
+        cache = { at: Date.now(), events: parseICS(text), text };
       }
       const from = Number(req.query.from) || Date.now() - 86400000, to = Number(req.query.to) || Date.now() + 14 * 86400000;
+      if (req.query.availability === '1') {
+        if (!Number.isFinite(from + to) || to <= from || to - from > 31 * 86400000)
+          return res.status(400).json({ error: 'Choose an availability window of at most 31 days.' });
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json({ success: true, ...availabilityEvents(cache.text, from, to) });
+      }
       const events = cache.events.filter(e => e.start >= from && e.start < to).sort((a,b)=>a.start-b.start).slice(0,100);
       res.setHeader('Cache-Control','no-store'); res.json({ success:true, events, updated:cache.at });
     } catch (e) { res.status(502).json({ error: 'Could not read the calendar feed: ' + String(e.message || e).slice(0,160) }); }
   });
 };
-Object.assign(module.exports, { parseICS, validateFeed, pinLookup });
+Object.assign(module.exports, { parseICS, availabilityEvents, validateFeed, pinLookup, privateIp });

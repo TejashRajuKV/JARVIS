@@ -1,0 +1,53 @@
+'use strict';
+const assert = require('./lib/assertions')('nlu-phase1');
+const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
+const nlu = vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../nlu.js'), 'utf8') + ';NLU');
+const classify = (text, context = {}) => nlu.classify(nlu.normalize(text, 'jarvis'), context);
+const today = new Date(2026, 10, 19, 12);
+(async () => {
+  const end = nlu.parseDate('end of the month', today);
+  assert.ok(end && end.getFullYear() === 2026 && end.getMonth() === 10 && end.getDate() === 30);
+  const next = nlu.parseDate('end of next month', new Date(2026, 11, 19));
+  assert.ok(next && next.getFullYear() === 2027 && next.getMonth() === 0 && next.getDate() === 31);
+  const leap = nlu.parseDate('end of this month', new Date(2028, 1, 12));
+  assert.equal(leap?.getDate(), 29);
+  assert.equal(nlu.convertUnits('two and a half GB to MB')?.result, 2560);
+  assert.equal(nlu.normalize('set a timer for two and a half hours', 'jarvis').text, 'set a timer for 2.5 hours');
+  assert.equal(classify('and tomorrow?', { lastIntent: 'WEATHER' }).intent, 'WEATHER');
+  assert.equal(classify('and tomorrow?', { lastIntent: 'READ_FILE' }).intent, 'CONVERSATION');
+  assert.equal(classify("don't delete that file").intent, 'NEGATED');
+  assert.equal(classify("don't click Save").intent, 'NEGATED');
+  assert.equal(classify('do not fill Message with hello').intent, 'NEGATED');
+  assert.equal(classify('I should delete those old files someday').intent, 'CONVERSATION');
+  const calls = []; let handler;
+  const box = { ToolHandlers: { add: (_name, fn) => { handler = fn; } }, toolStep() {},
+    callTool: async (url, body) => { calls.push({ url, body }); return { level: body.level ?? 80, previous: 80 }; },
+    Undo: { push() {} }, cap: s => s };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../tools/system.js'), 'utf8'), box);
+  async function command(intent, text) { calls.length = 0; await handler({ intent }, text, nlu.normalize(text, 'jarvis').text, {}); return calls.at(-1); }
+  assert.equal((await command('BRIGHTNESS', 'set brightness to half')).body.level, 50);
+  assert.equal((await command('VOLUME_SET', 'make volume 20 percent lower')).body.level, 64);
+  assert.equal((await command('VOLUME_SET', 'lower volume by 20%')).body.level, 64);
+  assert.equal(classify('lower volume by 20%').intent, 'VOLUME_SET');
+  assert.equal((await command('VOLUME_SET', 'make volume 20 points lower')).body.level, 60);
+  assert.equal((await command('VOLUME_SET', 'set volume to 20 percent')).body.level, 20);
+  assert.equal((await command('BRIGHTNESS', 'increase brightness by 10 percent')).body.level, 88);
+  assert.equal((await command('BRIGHTNESS', 'decrease brightness by 10 points')).body.level, 70);
+  assert.equal((await command('VOLUME_SET', 'increase volume by 100 percent')).body.level, 100);
+  assert.equal((await command('VOLUME_SET', 'decrease volume by 100 percent')).body.level, 0);
+  const normalTool = box.callTool;
+  box.callTool = async (url, body) => { calls.push({ url, body }); return { error: 'fixture device unavailable' }; };
+  calls.length = 0;
+  const unavailable = await handler({ intent: 'VOLUME_SET' }, 'lower volume by 20%', 'lower volume by 20%', {});
+  assert.ok(unavailable.error && calls.length === 1 && calls[0].body.level === undefined, 'never guess a relative target when the current level is unavailable');
+  box.callTool = normalTool;
+  assert.equal(classify('make volume 20 points lower').intent, 'VOLUME_SET');
+  const helper = require('../assistant-tools');
+  assert.equal(helper.corrected('remind me Tuesday at 5 to call Rahul', 'Wednesday'), 'remind me Wednesday at 5 to call Rahul');
+  assert.equal(helper.corrected('remind me Tuesday at 5 to call Rahul', 'make it 6'), 'remind me Tuesday at 6 to call Rahul');
+  assert.equal(helper.corrected('remind me Tuesday at 5 pm to call Rahul', 'make it 6'), 'remind me Tuesday at 6 pm to call Rahul');
+  assert.equal(helper.corrected('open OS notes', 'DBMS'), 'open DBMS notes');
+  assert.equal(helper.corrected('remind me to buy milk', 'make it 6'), null, 'do not invent an absent time slot');
+  assert.equal(nlu.stripWhen('call Rahul at the end of the month'), 'call Rahul');
+  assert.report();
+})().catch(error => { console.error(error); process.exitCode = 1; });

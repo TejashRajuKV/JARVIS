@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#151614">
+  <title>Marks · JARVIS</title>
+  <link rel="stylesheet" href="/marks.css">
+  <script src="/marks-page.js" defer></script>
+</head>
+<body>
+  <header>
+    <a href="/">← Go to JARVIS</a>
+    <div class="header-actions">
+      <span id="preview" hidden>Developer preview</span>
+      <button type="button" id="emergency" hidden>Emergency stop</button>
+      <button type="button" id="disable" hidden>Disable Marks</button>
+    </div>
+  </header>
+  <main>
+    <h1>Marks</h1>
+    <p id="availability" role="status">Checking Marks availability…</p>
+    <div class="workspace" id="workspace" hidden>
+      <aside aria-label="Profile">
+        <label for="profile">Active profile</label>
+        <select id="profile"></select>
+        <p id="description"></p>
+        <details>
+          <summary>Profile availability</summary>
+          <ul id="catalog"></ul>
+        </details>
+      </aside>
+      <section aria-label="Marks commands">
+        <form id="command" autocomplete="off">
+          <label for="prompt">Command</label>
+          <textarea id="prompt" maxlength="4000" rows="3" required placeholder="Try ‘what time is it?’"></textarea>
+          <div class="actions">
+            <button type="submit" id="run">Run</button>
+            <button type="button" id="cancel" hidden>Cancel request</button>
+            <button type="button" id="voice" aria-pressed="false" hidden>Arm voice</button>
+            <button type="button" id="history">Show saved results</button>
+            <button type="button" id="jobs-button" hidden>Background work</button>
+          </div>
+        </form>
+        <p id="status" role="status"></p>
+        <section id="accounts" aria-labelledby="accounts-title" hidden>
+          <h2 id="accounts-title">Connected accounts</h2>
+          <div id="account-results"></div>
+        </section>
+        <div id="results" role="log" aria-label="Results"></div>
+        <section id="jobs" aria-labelledby="jobs-title" hidden>
+          <h2 id="jobs-title">Background work</h2>
+          <div id="job-results"></div>
+        </section>
+        <section id="saved" aria-labelledby="saved-title" hidden>
+          <h2 id="saved-title">Saved results</h2>
+          <div id="saved-results"></div>
+        </section>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

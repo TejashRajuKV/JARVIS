@@ -455,7 +455,12 @@ ToolHandlers.add('productivity', async function (p, raw, s, a) {
       if (rs.length) parts.push('**Reminders** — ' + rs.map(r => r.text + ' at ' + fmtTime(r.at)).join(', ') + '.');
       await refreshSystem();
       parts.push('**System** — CPU ' + sys.cpu + '%, RAM ' + sys.ram + '%, ' + sys.diskFree + ' GB free.');
-      return { text: parts.join('\n'), tool: 'dailyBriefing' };
+      const text = parts.join('\n');
+      if (settings.regionalNews && settings.online) {
+        const headlines = await regionalNews();
+        return { text: text + '\n\n' + headlines.text, speak: text, tool: 'dailyBriefing', noLocalize: true };
+      }
+      return { text, tool: 'dailyBriefing' };
     }
 
     /* ---- rolling conversation memory ---- */

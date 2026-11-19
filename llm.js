@@ -246,6 +246,7 @@ function createLLM({ getConfig, saveConfig, OLLAMA, DEFAULT_MODEL, onCall }) {
     const r = resolve(model);
     const bad = EMBED_UNSUPPORTED(r.kind);
     if (bad) throw bad;
+    if (r.kind !== 'ollama') require('./privacy-filter').guard(ins.map(content => ({content})));
     const req = buildEmbedRequest(r.kind, r.prov, { model: r.model, inputs: ins });
     let res;
     try { res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), signal: AbortSignal.timeout(timeoutMs) }); }
@@ -305,6 +306,7 @@ function createLLM({ getConfig, saveConfig, OLLAMA, DEFAULT_MODEL, onCall }) {
 
   async function sendRaw(o, stream) {
     const r = resolve(o.model);
+    if (r.kind !== 'ollama') require('./privacy-filter').guard([{ content: o.system || '' }, ...(o.messages || [])]);
     const release = r.kind === 'ollama' && !o.noQueue ? await acquire(o) : () => {};
     try { const out = await sendRaw2(o, stream, r); out.release = release; return out; }
     catch (e) {

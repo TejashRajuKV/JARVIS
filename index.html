@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f6f3e9">
   <title>JARVIS — Local AI Assistant</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23111213'/><path d='M11 9h10M16 9v11a4 4 0 0 1-8 0' fill='none' stroke='%23e9a23b' stroke-width='2.4' stroke-linecap='round'/></svg>">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5/400.css">
@@ -13,6 +14,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="themes.css">
+  <link rel="stylesheet" href="/site-theme.css">
   <link rel="stylesheet" href="ui.css">
   <link rel="stylesheet" href="boot-cinema.css">
   <link rel="stylesheet" href="hud-overlay.css">
@@ -57,6 +59,8 @@
       <b id="clockTime">--:--:--</b>
       <span id="clockDate">— — —</span>
     </div>
+    <button class="btn" id="immersiveToggle" type="button" aria-pressed="false" title="Show only the reactor and conversation">Hide controls</button>
+    <button class="btn" id="marksBtn" type="button" hidden>Marks</button>
     <button class="btn" id="settingsBtn">SETTINGS</button>
   </header>
 
@@ -118,7 +122,30 @@
         </div>
         <div id="liveTranscript"></div>
         <canvas id="waveCanvas"></canvas>
+        <button class="btn" id="focusAudioControl" type="button" hidden>Play focus audio</button>
+        <section class="compact-media" id="compactMedia" aria-label="Media player" hidden>
+          <strong id="mediaNow"></strong>
+          <div class="daily-actions">
+            <button type="button" class="btn" id="mediaPrevious" aria-label="Previous item">Previous</button>
+            <button type="button" class="btn" id="mediaToggle">Play</button>
+            <button type="button" class="btn" id="mediaNext" aria-label="Next item">Next</button>
+          </div>
+          <label id="mediaSeekLabel">Position <input id="mediaSeek" aria-label="Playback position" type="range" min="0" max="1" value="0"></label>
+          <label>Volume <input id="mediaVolume" aria-label="Media volume" type="range" min="0" max="1" step=".05" value=".55"></label>
+          <a id="mediaFallback" hidden target="_blank" rel="noopener noreferrer">Open official player</a>
+          <small id="mediaPlaybackStatus" role="status"></small>
+        </section>
+        <audio id="mediaAudio" preload="metadata"></audio>
       </div>
+
+      <aside id="immersivePanel" class="immersive-panel" aria-labelledby="immersivePanelTitle" hidden>
+        <div class="immersive-panel-header">
+          <h2 id="immersivePanelTitle"></h2>
+          <button class="btn" id="immersivePanelClose" type="button" aria-label="Close panel">Close</button>
+        </div>
+        <div id="immersivePanelContent" class="immersive-panel-content"></div>
+      </aside>
+      <div id="immersivePlayerDock" class="immersive-player-dock" hidden></div>
 
       <div class="controls">
         <button id="micBtn" title="Tap to speak (or press Space)" aria-label="Tap to speak">
@@ -126,7 +153,7 @@
         </button>
         <div class="input-row">
           <button class="btn" id="attachBtn" type="button" title="Add a PDF or notes file (or drag it here)" aria-label="Attach a file">📎</button><input type="file" id="attachFile" accept=".pdf,.txt,.md,.csv,.json,.py,.js,.ts,.c,.cpp,.h,.java,.cs,.go,.rs,.html,.css,.sql,.ipynb" hidden>
-          <input id="chatInput" type="text" placeholder='Ask anything or give a command…  e.g. "remind me to submit the lab at 5pm"' autocomplete="off">
+          <input id="chatInput" type="text" aria-label="Message JARVIS" placeholder='Ask anything or give a command…  e.g. "remind me to submit the lab at 5pm"' autocomplete="off">
           <button class="btn danger" id="stopBtn" type="button" hidden title="Stop speaking and stop the answer (Esc)" aria-label="Stop speaking and stop the answer">■ STOP</button>
           <button class="btn primary" id="sendBtn">SEND ▸</button>
           <button class="btn" id="codeModeBtn" type="button" title="JARVIS Code — build or change a project; JARVIS writes the files">JARVIS CODE</button>
@@ -143,7 +170,7 @@
             <button class="code-send" id="codeSendBtn" type="button" aria-label="Send to JARVIS Code" title="Send (Enter)">↑</button>
           </div>
         </div>
-        <div class="lang-switch" role="group" aria-label="Speech language"><button class="lang-btn" data-lang="en" title="English">EN</button><button class="lang-btn" data-lang="te" lang="te" title="తెలుగు" aria-label="Telugu">తె</button><button class="lang-btn" data-lang="kn" lang="kn" title="ಕನ್ನಡ" aria-label="Kannada">ಕ</button></div>
+        <div class="lang-switch" role="group" aria-label="Speech language"><button class="lang-btn" data-lang="en" title="English">EN</button><button class="lang-btn" data-lang="te" lang="te" title="తెలుగు" aria-label="Telugu">తె</button><button class="lang-btn" data-lang="kn" lang="kn" title="ಕನ್ನಡ" aria-label="Kannada">ಕ</button><button class="lang-btn" data-lang="hi" type="button">Hindi</button></div>
         <button id="wakeBtn" title="Toggle hands-free wake word"><span class="wd"></span>WAKE WORD</button>
       </div>
 
@@ -161,6 +188,10 @@
           <button class="tab" data-tab="chat" role="tab">CHAT <em id="msgCount">0</em></button>
           <button class="tab" data-tab="tasks" role="tab">TASKS <em id="taskCount">0</em></button>
           <button class="tab" data-tab="memory" role="tab">MEMORY <em id="memCount">0</em></button>
+          <button class="tab" data-tab="notes" role="tab">NOTES</button>
+          <button class="tab" data-tab="workspaces" role="tab">WORKSPACES</button>
+          <button class="tab" data-tab="desktop" role="tab">APPS</button>
+          <button class="tab" data-tab="media" role="tab">MEDIA</button>
           <button class="tab" data-tab="code" role="tab" title="JARVIS Code — its own conversation about your code">JARVIS CODE <em id="codeCount">0</em></button>
           <button class="tab" data-tab="images" role="tab">IMAGES</button>
           <button class="tab" data-tab="history" role="tab">HISTORY</button>
@@ -171,7 +202,17 @@
             <div class="home-heading"><div><div class="eyebrow">YOUR DAY, AT A GLANCE</div><h2 id="todayDate">TODAY</h2></div><button class="btn primary" id="briefingBtn">BRIEF ME</button></div>
             <div class="home-grid" id="todaySummary"></div>
             <section class="home-section"><div class="home-section-head"><h3>UP NEXT</h3><button class="linkbtn" data-goto="tasks">ALL TASKS</button></div><div id="todayAgenda"></div></section>
-            <section class="home-section"><div class="home-section-head"><h3>CALENDAR</h3><button class="linkbtn" id="calendarSettingsBtn">CONNECT</button></div><div id="todayCalendar" class="home-empty">Optional read-only calendar feed. Connect one in Settings.</div></section>
+            <section class="home-section" id="todayCalendarSection"><div class="home-section-head"><h3>CALENDAR</h3><button class="linkbtn" id="calendarSettingsBtn">CONNECT</button></div><div id="todayCalendar" class="home-empty" role="status">Optional read-only calendar feed. Connect one in Settings.</div></section>
+            <section class="home-section" aria-labelledby="radioHeading">
+              <div class="home-section-head">
+                <h3 id="radioHeading">FM RADIO</h3>
+                <label class="radio-city">Default radio city
+                  <select id="radioCity" aria-label="Radio city"><option value="">Use Home City</option></select>
+                </label>
+              </div>
+              <p class="home-empty" id="radioStatus" role="status"></p>
+              <ul id="radioStations"></ul>
+            </section>
             <section class="home-section"><div class="home-section-head"><h3>HOME ASSISTANT</h3><button class="linkbtn" id="haSettingsBtn">SET UP</button></div><div id="todayHomeAssistant" class="home-empty">Connect Home Assistant in Settings to see your devices.</div></section>
             <section class="home-section"><div class="home-section-head"><h3>SYSTEM STATUS</h3></div><div id="todaySystem" class="home-grid"></div></section>
           </div>
@@ -215,6 +256,175 @@
           </div>
           <div class="chat-foot"><button class="linkbtn" id="clearMemBtn">FORGET EVERYTHING</button><span>stored on this PC</span></div>
         </div>
+        <div class="tabpane workspace-pane" data-pane="notes">
+          <div class="workspace-scroll task-scroll">
+            <h2>Voice notes and captures</h2>
+            <form class="daily-form" id="voiceNoteForm">
+              <label>Note <textarea id="voiceNoteDraft" rows="3" maxlength="500" placeholder="Type a note or dictate it below"></textarea></label>
+              <div class="daily-actions">
+                <button class="btn" id="voiceNoteRecord" type="button">Dictate note</button>
+                <label><input type="checkbox" id="voiceNoteWhisper"> Use local Whisper</label>
+                <button class="btn primary" type="submit">Save note</button>
+              </div>
+              <p id="voiceNoteStatus" role="status"></p>
+            </form>
+            <label class="daily-search">Search notes <input id="voiceNoteSearch" aria-label="Search notes" type="search" maxlength="100"></label>
+            <label class="daily-search">Filter by date <input id="inboxDate" aria-label="Filter by date" type="date"></label>
+            <div id="voiceNoteList" class="daily-list"></div>
+            <details class="daily-form">
+              <summary>Search a scanned PDF</summary>
+              <label>PDF name or full path <input id="ocrPdfPath" aria-label="PDF name or full path" maxlength="500"></label>
+              <div class="daily-actions">
+                <button type="button" class="btn" id="ocrPdfStart">Index with local OCR</button>
+                <button type="button" class="btn" id="ocrPdfCancel" hidden>Cancel OCR</button>
+              </div>
+              <p role="status" id="ocrPdfStatus"></p>
+              <form id="ocrPdfSearch"><label>Find in the PDF <input id="ocrPdfQuery" aria-label="Find in the PDF" required maxlength="160"></label><button class="btn" type="submit">Search PDF</button></form>
+              <div id="ocrPdfResults" class="daily-list"></div>
+            </details>
+          </div>
+        </div>
+        <div class="tabpane workspace-pane" data-pane="workspaces">
+          <div class="workspace-scroll task-scroll">
+            <h2>Saved workspaces</h2>
+            <form class="daily-form" id="savedWorkspaceForm">
+              <label>Workspace name <input id="savedWorkspaceName" placeholder="DBMS" maxlength="70" required></label>
+              <label>Project folder <input id="savedWorkspaceProject" placeholder="Full path to the project folder" maxlength="500"></label>
+              <label>Note files <textarea id="savedWorkspaceNotes" rows="2" maxlength="6000" placeholder="One full file path per line"></textarea></label>
+              <label>Links <textarea id="savedWorkspaceLinks" rows="2" maxlength="6000" placeholder="One HTTP or HTTPS link per line"></textarea></label>
+              <div class="daily-actions">
+                <button class="btn primary" type="submit">Save workspace</button>
+                <button class="btn" id="savedWorkspaceCancel" type="button" hidden>Cancel edit</button>
+              </div>
+              <p id="savedWorkspaceStatus" role="status"></p>
+            </form>
+            <div id="savedWorkspaceList" class="daily-list"></div>
+          </div>
+        </div>
+        <div class="tabpane workspace-pane" data-pane="desktop">
+          <div class="workspace-scroll">
+            <h2>APP CONTROLS</h2>
+            <p>Select an open application or browser window to inspect its controls. Review each click or fill before it runs.</p>
+            <div class="daily-actions">
+              <button type="button" class="btn" id="desktopRefresh">Refresh windows</button>
+              <label><input type="checkbox" id="desktopExtended"> Enable reviewed selection, toggles, scrolling and expansion</label>
+              <select id="desktopWindows" aria-label="Application window"><option value="">Choose a window</option></select>
+              <button type="button" class="btn" id="desktopInspect">Inspect window</button>
+            </div>
+            <p id="desktopStatus" role="status">Refresh the window list to begin.</p>
+            <div id="desktopControls" class="daily-list"></div>
+            <details id="runtimeTools">
+              <summary>Background tasks and MCP tools</summary>
+              <button type="button" class="btn" id="emergencyStop">Emergency stop</button>
+              <button type="button" class="btn" id="emergencyResume">Resume JARVIS</button>
+              <label><input type="checkbox" id="emergencyHotkey"> Enable global Ctrl+Alt+Pause emergency stop (Windows)</label>
+              <p id="emergencyStatus" role="status">Global hotkey is off until enabled. It receives only the registered shortcut.</p>
+              <p>Read notes and summarize text files in the background. Window actions stay interactive.</p>
+              <button type="button" class="btn" id="jobRefresh">Refresh tasks</button>
+              <label>Next job start time (optional)<input type="datetime-local" id="jobNotBefore" aria-label="Next job start time (optional)"></label>
+              <label>Runtime budget in seconds<input type="number" id="jobRuntime" min="1" max="3600" value="120" aria-label="Runtime budget in seconds"></label>
+              <label>Maximum AI calls<input type="number" id="jobModelCalls" min="0" max="32" value="5" aria-label="Maximum AI calls"></label>
+              <div id="jobList" class="daily-list" role="status"></div>
+              <h3>MCP connections</h3>
+              <details id="productivityWorkbench"><summary>Documents, data, images and reviewed code</summary>
+                <form id="officeExportForm">
+                  <select id="officeKind" aria-label="Export format"><option value="docx">Word document</option><option value="pptx">PowerPoint presentation</option><option value="xlsx">Excel workbook</option></select>
+                  <input id="officeTitle" maxlength="100" aria-label="Export title" placeholder="Title" required>
+                  <textarea id="officeText" rows="6" aria-label="Notes or CSV data" placeholder="Notes for Word/PowerPoint, or CSV with a header row for Excel"></textarea>
+                  <input id="officeGroup" aria-label="Group by column" placeholder="Excel group-by column (optional)">
+                  <input id="officeValue" aria-label="Numeric value column" placeholder="Excel numeric column (optional)">
+                  <label><input id="officeChart" type="checkbox"> Add grouped chart to Excel</label>
+                  <button type="submit" class="btn">Create editable export</button>
+                </form>
+                <form id="contentAnalyzeForm"><input id="contentFile" aria-label="Document to analyze" placeholder="Approved document path" required><button type="submit" class="btn">Extract quoted facts and keywords</button></form>
+                <form id="imageWorkflowForm"><input id="imageFile" aria-label="Image path" placeholder="Approved image path" required><input id="imageWidth" type="number" min="1" max="4096" value="1024" aria-label="Image width"><select id="imageFormat" aria-label="Image output format"><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WebP</option></select><button type="submit" class="btn">Save resized copy</button></form>
+                <form id="audioWorkflowForm"><input id="audioFile" aria-label="Audio or video path" placeholder="Approved audio/video path" required><input id="audioStart" type="number" min="0" value="0" aria-label="Clip start in seconds"><input id="audioDuration" type="number" min="1" max="720" value="60" aria-label="Clip duration in seconds"><label><input id="audioTranscribe" type="checkbox"> Transcribe locally with Whisper</label><button type="submit" class="btn">Extract audio clip</button></form>
+                <details id="executionPanel"><summary>Reviewed standalone code</summary><p>Runs as your Windows user, without OS isolation. Scripts can access your laptop. Every run requires an exact approval; no shell commands are accepted.</p><label><input id="executionEnabled" type="checkbox"> Enable reviewed native execution</label><form id="executionForm"><select id="executionProgram" aria-label="Script language"><option value="node">Node.js</option><option value="python">Python</option></select><input id="executionCwd" aria-label="Approved working folder" placeholder="Working folder (blank = JARVIS sandbox)"><textarea id="executionCode" rows="8" aria-label="Complete standalone script" placeholder="Complete script to review" required></textarea><button class="btn" type="submit">Review script run</button></form></details>
+                <p id="workbenchStatus" role="status"></p><div id="workbenchLinks"></div><pre id="workbenchResult"></pre>
+              </details>
+              <details id="managedBrowserPanel"><summary>Isolated browser controls</summary>
+                <label><input type="checkbox" id="managedBrowserEnabled"> Enable isolated browser (each action needs approval)</label>
+                <form id="managedBrowserOpen"><input id="managedBrowserUrl" type="url" aria-label="URL for isolated browser" placeholder="https://example.com" required><button type="submit" class="btn">Review opening page</button></form>
+                <button type="button" class="btn" id="managedBrowserInspect">Read page controls</button>
+                <button type="button" class="btn" id="managedBrowserClose">Close isolated browser</button>
+                <p id="managedBrowserStatus" role="status"></p>
+                <pre id="managedBrowserText"></pre>
+                <div id="managedBrowserControls" class="daily-list"></div>
+              </details>
+              <details id="accountConnections"><summary>Google, Microsoft and encrypted credentials</summary>
+                <button type="button" class="btn" id="accountRefresh">Refresh connections</button>
+                <p id="accountStatus" role="status"></p>
+                <form id="accountConfigure">
+                  <select id="accountProvider" aria-label="Account provider"><option value="google">Google</option><option value="microsoft">Microsoft</option></select>
+                  <input id="accountClientId" aria-label="Registered OAuth client ID" placeholder="Registered desktop OAuth client ID" required>
+                  <input id="accountClientSecret" type="password" aria-label="OAuth client secret if required" placeholder="Client secret, if required" autocomplete="off">
+                  <button type="submit" class="btn">Review read-only connection</button>
+                </form>
+                <button type="button" class="btn" id="accountSignIn">Create sign-in link</button>
+                <a id="accountSignInLink" target="_blank" rel="noopener noreferrer" hidden>Sign in at the provider</a>
+                <button type="button" class="btn" id="accountDisconnect">Disconnect selected account</button>
+                <form id="accountRead">
+                  <select id="accountKind" aria-label="Account data"><option value="mail">Mail</option><option value="calendar">Calendar</option><option value="files">Files</option></select>
+                  <input id="accountQuery" maxlength="200" aria-label="Account search query" placeholder="Search query (optional)">
+                  <input id="accountItemId" maxlength="250" aria-label="Provider item ID" placeholder="Item ID from a previous result (optional)">
+                  <button type="submit" class="btn">Review account read</button>
+                </form>
+                <button type="button" class="btn" id="vaultMigrate">Review provider-key encryption</button>
+              </details>
+              <p>Connect a local MCP Streamable HTTP server. Each external tool call needs your one-time approval. Servers stay disconnected after restart.</p>
+              <form id="mcpConnectForm">
+                <input id="mcpName" maxlength="80" placeholder="Server name" aria-label="MCP server name" required>
+                <input id="mcpUrl" type="url" placeholder="http://127.0.0.1:8080/mcp" aria-label="Local MCP endpoint" required>
+                <button class="btn" type="submit">Review connection</button>
+              </form>
+              <button type="button" class="btn" id="mcpRefresh">Refresh connections</button>
+              <div id="mcpServers" class="daily-list"></div>
+              <form id="mcpCallForm">
+                <select id="mcpTool" aria-label="External MCP tool"></select>
+                <pre id="mcpSchema"></pre>
+                <textarea id="mcpArguments" maxlength="16000" aria-label="MCP tool arguments as JSON">{}</textarea>
+                <button class="btn" type="submit">Review external call</button>
+              </form>
+              <p id="runtimeStatus" role="status"></p>
+            </details>
+          </div>
+        </div>
+        <div class="tabpane workspace-pane" data-pane="media">
+          <div class="workspace-scroll task-scroll">
+            <h2>Media</h2>
+            <div class="daily-form">
+              <label>Add local audio <input id="mediaFiles" aria-label="Add local audio" type="file" accept="audio/*,.mp3,.m4a,.aac,.flac,.wav,.ogg,.opus" multiple></label>
+              <label>Open a local video <input id="mediaVideo" aria-label="Open a local video" type="file" accept="video/*"></label>
+              <a id="mediaLocalVideoLink" hidden target="_blank" rel="noopener">Play selected video in a browser tab</a>
+              <div class="daily-actions">
+                <label>Playback speed
+                  <select id="mediaSpeed" aria-label="Podcast speed"><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select>
+                </label>
+                <label>Stop after
+                  <select id="mediaSleep" aria-label="Sleep timer"><option value="0">Off</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">60 minutes</option></select>
+                </label>
+              </div>
+              <div id="mediaQueue" class="daily-list" aria-label="Playback queue"></div>
+              <button class="btn" id="mediaClear" type="button">Clear queue</button>
+            </div>
+            <form class="daily-form" id="mediaProviderForm">
+              <label>Provider <select id="mediaProvider" aria-label="Provider"><option>YouTube</option><option>Spotify</option><option>Video link</option></select></label>
+              <label>Title or link <input id="mediaProviderInput" aria-label="Title or link" maxlength="2000" required></label>
+              <button class="btn" type="submit">Open official player or search</button>
+            </form>
+            <form class="daily-form" id="podcastForm">
+              <label>Podcast RSS URL <input id="podcastUrl" type="url" maxlength="2000" placeholder="https://…" required></label>
+              <button class="btn" type="submit">Subscribe</button>
+            </form>
+            <div class="daily-actions">
+              <label>Subscriptions <select id="podcastFeeds" aria-label="Podcast subscriptions"><option value="">Choose a podcast</option></select></label>
+              <button class="btn" id="podcastResume" type="button">Resume podcast</button>
+              <button class="btn" id="podcastRemove" type="button">Unsubscribe</button>
+            </div>
+            <p id="mediaStatus" role="status"></p>
+            <div id="podcastEpisodes" class="daily-list"></div>
+          </div>
+        </div>
         <div class="tabpane workspace-pane" data-pane="images"><div class="workspace-scroll task-scroll"><div class="home-section-head"><div><div class="eyebrow">CAMERA · SCREENSHOTS · CAPTURES</div><h2>RECENT IMAGES</h2></div><button class="btn" id="galleryRefresh">REFRESH</button></div><div id="galleryList" class="gallery-grid"></div></div></div>
         <div class="tabpane workspace-pane" data-pane="history"><div class="workspace-scroll task-scroll"><div class="home-section-head"><div><div class="eyebrow">ATTEMPTED · VERIFIED · RECOVERABLE</div><h2>COMMAND HISTORY</h2></div><button class="btn" id="historyClear">CLEAR HISTORY</button></div><div id="historyList" class="history-list"></div></div></div>
       </section>
@@ -241,6 +451,11 @@
       <h3 style="margin-top:14px">CALENDAR · READ ONLY</h3>
       <div class="root-add" style="flex-wrap:wrap"><input type="url" id="calendarUrl" placeholder="https://…/calendar.ics" autocomplete="off" spellcheck="false"><button class="btn" id="calendarSave">CONNECT</button><button class="btn" id="calendarRemove" hidden>DISCONNECT</button></div><div class="s-note" id="calendarStatus">Not connected</div>
       <div class="s-row"><label>Morning daily briefing<small>OPT IN · USES TODAY’S TASKS AND CONNECTED CALENDAR</small></label><input type="checkbox" id="dailyBriefingToggle"></div>
+      <div class="s-row"><label for="regionalNewsToggle">Regional headlines in briefings<small>USES HOME CITY AND REQUIRES ONLINE TOOLS</small></label><input type="checkbox" id="regionalNewsToggle"></div>
+      <div class="s-row"><label for="quietEnabled">Daily quiet hours</label><input id="quietEnabled" type="checkbox"></div>
+      <div class="s-row"><label for="quietStart">Quiet start</label><input id="quietStart" type="time"><label for="quietEnd">End</label><input id="quietEnd" type="time"></div>
+      <div class="s-row"><label for="quietPassDeadlines">Let deadline warnings through quiet hours</label><input id="quietPassDeadlines" type="checkbox"></div>
+      <div class="s-row"><label for="studyDayStart">Study hours start</label><input id="studyDayStart" type="number" min="0" max="23"><label for="studyDayEnd">End</label><input id="studyDayEnd" type="number" min="1" max="24"></div>
       <div class="s-row"><label>Briefing time</label><input type="time" id="dailyBriefingTime" value="07:30"></div>
       <div class="s-note">JARVIS speaks once a day at this time while it is running. Enable speech in Settings to hear it.</div>
       <h3 style="margin-top:14px">HOME ASSISTANT</h3>
@@ -391,6 +606,7 @@
   <script src="places.js"></script>
   <script src="decider.js"></script>
   <script src="nlu.js"></script>
+  <script src="understanding.js"></script>
   <script src="persona.js"></script>
   <script src="emotion-intelligence.js"></script>
   <script src="lang.js"></script>
@@ -428,11 +644,23 @@
   <script src="tools/files.js"></script>
   <script src="tools/code.js"></script>
   <script src="tools/productivity.js"></script>
+  <script src="fm-radio.js"></script>
+  <script src="daily-features.js"></script>
+  <script src="assistant-tools.js"></script>
+  <script src="focus-audio.js"></script>
   <script src="script.js"></script>
+  <script src="assistant-features-page.js"></script>
+  <script src="media-center.js"></script>
+  <script src="desktop-control.js"></script>
+  <script src="agent-runtime-page.js"></script>
+  <script src="account-page.js"></script>
+  <script src="managed-browser-page.js"></script>
+  <script src="workbench-page.js"></script>
   <script src="palette.js"></script>
   <script src="codepanel.js"></script>
   <script src="wizard.js"></script>
   <script src="routines.js"></script>
+  <script src="agent-context.js"></script>
   <script src="agent.js"></script>
   <script src="action-receipts.js"></script>
   <script src="workspace.js"></script>

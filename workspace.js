@@ -65,8 +65,31 @@
     try { const j=await req('/tool/systemInfo'); const values=[['CPU',j.cpuUsage==null?'—':Math.round(j.cpuUsage)+'%'],['MEMORY',j.memoryUsagePercent==null?'—':Math.round(j.memoryUsagePercent)+'%'],['DISK FREE',j.disk&&j.disk.freeGB!=null?j.disk.freeGB+' GB':'—'],['UPTIME',j.uptimeMin==null?'—':Math.floor(j.uptimeMin/60)+'h '+Math.round(j.uptimeMin%60)+'m']]; $('#todaySystem').innerHTML=values.map(x=>'<article class="home-stat"><span>'+x[0]+'</span><b>'+esc(x[1])+'</b></article>').join(''); } catch { $('#todaySystem').textContent='System status is unavailable.'; }
     renderCalendar(); renderHomeAssistant();
   }
-  async function renderCalendar() {
-    const el=$('#todayCalendar'); try { const s=await req('/calendar/status'); if(!s.configured){el.className='home-empty';el.textContent='Optional read-only calendar feed. Connect one in Settings.';return;} const j=await req('/calendar/events'); if(!j.events||!j.events.length){el.className='home-empty';el.textContent='No upcoming calendar events in the next 14 days.';return;} el.className='agenda-list';el.replaceChildren();for(const e of j.events.slice(0,6)){const row=document.createElement('div');row.className='agenda-row';const t=document.createElement('time');t.textContent=new Date(e.start).toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'});const s=document.createElement('span');s.textContent=e.title+(e.location?' · '+e.location:'');row.append(t,s);el.append(row);} } catch(e){el.className='home-empty';el.textContent=e.message;}
+  let calendarRequest = 0;
+  async function renderCalendar({ showLoading = false } = {}) {
+    const el = $('#todayCalendar'), request = ++calendarRequest;
+    const status = text => { el.className = 'home-empty'; el.textContent = text; };
+    if (showLoading) status('Loading calendar…');
+    try {
+      const connection = await req('/calendar/status');
+      if (request !== calendarRequest) return;
+      if (!connection.configured) return status('Optional read-only calendar feed. Connect one in Settings.');
+      const { events } = await req('/calendar/events');
+      if (request !== calendarRequest) return;
+      if (!events?.length) return status('No upcoming calendar events in the next 14 days.');
+      el.className = 'agenda-list';
+      el.replaceChildren();
+      for (const event of events.slice(0, 6)) {
+        const row = document.createElement('div'); row.className = 'agenda-row';
+        const time = document.createElement('time');
+        time.textContent = new Date(event.start).toLocaleString([], { weekday:'short', hour:'numeric', minute:'2-digit' });
+        const title = document.createElement('span');
+        title.textContent = event.title + (event.location ? ' · ' + event.location : '');
+        row.append(time, title); el.append(row);
+      }
+    } catch (error) {
+      if (request === calendarRequest) status(error.message || 'Calendar is unavailable.');
+    }
   }
   async function renderHomeAssistant() {
     const el=$('#todayHomeAssistant');try{const s=await req('/homeassistant/status');if(!s.configured){el.className='home-empty';el.textContent='Connect Home Assistant in Settings to see your devices.';return;}const j=await req('/homeassistant/entities');el.className='ha-entities';el.replaceChildren();if(!j.entities.length){el.textContent='Configured; no supported light, switch, sensor, fan or cover entities were found.';return;}for(const e of j.entities.slice(0,8)){const row=document.createElement('div');row.className='ha-row';const label=document.createElement('span');label.textContent=e.name+' · '+e.state+(e.attributes&&e.attributes.unit?' '+e.attributes.unit:'');const button=document.createElement('button');button.className='cbtn';button.textContent=e.domain==='sensor'?'READ ONLY':['light','switch','fan'].includes(e.domain)?(e.state==='on'?'TURN OFF':'TURN ON'):e.domain==='cover'?(e.state==='open'?'CLOSE':'OPEN'):'ACTIVATE';button.disabled=e.domain==='sensor';button.onclick=async()=>{const service=e.domain==='cover'?(e.state==='open'?'close_cover':'open_cover'):e.domain==='scene'?'turn_on':e.state==='on'?'turn_off':'turn_on';button.disabled=true;try{const result=await controlEntity(e,service);if(result.error)alert(result.text);else await renderHomeAssistant();}finally{button.disabled=false;}};row.append(label,button);el.append(row);}}catch(e){el.className='home-empty';el.textContent=e.message;}
@@ -83,7 +106,9 @@
   async function saveCalendar(){const url=$('#calendarUrl').value.trim();try{await req('/calendar/config','PUT',{url});$('#calendarStatus').textContent='Connected · read-only events for the next 14 days.';$('#calendarUrl').value='';$('#calendarRemove').hidden=false;await renderCalendar();}catch(e){$('#calendarStatus').textContent=e.message;}}
   async function saveHA(){const url=$('#haUrl').value.trim(),token=$('#haToken').value.trim();try{await req('/homeassistant/config','PUT',{url,token});$('#haStatus').textContent='Connected · access token stored on this laptop.';$('#haToken').value='';$('#haRemove').hidden=false;await renderHomeAssistant();}catch(e){$('#haStatus').textContent=e.message;}}
   async function integrationStatus(){try{const c=await req('/calendar/status');$('#calendarRemove').hidden=!c.configured;$('#calendarStatus').textContent=c.configured?'Feed saved · '+(c.host||'private feed'):'Not connected';const h=await req('/homeassistant/status');$('#haRemove').hidden=!h.configured;$('#haStatus').textContent=h.configured ? (h.connected ? 'Connected · ' : 'Unavailable · ') + h.url : 'Not connected';if(h.configured)$('#haUrl').value=h.url;}catch{}}
-  async function briefing(){const data=localTasks();let parts=[];const open=data.todos.filter(x=>!x.done);const due=data.deadlines.filter(x=>!x.done&&+x.due>=data.dayStart&&+x.due<data.tomorrow);const top=[...due.map(x=>x.title),...data.agenda.map(x=>x.label.replace(/^(?:Reminder|Class|Deadline) · /,'')),...open.map(x=>x.text)].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).slice(0,3);if(top.length)parts.push('Your top items today: '+top.join('; ')+'.');if(!top.length)parts.push('Your schedule is clear so far.');if(data.attendanceRisk&&data.attendanceRisk.pct<data.target)parts.push('Attendance needs attention: '+data.attendanceRisk.name+' is at '+data.attendanceRisk.pct+' percent, below your '+data.target+' percent target.');const prefs=store.get('jarvis.settings',{});if(prefs.online){try{const j=await req('/calendar/events');const today=(j.events||[]).filter(e=>new Date(e.start).toDateString()===new Date().toDateString());if(today.length)parts.push('Calendar: '+today.length+' event'+(today.length===1?'':'s')+' today: '+today.map(x=>x.title).join(', ')+'.');}catch{}try{const w=await req('/tool/weather','POST',{city:prefs.city||'',online:true});if(w.success)parts.push('Weather for '+w.place+': '+w.tempC+' degrees and '+String(w.desc||'').toLowerCase()+', with '+w.rainChance+' percent chance of rain.');}catch{}}const text=parts.join(' ');jarvisSay({text,intent:'DAILY_BRIEFING'});}
+  async function briefing(){const data=localTasks();let parts=[];const open=data.todos.filter(x=>!x.done);const due=data.deadlines.filter(x=>!x.done&&+x.due>=data.dayStart&&+x.due<data.tomorrow);const top=[...due.map(x=>x.title),...data.agenda.map(x=>x.label.replace(/^(?:Reminder|Class|Deadline) · /,'')),...open.map(x=>x.text)].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).slice(0,3);if(top.length)parts.push('Your top items today: '+top.join('; ')+'.');if(!top.length)parts.push('Your schedule is clear so far.');if(data.attendanceRisk&&data.attendanceRisk.pct<data.target)parts.push('Attendance needs attention: '+data.attendanceRisk.name+' is at '+data.attendanceRisk.pct+' percent, below your '+data.target+' percent target.');const prefs=store.get('jarvis.settings',{});if(prefs.online){try{const j=await req('/calendar/events');const today=(j.events||[]).filter(e=>new Date(e.start).toDateString()===new Date().toDateString());if(today.length)parts.push('Calendar: '+today.length+' event'+(today.length===1?'':'s')+' today: '+today.map(x=>x.title).join(', ')+'.');}catch{}try{const w=await req('/tool/weather','POST',{city:prefs.city||'',online:true});if(w.success)parts.push('Weather for '+w.place+': '+w.tempC+' degrees and '+String(w.desc||'').toLowerCase()+', with '+w.rainChance+' percent chance of rain.');}catch{}}const text=parts.join(' ');jarvisSay({text,intent:'DAILY_BRIEFING'});
+    if (settings.regionalNews && settings.online) jarvisSay(await regionalNews());
+  }
   async function scheduledBriefingCheck(){
     if (!settings.dailyBriefing || !settings.tts || !settings.dailyBriefingTime) return;
     const now=new Date(),[hour,minute]=settings.dailyBriefingTime.split(':').map(Number);
@@ -111,16 +136,23 @@
   function setup(){
     const briefingToggle=$('#dailyBriefingToggle'),briefingTime=$('#dailyBriefingTime');briefingToggle.checked=!!settings.dailyBriefing;briefingTime.value=settings.dailyBriefingTime||'07:30';
     briefingToggle.onchange=()=>{settings.dailyBriefing=briefingToggle.checked;saveSettings();};briefingTime.onchange=()=>{settings.dailyBriefingTime=briefingTime.value||'07:30';saveSettings();};
+    const newsToggle = $('#regionalNewsToggle');
+    newsToggle.checked = !!settings.regionalNews;
+    newsToggle.onchange = () => { settings.regionalNews = newsToggle.checked; saveSettings(); };
     $('#galleryRefresh').onclick=gallery;$('#historyClear').onclick=()=>{if(confirm('Clear the command history receipts?')){for(const r of ActionReceipts.list())ActionReceipts.remove(r.id);ActionReceipts.render();}};
     $('#calendarSave').onclick=saveCalendar;$('#haSave').onclick=saveHA;
+    $('#todayCalendar').addEventListener('jarvis:refresh-calendar', () => renderCalendar({ showLoading: true }));
     $('#calendarRemove').onclick=async()=>{await req('/calendar/config','DELETE');$('#calendarUrl').value='';$('#calendarStatus').textContent='Disconnected';$('#calendarRemove').hidden=true;await renderCalendar();};
     $('#haRemove').onclick=async()=>{await req('/homeassistant/config','DELETE');$('#haUrl').value='';$('#haToken').value='';$('#haStatus').textContent='Disconnected';$('#haRemove').hidden=true;await renderHomeAssistant();};
     $('#briefingBtn').onclick=briefing;$('#calendarSettingsBtn').onclick=$('#haSettingsBtn').onclick=()=>{document.getElementById('settingsBtn').click();};
     document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>document.querySelector('.tab[data-tab="'+b.dataset.goto+'"]').click());
     document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.tab==='today')renderToday();if(b.dataset.tab==='images')gallery();if(b.dataset.tab==='history')ActionReceipts.render();}));
     document.addEventListener('jarvis:receipt',ev=>{const r=ev.detail,el=document.querySelector('.action-receipt[data-receipt-id="'+CSS.escape(r.id)+'"]');if(el){const badge=el.querySelector('.receipt-status');if(badge){badge.className='receipt-status '+r.status;badge.textContent=r.status.toUpperCase();}const note=el.querySelector('.receipt-note');if(note)note.textContent=r.note;}});
-    document.addEventListener('jarvis:receipt',()=>{if(document.querySelector('.tab[data-tab="today"]')?.classList.contains('active'))renderToday();});
-    setInterval(()=>{if(document.querySelector('.tab[data-tab="today"]')?.classList.contains('active'))renderToday();},60000);
+    const refreshVisibleToday = () => {
+      if (!document.body.classList.contains('immersive') && $('.tab[data-tab="today"]').classList.contains('active')) renderToday();
+    };
+    document.addEventListener('jarvis:receipt', refreshVisibleToday);
+    setInterval(refreshVisibleToday,60000);
     setInterval(scheduledBriefingCheck,60000);scheduledBriefingCheck();
     integrationStatus();ActionReceipts.render();renderToday();
   }

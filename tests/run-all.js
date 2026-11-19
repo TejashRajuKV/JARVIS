@@ -6,8 +6,9 @@ const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.test.js') && f 
 let failed = 0;
 const skipped = [];
 for (const f of files) {
-  // The browser end-to-end suite drives every feature through the real page, so it gets longer.
-  const timeoutMs = f === 'e2e.test.js' ? 600000 : f === 'api.test.js' ? 300000 : 120000;
+  // Browser scenarios exercise two tabs and a restart; both browser suites need
+  // room for cold Windows profiles. Assertions and skip handling are unchanged.
+  const timeoutMs = f === 'e2e.test.js' ? 600000 : ['api.test.js', 'browser-scenarios.test.js'].includes(f) ? 300000 : 120000;
   const startedAt = Date.now();
   const r = spawnSync(process.execPath, [path.join(__dirname, f)], { encoding: 'utf8', timeout: timeoutMs });
   const elapsedMs = Date.now() - startedAt;

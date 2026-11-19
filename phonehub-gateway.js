@@ -86,6 +86,8 @@ function createPhoneHubRequestHandler(options = {}) {
   const subscribeNotifications = typeof options.subscribeNotifications === 'function' ? options.subscribeNotifications : null;
   const respondToVoice = typeof options.respondToVoice === 'function' ? options.respondToVoice : null;
   const makeCall = typeof options.makeCall === 'function' ? options.makeCall : null;
+  const getMarksStatus = typeof options.getMarksStatus === 'function' ? options.getMarksStatus : null;
+  const getMarksReport = typeof options.getMarksReport === 'function' ? options.getMarksReport : null;
 
   return async function phoneHubRequestHandler(req, res) {
     try {
@@ -188,6 +190,14 @@ function createPhoneHubRequestHandler(options = {}) {
         res.on('close', close);
         return;
       }
+      const marksReport = /^\/v1\/marks\/reports\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})$/i.exec(req.url);
+      if (req.method === 'GET' && getMarksStatus && (req.url === '/v1/marks' || marksReport)) {
+        const token = /^Bearer ([A-Za-z0-9_-]{32,128})$/.exec(String(req.headers.authorization || ''))?.[1] || '';
+        const result = auth.authorize({ token, nonce: String(req.headers['x-jarvis-nonce'] || '') }, 'marks.read');
+        if (!result.ok) return json(res, result.error === 'CAPABILITY_DENIED' ? 403 : 401, { error: result.error });
+        const data = marksReport ? await getMarksReport?.(marksReport[1]) : await getMarksStatus();
+        return data ? json(res, 200, { ok: true, data }) : json(res, 404, { error: 'NOT_FOUND' });
+      }
       if (req.method === 'GET' && CAPABILITY_ROUTES.has(req.url)) {
         const capability = req.url === '/v1/status' ? 'status' : 'notifications';
         const tokenHeader = String(req.headers.authorization || '');
@@ -195,7 +205,11 @@ function createPhoneHubRequestHandler(options = {}) {
         const nonce = String(req.headers['x-jarvis-nonce'] || '');
         const result = auth.authorize({ token: tokenMatch ? tokenMatch[1] : '', nonce }, capability);
         if (!result.ok) return json(res, result.error === 'CAPABILITY_DENIED' ? 403 : 401, { error: result.error });
-        const data = capability === 'status' ? await getStatus() : await getNotifications();
+        let data = capability === 'status' ? await getStatus() : await getNotifications();
+        if (capability === 'status' && getMarksStatus && result.device.capabilities.includes('marks.read')) {
+          const marks = await getMarksStatus();
+          if (marks?.available) data = { ...data, marksAvailable: true };
+        }
         return json(res, 200, { ok: true, data });
       }
       if (req.method !== 'GET' && req.method !== 'POST') return json(res, 405, { error: 'METHOD_NOT_ALLOWED' });

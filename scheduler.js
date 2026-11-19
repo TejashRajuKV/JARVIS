@@ -1,4 +1,5 @@
 'use strict';
+const quietTools = require('./assistant-tools');
 /* Server-side reminders and deadline alerts, so they fire even when no JARVIS tab is open.
    The server owns firing; open tabs are told over Server-Sent Events (/api/events) and only display/speak it.
    With no tab open, a Windows toast is shown instead; optionally every alert is also pushed to the user's phone
@@ -46,7 +47,7 @@ function fireDue(list, now) {
     if (!r.fired && typeof r.at === 'number' && r.at <= now && !r.routineId) {
       const next = Object.assign({}, r);
       if (r.repeat && r.repeat.type) next.at = nextOccurrence(r, now); else next.fired = true;
-      events.push({ type: 'reminder', id: r.id, text: String(r.text || 'Reminder'), at: next.at, fired: !!next.fired });
+      events.push({ type: 'reminder', id: r.id, text: String(r.text || 'Reminder'), at: next.at, fired: !!next.fired, ...(r.timerId ? { timer: true } : {}) });
       out.push(next);
     } else if (r.fired && !r.repeat && typeof r.at === 'number' && r.at < now - KEEP_FIRED) {
       continue;
@@ -316,6 +317,8 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
     }
   }
   app.locals.broadcast = broadcast;   // server.js uses it to tell other tabs about a changed chat
+  app.locals.notifyAgentJob = ev => deliver({ ...ev, type: 'agent-job' }, 'JARVIS task',
+    'Task ' + ev.status + ': ' + ev.goal + '. Open JARVIS to review the result.');
 
   // Never throws: reminders are saved as fired before they are delivered, so one failed delivery must not skip the rest.
   async function deliver(ev, title, body) {
@@ -323,16 +326,23 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
       if (app.locals && typeof app.locals.phoneHubNotify === 'function') {
         app.locals.phoneHubNotify({ type: ev.type, title, body, sourceId: ev.id || ev.triggerId || ev.deadlineId });
       }
-      const settings = getState()['jarvis.settings'] || {};
+      const state = getState();
+      const settings = state['jarvis.settings'] || {};
       const tabs = clients.size;
-      if (tabs) broadcast(ev); else await toast(title, body);
+      const kind = ev.timer ? 'timer' : ev.type;
+      const quiet = quietTools.holdAlert(state, kind);
+      if (quiet) {
+        quietTools.addRecap(state, { id: kind + ':' + (ev.id || ev.deadlineId || '') + ':' + (ev.at || ev.due || Date.now()), kind, text: body });
+        saveState();
+      }
+      if (tabs) broadcast(quiet ? { ...ev, quiet } : ev); else if (!quiet) await toast(title, body);
       await phonePush(settings, title, body);
       // Outbound calls are an explicit opt-in, never enabled just by installing Phone Hub.
       if ((ev.type === 'reminder' || ev.type === 'deadline') && !ev.panic && settings.alerts !== false && getState()['jarvis.panic'] !== true && process.env.JARVIS_CALL_ON_REMINDERS === 'true' && app.locals && typeof app.locals.jarvisCall === 'function') {
         try { await app.locals.jarvisCall({ message: title + '. ' + body }, { source: 'reminder' }); }
         catch (callError) { log('optional reminder call skipped:', callError.code || callError.message); }
       }
-      log(`${ev.type} fired: ${body} → ${tabs ? tabs + ' tab(s)' : 'Windows toast'}${settings.phonePush ? ' + phone' : ''}`);
+      log(`${ev.type} fired: ${body} → ${quiet ? 'quiet recap' : tabs ? tabs + ' tab(s)' : 'Windows toast'}${settings.phonePush ? ' + phone' : ''}`);
     } catch (e) { log(`${ev.type} delivery failed: ${body} (${e && e.message})`); }
   }
 
@@ -379,6 +389,8 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
   // With no tab open it shows a toast and holds the trigger for 10 minutes, to run when a tab connects.
   const Triggers = require('./triggers');
   let prevSnap = null, watching = false, pendingTriggers = [];
+  app.locals.marksPowerSample = () => prevSnap && { battery: prevSnap.battery, charger: prevSnap.charger };
+  app.locals.marksDesktopAlert = toast;
   const lastFired = new Map();
   let lastChargerAnnounced = 0; // debounce for the built-in charger announcements (edges can flutter)
   // Other modules (the global hotkey) reuse the same channel to reach the open tab, or hold an event until one connects.
@@ -405,13 +417,23 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
     return s;
   }
   async function fireTrigger(t) {
-    const r = (getState()['jarvis.routines'] || []).find(x => x && x.id === t.routineId);
+    const state = getState();
+    const r = (state['jarvis.routines'] || []).find(x => x && x.id === t.routineId);
     const name = t.routineName || (r && r.name) || 'a routine';
     const label = t.label || Triggers.describeWhen(t.when);
     const ev = { type: 'trigger', triggerId: t.id, routineId: t.routineId, text: '⚡ ' + label + ' — running "' + name + '"' };
+    if (quietTools.holdAlert(state, 'trigger')) {
+      ev.quiet = true;
+      quietTools.addRecap(state, { id: 'trigger:' + t.id + ':' + Date.now(), kind: 'trigger',
+        text: label + (clients.size ? ' — triggered ' : ' — waiting for JARVIS to open: ') + name });
+      saveState();
+    }
     if (typeof app.locals.phoneHubNotify === 'function') app.locals.phoneHubNotify({ type: 'trigger', title: 'JARVIS trigger', body: label + ' — running ' + name, sourceId: t.id });
     if (clients.size) broadcast(ev);
-    else { pendingTriggers.push({ ev, at: Date.now() }); await toast('JARVIS trigger', label + ' — open JARVIS to run "' + name + '"'); }
+    else {
+      pendingTriggers.push({ ev, at: Date.now() });
+      if (!ev.quiet) await toast('JARVIS trigger', label + ' — open JARVIS to run "' + name + '"');
+    }
     log('trigger fired:', label, '→', name, clients.size ? '(' + clients.size + ' tab(s))' : '(no tab — toast, held 10 min)');
   }
   async function watchTick() {
@@ -420,9 +442,10 @@ module.exports = function setupScheduler(app, { getState, saveState, PORT, IS_WI
     const settings = getState()['jarvis.settings'] || {};
     // Built-in charger announcements need no trigger — but honour the same off switches (Smart alerts, panic).
     const announceCharger = settings.chargerAlerts !== false && settings.alerts !== false;
-    if (!list.length && !announceCharger) { prevSnap = null; return; }
+    const marksPower = app.locals.marksPowerActive?.() === true;
+    if (!list.length && !announceCharger && !marksPower) { prevSnap = null; return; }
     const need = Triggers.needs(list);
-    if (announceCharger) need.power = true;
+    if (announceCharger || marksPower) need.power = true;
     const cur = { ...(prevSnap || {}), ...(await sampleSensors(need)) };
     if (announceCharger) {
       const edge = Triggers.chargerEdge(prevSnap, cur);

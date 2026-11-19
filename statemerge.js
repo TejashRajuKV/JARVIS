@@ -38,7 +38,7 @@ function mergeKeyed(server, client, baseKeys) {
   return out;
 }
 
-const LIST_KEYS = new Set(['jarvis.todos', 'jarvis.deadlines', 'jarvis.classes', 'jarvis.studyPlans', 'jarvis.expenses', 'jarvis.habits', 'jarvis.memory', 'jarvis.marks']);
+const LIST_KEYS = new Set(['jarvis.todos', 'jarvis.deadlines', 'jarvis.classes', 'jarvis.studyPlans', 'jarvis.expenses', 'jarvis.habits', 'jarvis.memory', 'jarvis.marks', 'jarvis.workspaces']);
 const RECEIPTS = 'jarvis.actionReceipts';
 const KEYED_KEYS = new Set(['jarvis.attendance']);
 

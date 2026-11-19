@@ -1,0 +1,12 @@
+'use strict';
+(()=>{
+ const status=$('#workbenchStatus'),host=$('#workbenchLinks'),output=$('#workbenchResult');let busy=false;
+ async function run(fn){if(busy)return;busy=true;status.textContent='Working…';host.replaceChildren();output.textContent='';try{const result=await fn();if(result.error)throw Error(result.error);status.textContent=result.cancelled?'Cancelled.':'Completed. Review the result before using it.';if(result.url){const link=document.createElement('a');link.href=result.url;link.textContent='Download '+(result.name||'result');host.append(link);}output.textContent=JSON.stringify(result,null,2);}catch(error){status.textContent=error.message;}finally{busy=false;}}
+ $('#officeExportForm').onsubmit=event=>{event.preventDefault();void run(()=>callTool('/exports/office',{kind:$('#officeKind').value,title:$('#officeTitle').value,text:$('#officeText').value,...($('#officeKind').value==='xlsx'?{csv:$('#officeText').value,groupBy:$('#officeGroup').value,valueColumn:$('#officeValue').value,chart:$('#officeChart').checked}:{})}));};
+ $('#contentAnalyzeForm').onsubmit=event=>{event.preventDefault();void run(()=>callTool('/content/analyze',{name:$('#contentFile').value}));};
+ $('#imageWorkflowForm').onsubmit=event=>{event.preventDefault();void run(()=>callTool('/media/workflows/image',{name:$('#imageFile').value,width:Number($('#imageWidth').value),format:$('#imageFormat').value}));};
+ $('#audioWorkflowForm').onsubmit=event=>{event.preventDefault();void run(()=>callTool('/media/workflows/audio',{name:$('#audioFile').value,start:Number($('#audioStart').value),duration:Number($('#audioDuration').value),transcribe:$('#audioTranscribe').checked}));};
+ $('#executionPanel').addEventListener('toggle',()=>{if($('#executionPanel').open)void getJSON('/execution/status').then(result=>{$('#executionEnabled').checked=result.enabled===true;});});
+ $('#executionEnabled').onchange=()=>void run(async()=>{switchTab('chat');const result=await callTool('/execution/configure',{enabled:$('#executionEnabled').checked});const state=await getJSON('/execution/status');$('#executionEnabled').checked=state.enabled===true;return result;});
+ $('#executionForm').onsubmit=event=>{event.preventDefault();void run(async()=>{switchTab('chat');return callTool('/execution/execute',{program:$('#executionProgram').value,code:$('#executionCode').value,cwd:$('#executionCwd').value,args:[],timeoutMs:30000});});};
+})();

@@ -138,6 +138,12 @@ const check = (name, ok, extra) => { total++; if (!ok) { fail++; console.log('FA
   const config = { providers: [{ id: 'custom', preset: 'custom', baseUrl: base, apiKey: 'good-key-123456', models: [] },
     { id: 'custom-2', preset: 'custom', baseUrl: base, apiKey: 'wrong-key-999999', models: [] }] };
   const llm = L({ getConfig: () => config, saveConfig: () => {}, OLLAMA: 'http://127.0.0.1:1', DEFAULT_MODEL: 'qwen3.5:4b' });
+  const beforePrivate=seen.length;
+  for(const operation of [()=>llm.complete({model:'custom::fake-chat',messages:[{role:'user',content:'password=private-fixture-123'}]}),
+    ()=>llm.embed('custom::fake-embed',['password=private-fixture-123'])]) {
+    let blocked=false;try{await operation();}catch(error){blocked=error.code==='SENSITIVE_CONTENT_BLOCKED';}
+    check('recognizable secrets are blocked before cloud chat or embedding network calls',blocked && seen.length===beforePrivate);
+  }
 
   check('complete()', await llm.complete({ model: 'custom::fake-chat', messages: [{ role: 'user', content: 'ping' }] }) === 'pong');
   check('complete(json)', JSON.stringify(L.extractJSON(await llm.complete({ model: 'custom::fake-chat', json: true, messages: [{ role: 'user', content: 'x' }] }))) === '{"ok":true}');

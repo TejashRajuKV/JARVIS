@@ -120,7 +120,9 @@ const keepAlive = setInterval(() => {}, 1000);   // AbortSignal.timeout() timers
   let p = await H.probeOllama('http://x', async url => jsonRes(url.endsWith('/api/tags') ? { models: [{ name: 'a:1' }, { name: 'b:2' }] } : { models: [{ name: 'a:1', size: 100, size_vram: 90 }] }));
   check('probe: models and what is loaded', p.reachable && p.models.join() === 'a:1,b:2' && p.loaded[0].name === 'a:1' && p.loaded[0].sizeVram === 90, p);
   p = await H.probeOllama('http://x', async url => { if (url.endsWith('/api/ps')) throw new Error('x'); return jsonRes({ models: [{ name: 'a:1' }] }); });
-  check('probe: /api/ps failing still counts as running', p.reachable && p.loaded.length === 0);
+  check('probe: /api/ps failing keeps the inventory but does not imply zero loaded', p.reachable && p.installedKnown && !p.loadedKnown && p.loaded.length === 0);
+  p = await H.probeOllama('http://x', async url => url.endsWith('/api/tags') ? { ok: false, json: async () => ({ models: [] }) } : jsonRes({ models: [] }));
+  check('probe: an HTTP error is distinct from a verified empty list', !p.installedKnown && p.loadedKnown && !p.loaded.length);
   p = await H.probeOllama('http://x', async () => { throw new Error('refused'); });
   check('probe: Ollama down', !p.reachable && !p.models.length);
 

@@ -16,7 +16,7 @@
   position: fixed;
   inset: 0;
   z-index: 95;  /* above HUD (70) and toast (80), below settings drawer (100) */
-  background: rgba(2, 7, 12, 0.96);
+  background: var(--jarvis-gradient);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   display: none;
@@ -80,7 +80,7 @@ body.dash-on #dashOverlay { display: flex; opacity: 1; }
   min-height: 0;
 }
 .dash-panel {
-  background: linear-gradient(180deg, rgba(9, 26, 41, 0.7), rgba(4, 13, 22, 0.85));
+  background: var(--jarvis-surface);
   border: 1px solid var(--line-hi);
   border-radius: 10px;
   padding: 16px 18px;

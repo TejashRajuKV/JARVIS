@@ -31,7 +31,9 @@ ToolHandlers.add('tasks', async function (p, raw, s, a) {
         if (!p.viaAgent) return { text: 'A **' + running + '-minute** focus session is already running (' + left + ' min left). Start a new ' + (want || settings.focusMin || 25) + '-minute one instead?',
           confirm: { yes: 'RESTART', no: 'KEEP IT', onConfirm: async () => deliver(await executeTool(Object.assign({}, p, { args: Object.assign({}, a, { restart: true }) }), raw), { intent: 'FOCUS_START', confidence: 1 }) } };
       }
-      const min = startFocus(want);
+      const sound = FocusAudio.fromCommand(p.original || raw);
+      const min = startFocus(want, sound);
+      const audioStarted = sound && await playFocusAudio();
       Undo.push('started a ' + min + '-minute focus session', () => stopFocus(true) ? 'Focus session stopped.' : 'That focus session had already ended.');
       // "focus on DBMS for 25 minutes" → the session is logged under DBMS (shown per subject in Progress)
       const sm = p.original.match(/\b(?:on|for)\s+(?!\d|a\b|an\b|the\b|my\b|me\b)([A-Za-z][\w+#. -]{1,28}?)(?=\s+(?:for|session|timer|mode|\d)|[.,!?]?$)/i);
@@ -39,7 +41,8 @@ ToolHandlers.add('tasks', async function (p, raw, s, a) {
       if (subject && focus) { focus.subject = subject; saveFocus(); }
       toolStep('focus → ' + min + 'm' + (subject ? ' · ' + subject : ''));
       const top = todos.find(t => !t.done);
-      return { text: 'Focus session started: **' + min + ' minutes**' + (subject ? ' on **' + subject + '**' : '') + '. I will call a break after that. Phone away, notifications off.' + (top ? ' Suggested task: "' + top.text + '".' : ''), speak: 'Focus session started for ' + min + ' minutes. Good luck.', tool: 'focus' };
+      const audioStatus = sound ? (audioStarted ? ' Playing ' + FocusAudio.label(sound) + '.' : ' Select Play focus audio to start ' + FocusAudio.label(sound) + '.') : '';
+      return { text: 'Focus session started: **' + min + ' minutes**' + (subject ? ' on **' + subject + '**' : '') + '. I will call a break after that. Phone away, notifications off.' + audioStatus + (top ? ' Suggested task: "' + top.text + '".' : ''), speak: 'Focus session started for ' + min + ' minutes.' + audioStatus, tool: 'focus' };
     }
     case 'FOCUS_STOP': return stopFocus() ? { text: 'Focus session stopped.' } : { text: 'No focus session is running.' };
 

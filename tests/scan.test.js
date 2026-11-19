@@ -87,6 +87,18 @@ const pdfWords = buf => [...inflated(buf).matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)].ma
     const p3 = await raw('POST', '/api/scan/page', jpg);
     const f2 = await S.post('/api/scan/finish', { scan: p3.json.scan, name: 'DBMS notes', ocr: false });
     check('Finish', 'a second scan with the same name makes a second file, never an overwrite; no OCR still gives a PDF', f2.status === 200 && f2.json.file === 'Scans/dbms-notes-2.pdf' && f2.json.searchable === false && !f2.json.textFile, f2.text.slice(0, 200));
+    const indexed = await S.post('/api/pdf/ocr/index', { file: f2.json.file });
+    let progress = indexed.json;
+    for (let i = 0; i < 120 && progress.state === 'running'; i++) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      progress = (await S.get('/api/pdf/ocr/jobs/' + indexed.json.id)).json;
+    }
+    const citation = await S.post('/api/pdf/ocr/search', { id: indexed.json.id, query: 'Normalization redundancy' });
+    check('Scanned PDF OCR', 'locally recognizes the image-only PDF and returns the original page number',
+      indexed.status === 200 && progress.state === 'completed' && progress.done === 1 && progress.unreadable === 0 &&
+      citation.json.file === 'dbms-notes-2.pdf' && citation.json.matches?.length === 1 &&
+      citation.json.matches[0].page === 1 && /Normalization/i.test(citation.json.matches[0].excerpt),
+      { progress, citation: citation.json });
     const f3 = await S.post('/api/scan/finish', { scan: (await raw('POST', '/api/scan/page', jpg)).json.scan });
     check('Finish', 'with no name it is dated', f3.status === 200 && /^Scans\/scan-\d{4}-\d{2}-\d{2}-\d{4}\.pdf$/.test(f3.json.file), f3.json.file);
     check('Finish', 'needs a scan', (await S.post('/api/scan/finish', {})).status === 404 && (await S.post('/api/scan/finish', { scan: 'nope' })).status === 404);

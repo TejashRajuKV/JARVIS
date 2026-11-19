@@ -38,6 +38,11 @@ internal class PhoneHubClient(baseUrl: String) {
     }
 
     fun status(token: String): JSONObject = request("/v1/status", "GET", null, token)
+    fun marks(token: String): JSONObject = request("/v1/marks", "GET", null, token).optJSONObject("data") ?: JSONObject()
+    fun marksReport(token: String, id: String): JSONObject {
+        require(id.matches(Regex("[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}"))) { "Invalid Marks task ID" }
+        return request("/v1/marks/reports/$id", "GET", null, token).optJSONObject("data") ?: JSONObject()
+    }
     fun voiceReply(token: String, text: String): String = request("/v1/voice/respond", "POST", JSONObject().put("text", text.take(1000)), token).optString("reply")
     fun callJarvis(token: String, message: String): JSONObject = request("/v1/call", "POST", JSONObject().put("message", message.take(600)), token)
     fun notifications(token: String): JSONArray = request("/v1/notifications", "GET", null, token)

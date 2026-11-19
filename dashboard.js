@@ -49,7 +49,6 @@ window.Dashboard = (function () {
     headerBtn.type = 'button';
     headerBtn.title = 'Open the animated diagnostics dashboard';
     headerBtn.textContent = 'DIAG';
-    headerBtn.style.cssText = 'font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--dim);border:1px solid var(--line);border-radius:6px;padding:5px 12px;background:rgba(9,26,40,.55);transition:.2s';
     if (settingsBtn && settingsBtn.parentNode === header) header.insertBefore(headerBtn, settingsBtn);
     else header.appendChild(headerBtn);
     headerBtn.addEventListener('click', toggle);
@@ -299,7 +298,7 @@ window.Dashboard = (function () {
             const y = H - (data[i] / maxV) * H * 0.9;
             if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
           }
-          ctx.strokeStyle = 'rgb(84, 255, 168)'; ctx.lineWidth = 1; ctx.stroke();
+          ctx.strokeStyle = '#2f6847'; ctx.lineWidth = 1; ctx.stroke();
           // tx line
           const txData = history.netTx.slice(-30);
           ctx.beginPath();
@@ -308,7 +307,7 @@ window.Dashboard = (function () {
             const y = H - (txData[i] / maxV) * H * 0.9;
             if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
           }
-          ctx.strokeStyle = 'rgb(255, 184, 77)'; ctx.lineWidth = 1; ctx.stroke();
+          ctx.strokeStyle = '#80510f'; ctx.lineWidth = 1; ctx.stroke();
         }
       }
     });
@@ -342,7 +341,9 @@ window.Dashboard = (function () {
   }
 
   function colorFor(cls) {
-    return cls === 'crit' ? 'rgb(255, 95, 107)' : cls === 'hot' ? 'rgb(255, 184, 77)' : 'rgb(63, 217, 255)';
+    if (cls === 'crit') return 'rgb(163, 52, 64)';
+    if (cls === 'hot') return 'rgb(128, 81, 15)';
+    return 'rgb(' + getComputedStyle(document.documentElement).getPropertyValue('--rgb').trim() + ')';
   }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
   // Local $ for brevity (matches script.js convention)

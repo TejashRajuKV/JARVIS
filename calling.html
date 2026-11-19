@@ -3,14 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f3e9">
   <meta name="referrer" content="no-referrer">
   <title>JARVIS Calling</title>
+  <link rel="stylesheet" href="/site-theme.css">
   <link rel="stylesheet" href="/phonehub.css">
   <script src="/calling-ui.js" defer></script>
 </head>
 <body>
-  <main class="phonehub-shell">
-    <header class="phonehub-header">
+  <main class="shell">
+    <header class="hero">
       <div><p class="eyebrow">JARVIS · PHONE HUB</p><h1>Calling assistant</h1><p class="muted">Send a spoken announcement to your configured phone number.</p></div>
       <a href="/phonehub.html">Phone Hub settings</a>
     </header>
@@ -18,7 +20,7 @@
       <h2>Provider status</h2>
       <p id="calling-status" role="status" aria-live="polite">Checking server configuration…</p>
       <p id="calling-details" class="muted"></p>
-      <button id="calling-refresh" type="button">Refresh status</button>
+      <button class="button secondary" id="calling-refresh" type="button">Refresh status</button>
     </section>
     <section class="panel">
       <h2>Call me now</h2>
@@ -26,7 +28,7 @@
       <label for="calling-message">What should JARVIS say?</label>
       <textarea id="calling-message" maxlength="600" rows="4">Hello. This is JARVIS calling to check in.</textarea>
       <p id="calling-error" role="alert" class="error" hidden></p>
-      <button id="calling-submit" type="button">Call my configured number</button>
+      <button class="button primary" id="calling-submit" type="button">Call my configured number</button>
       <p id="calling-result" role="status" aria-live="polite"></p>
     </section>
     <p class="muted">Provider credentials stay on the JARVIS server. Do not put Twilio secrets in this page or the Android app.</p>

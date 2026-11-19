@@ -1,0 +1,44 @@
+:root {
+  color-scheme: dark;
+  font: 16px/1.55 system-ui, sans-serif;
+  background: #151614;
+  color: #f4eee4;
+  --border: #45423a;
+  --accent: #f3bf6d;
+  --surface: #21211d;
+  --muted: #bfb7aa;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; }
+header { display: flex; justify-content: space-between; padding: 1rem max(1.25rem, calc((100% - 68rem) / 2)); border-bottom: 1px solid var(--border); }
+header span { color: var(--muted); }
+.header-actions { display: flex; gap: .65rem; flex-wrap: wrap; align-items: center; justify-content: end; }
+a { color: var(--accent); }
+main { width: min(68rem, 100% - 2.5rem); margin: 2.6rem auto; }
+h1 { font: 650 clamp(2.7rem, 7vw, 4.4rem)/1 system-ui, sans-serif; letter-spacing: -.055em; margin: 0 0 1.4rem; }
+h2 { font-size: 1.05rem; }
+.workspace { display: grid; grid-template-columns: minmax(15rem, 1fr) minmax(0, 2.4fr); gap: 1.2rem; align-items: start; }
+aside, .workspace > section { border: 1px solid var(--border); border-radius: .9rem; padding: 1.25rem; background: var(--surface); }
+aside p, summary, #status { color: var(--muted); }
+summary { cursor: pointer; }
+#catalog { padding-left: 1.1rem; font-size: .9rem; }
+#catalog li { margin: .25rem 0; }
+label { display: block; font-weight: 650; margin-bottom: .45rem; }
+select, textarea, button { font: inherit; }
+select, textarea { width: 100%; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: .45rem; background: #151614; color: inherit; }
+textarea { display: block; resize: vertical; }
+.actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .8rem; }
+button { cursor: pointer; border: 1px solid var(--border); border-radius: .45rem; padding: .45rem .8rem; color: inherit; background: #302e27; }
+button:disabled { cursor: default; opacity: .55; }
+#run { background: var(--accent); color: #161410; border-color: var(--accent); font-weight: 700; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+article { padding: .9rem 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+article h2 { margin: 0 0 .25rem; }
+article p { white-space: pre-wrap; margin: .35rem 0; }
+article ol, article ul { padding-left: 1.35rem; }
+@media (max-width: 42rem) { .workspace { grid-template-columns: 1fr; } }
+.compact main { width: min(36rem, 100% - 2.5rem); }
+.compact .workspace { grid-template-columns: 1fr; }
+.compact .workspace aside { display: none; }
+.compact #emergency { display: none; }

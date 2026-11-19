@@ -18,13 +18,15 @@
  *  applied lazily on each call so a user changing "low battery at 30%" in
  *  Settings takes effect immediately without a reload.
  * =========================================================================== */
-window.Thresholds = (function () {
+const JARVIS_BATTERY_LOW_DEFAULT = 20;
+if (typeof module !== 'undefined' && module.exports) module.exports = { JARVIS_BATTERY_LOW_DEFAULT };
+if (typeof window !== 'undefined') window.Thresholds = (function () {
 
   // ---- defaults (the values JARVIS shipped with before this refactor) ----
   // These match the hardcoded literals that were scattered across script.js,
   // so behaviour is identical to upstream when the user hasn't overridden.
   const DEFAULTS = Object.freeze({
-    batteryLow:      20,    // %  — smart-alert fires below this when not charging
+    batteryLow:      JARVIS_BATTERY_LOW_DEFAULT, // %  — smart-alert fires below this when not charging
     batteryCritical: 10,   // %  — escalation tier (NEW — not yet wired in alerts, just exposed)
     ramHigh:         92,   // %  — smart-alert fires at or above this
     ramWarn:         90,   // %  — diagnostics warn threshold (was inconsistent at 90 vs 92)

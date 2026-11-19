@@ -22,6 +22,7 @@ global.todos = []; global.timers = []; global.reminders = []; global.focus = nul
 global.getJSON = async () => REGISTRY;
 global.deliver = () => {};
 global.LLM_TOOLS = {};
+global.AgentContext = require('../agent-context');
 const said = [];
 global.jarvisSay = o => { said.push(o); if (o.confirm) setTimeout(() => o.confirm.onConfirm(), 0); };
 
@@ -95,6 +96,34 @@ const check = (d, ok) => results.push([d, !!ok]);
   check('the notes file is checked to exist', /exists: dbms notes\.md/.test(res.text));
   check('the 45-minute session is verified against the live timer', /45-minute focus session running/.test(res.text));
   check('the run ends with a verification summary', /\*\*\d of \d verified\*\*/.test(res.text) && !/failed/.test(res.text));
+
+  const answerExecute = global.executeTool;
+  try {
+    global.executeTool = async p => p.intent === 'READ_FILE'
+      ? { text: 'Unique fixture note: test database joins before Friday.', op: { kind: 'file', name: 'dbms notes.md' } }
+      : { text: 'Your tasks', card: [['Task', 'Revise normalization'], ['Due', 'Friday']] };
+    const answers = await Agent.execute({ goal: 'Read notes and tasks', steps: [
+      { id:'note', intent:'READ_FILE', args:{name:'dbms notes.md'}, text:'read dbms notes.md', label:'Read notes', tier:'safe' },
+      { id:'tasks', intent:'LIST_TODOS', args:{}, text:'show my tasks', label:'Show tasks', tier:'safe' },
+    ] }, { source:'split' });
+    check('multi-step replies include the requested file answer and task card values',
+      /Unique fixture note: test database joins before Friday/.test(answers.text) &&
+      /Task — Revise normalization/.test(answers.text) && /Due — Friday/.test(answers.text));
+    check('execution checkpoints omit the returned document contents',
+      !JSON.stringify(Agent.lastRuns(1)).includes('Unique fixture note'));
+    const readSteps = Array.from({length:4}, (_, i) => ({
+      id:'read_' + i, intent:'READ_FILE', args:{name:'dbms notes.md'}, text:'read notes',
+      label:'Read ' + i, tier:'safe',
+    }));
+    global.executeTool = async () => ({text:'Long fixture ' + 'x'.repeat(8000), op:{kind:'file',name:'dbms notes.md'}});
+    const bounded = await Agent.execute({ goal:'Long answers', steps:readSteps }, {source:'split'});
+    check('large returned answers have explicit truncation and an overall display bound',
+      bounded.text.length < 20000 && /Result shortened/.test(bounded.text) && /Additional results exceed/.test(bounded.text));
+    global.executeTool = async () => ({text:'Partial fixture result', op:{kind:'file',name:'absent-fixture.md'}});
+    const failedAnswer = await Agent.execute({ goal:'Failed read', steps:[readSteps[0]] }, {source:'split'});
+    check('an answer that fails its verification is excluded from the final result',
+      failedAnswer.runStatus === 'failed' && !failedAnswer.text.includes('Partial fixture result'));
+  } finally { global.executeTool = answerExecute; }
 
   // a failed close is caught, not reported as done
   world.running = ['discord']; world.volume = 0; said.length = 0;
@@ -214,13 +243,42 @@ const check = (d, ok) => results.push([d, !!ok]);
   check('a failed plan offers RETRY, CONTINUE and ROLLBACK', act('RETRY') && act('CONTINUE') && act('ROLLBACK (1)'));
   check('the card says what each choice means', /continue with the 1 step that don’t depend on it or roll back the 1 reversible change/.test(tx.text));
   let cont = null; global.deliver = r => { cont = r; };
-  await act('CONTINUE').fn();
+  let recoveryExecutions = 0;
+  const recoveryExecute = global.executeTool;
+  global.executeTool = async p => { recoveryExecutions++; return recoveryExecute(p); };
+  await Promise.all([act('CONTINUE').fn(), act('RETRY').fn()]);
+  await act('RETRY').fn();
   check('CONTINUE runs only the step that didn’t depend on the failure', cont && /Set volume/.test(cont.text) && !/Read notes/.test(cont.text));
+  check('a consumed recovery card cannot start a competing retry', recoveryExecutions === 1);
   await act('ROLLBACK').fn();
   check('ROLLBACK reverses the run’s reversible change', rolledBack === 1);
   global.deliver = () => {}; delete global.Undo; delete global.runUndoTask;
   global.callTool = baseTool;
   global.executeTool = realExec;
+
+  // Failure memory is enforced by the actual executor, not merely a prompt or log.
+  const failedStep = { id:'step_1', tool:'read_file', intent:'READ_FILE', args:{name:'failed-fixture.md'}, text:'read failed-fixture.md', tier:'safe', label:'Read failed fixture', needs:[] };
+  const stateBeforeFailure = structuredClone(store.get('jarvis.agentRuns', []));
+  store.set('jarvis.agentRuns', [{ id:'OLD-FAILURE', steps:[{...failedStep,status:'failed',note:'Missing fixture file'}] }]);
+  let repeated = 0;
+  global.executeTool = async () => { repeated++; return {text:'Read fixture',op:{kind:'file',name:'dbms notes.md'}}; };
+  const normalSay = global.jarvisSay;
+  said.length = 0;
+  global.jarvisSay = o => { said.push(o); if(o.confirm) setTimeout(() => o.confirm.onCancel(),0); };
+  await Agent.execute({goal:'Retry fixture',steps:[structuredClone(failedStep)]},{source:'split',stopOnFail:true});
+  check('repeating an exact failed step shows a failure-review card',said.some(o=>o.intent==='AGENT_FAILURE_REVIEW' && /Missing fixture file/.test(o.text)));
+  check('cancelling the failure review executes nothing',repeated===0);
+  const unattended = await Agent.execute({goal:'Unattended retry',steps:[structuredClone(failedStep)]},{source:'routine',unattended:true,stopOnFail:true});
+  check('unattended execution blocks known failures without running a tool',repeated===0 && unattended.runStatus==='partial' && Agent.lastRuns(1)[0].steps[0].status==='blocked');
+  global.jarvisSay = normalSay;
+  said.length = 0;
+  await Agent.execute({goal:'Explicit retry',steps:[structuredClone(failedStep)]},{source:'split',stopOnFail:true});
+  check('a reviewed retry runs once and verifies its result',repeated===1 && Agent.lastRuns(1)[0].steps[0].status==='verified');
+  check('verified success clears the matching failure',!AgentContext.priorFailure(failedStep,store.get('jarvis.agentRuns',[])));
+  await Agent.execute({goal:'Already fixed',steps:[structuredClone(failedStep)]},{source:'split',stopOnFail:true});
+  check('fixed steps no longer request failure review',repeated===2 && said.filter(o=>o.intent==='AGENT_FAILURE_REVIEW').length===1);
+  store.set('jarvis.agentRuns',stateBeforeFailure);
+  global.executeTool=realExec;
 
   // the server's reminder check accepts what the reminder handler accepts — repeats too — and nothing vaguer
   check('a planned yearly reminder passes the server check', T.validateStep({ tool: 'remind', args: { text: 'pay fees', when: 'every year in july' } }, 0).ok);
@@ -240,6 +298,28 @@ const check = (d, ok) => results.push([d, !!ok]);
   Agent.forgetAllLearned();
   check('"forget what you’ve learned" clears taught phrases too', !Agent.aliasMatch('lecture time') && Agent.learnedCount() === 0);
   check('"what didn’t you understand?" is recognised', NLU.classify(NLU.normalize("what didn't you understand?", 'jarvis'), {}).intent === 'MISSES_LIST');
+
+  // Cancelling while the plan preview is visible must invalidate that preview,
+  // even if its old Execute button is activated after the user resumes.
+  const beforeCancelledPreview = executed.length;
+  const sayBeforeCancel = global.jarvisSay;
+  global.jarvisSay = o => {
+    if (o.confirm) { Agent.cancel(); setTimeout(() => o.confirm.onConfirm(), 0); }
+  };
+  await Agent.execute({goal:'Stale preview',steps:[
+    {id:'cancel_1',intent:'READ_FILE',args:{},text:'read notes',tier:'safe',label:'Read notes'},
+    {id:'cancel_2',intent:'VOLUME_SET',args:{level:30},text:'set volume to 30',tier:'safe',label:'Set volume'}
+  ]},{source:'planner',stopOnFail:true});
+  global.jarvisSay = sayBeforeCancel;
+  check('a cancelled preview cannot execute after its stale confirmation', executed.length===beforeCancelledPreview);
+  check('cancelled preview leaves no active run', Agent.active().length===0);
+  const beforeCancelledStep = executed.length;
+  global.jarvisSay = o => { if (o.confirm) { Agent.cancel(); setTimeout(() => o.confirm.onConfirm(),0); } };
+  await Agent.execute({goal:'Stale step approval',steps:[
+    {id:'stale_step',intent:'READ_FILE',args:{},text:'read notes',tier:'confirm',reason:'Fixture approval',label:'Read fixture'}
+  ]},{source:'chat',stopOnFail:true});
+  global.jarvisSay = sayBeforeCancel;
+  check('a stale per-step Allow button cannot revive a cancelled run', executed.length===beforeCancelledStep);
 
   let bad = 0;
   for (const [d, ok] of results) if (!ok) { bad++; console.log('FAIL  ' + d); }

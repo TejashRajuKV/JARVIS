@@ -2,12 +2,13 @@
 /* Telugu & Kannada: detect the script, translate commands to English for the rule engine,
    and give replies back in the user's language. Uses globals from script.js at call time. */
 const Lang = (() => {
-  const NAMES = { en: 'English', te: 'తెలుగు', kn: 'ಕನ್ನಡ' };
-  const SPEECH = { en: 'en-IN', te: 'te-IN', kn: 'kn-IN' };
+  const NAMES = { en: 'English', te: 'తెలుగు', kn: 'ಕನ್ನಡ', hi: 'हिन्दी' };
+  const SPEECH = { en: 'en-IN', te: 'te-IN', kn: 'kn-IN', hi: 'hi-IN' };
   let turn = 'en';
 
   function detect(text) {
     const s = String(text || '');
+    if (/[\u0900-\u097f]/.test(s)) return 'hi';
     const te = (s.match(/[ఀ-౿]/g) || []).length;
     const kn = (s.match(/[ಀ-೿]/g) || []).length;
     if (!te && !kn) return 'en';
@@ -173,8 +174,8 @@ const Lang = (() => {
   const EN_MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
   function nativeWord(w, l) {
     if (w === undefined) return '';
-    const d = EN_WEEK.indexOf(w.toLowerCase()); if (d >= 0) return WEEK[l][d];
-    const m = EN_MONTHS.indexOf(w.toLowerCase()); if (m >= 0) return MONTHS[l][m];
+    const d = EN_WEEK.indexOf(w.toLowerCase()); if (d >= 0) return WEEK[l]?.[d] || w;
+    const m = EN_MONTHS.indexOf(w.toLowerCase()); if (m >= 0) return MONTHS[l]?.[m] || w;
     return w;
   }
   // AI answers are written in English (the local model's strongest language) and translated afterwards.
@@ -208,6 +209,7 @@ const Lang = (() => {
   // "switch to Telugu", "speak Kannada", "తెలుగులో మాట్లాడు", "ಕನ್ನಡದಲ್ಲಿ ಮಾತನಾಡು", "english please"
   function switchRequest(text) {
     const s = String(text || '').toLowerCase();
+    if (/^(?:speak|reply in|switch to|use) hindi(?: please)?$|हिंदी में (?:बोलो|बात करो)/i.test(s)) return 'hi';
     if (/తెలుగు/.test(s) && /(మాట్లాడ|చెప్పు|లో\s*మాట|మార్చు)/.test(s)) return 'te';
     if (/ಕನ್ನಡ/.test(s) && /(ಮಾತನಾಡ|ಹೇಳು|ಬದಲಿಸ|ದಲ್ಲಿ)/.test(s)) return 'kn';
     const m = s.match(/^(?:(?:please\s+)?(?:switch|change)\s+(?:the\s+)?(?:language\s+)?to|speak(?:\s+in)?|talk(?:\s+to\s+me)?\s+in|reply\s+in|use)\s+(telugu|kannada|english)(?:\s+(?:language|please|now))*$/);

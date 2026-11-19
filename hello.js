@@ -15,6 +15,12 @@ const fromB64 = s => Buffer.from(String(s || '').replace(/-/g, '+').replace(/_/g
 // Guarded endpoints → purpose. Express matches routes case-insensitively and ignores a trailing slash, so the
 // lookup normalizes the same way — "/api/tool/SHUTDOWNSYSTEM/" must not slip past the guard.
 const GUARDED = {
+  'POST /api/desktop/action':'actions','POST /api/desktop/extended':'actions',
+  'POST /api/browser/action':'actions','POST /api/browser/open':'actions','POST /api/browser/configure':'actions',
+  'POST /api/execution/execute':'actions','POST /api/execution/configure':'actions',
+  'POST /api/accounts/read':'actions','POST /api/accounts/configure':'actions',
+  'POST /api/accounts/begin':'actions',
+  'POST /api/vault/migrate':'actions','POST /api/mcp/call':'actions',
   'POST /api/tool/shutdownsystem': 'power', 'POST /api/tool/restartsystem': 'power', 'POST /api/tool/sleepsystem': 'power',
   'POST /api/tool/deleteitem': 'files', 'POST /api/tool/clearsandbox': 'files', 'POST /api/disk/applypermanent': 'files', 'POST /api/chatarchive/forget': 'files',   // permanent clean-ups (diskcare.js)
   'DELETE /api/state': 'wipe', 'POST /api/backup/import': 'wipe', 'POST /api/backup/restore': 'wipe',
@@ -75,7 +81,11 @@ module.exports = function setupHello(app, { getConfig, saveConfig, ALLOWED_ORIGI
 
   // The guard runs before every route; a no-op unless Windows Hello is enrolled and required.
   app.use((req, res, next) => {
-    const purpose = guardFor(req.method, req.path);
+    let purpose = guardFor(req.method, req.path);
+    // These endpoints first return a target-bound approval preview. Authenticate
+    // only the approved execution request; the preview itself grants no action.
+    if(purpose==='actions'&&req.body?.approved!==true)return next();
+    if(purpose==='actions')purpose='act'+crypto.createHash('sha256').update(req.method+' '+req.path.toLowerCase().replace(/\/+$/,'')+' '+JSON.stringify(req.body)).digest('hex').slice(0,17);
     const h = hello();
     if (!purpose || !h || !h.required) return next();
     if (takeToken(req.headers['x-hello-token'], purpose)) return next();
@@ -90,7 +100,7 @@ module.exports = function setupHello(app, { getConfig, saveConfig, ALLOWED_ORIGI
   app.post('/api/hello/challenge', (req, res) => {
     sweep();
     const purpose = String((req.body && req.body.purpose) || '');
-    if (!/^[a-z]{2,20}$/.test(purpose)) return res.status(400).json({ error: 'bad purpose' });
+    if (!/^[a-z][a-z0-9]{1,31}$/.test(purpose)) return res.status(400).json({ error: 'bad purpose' });
     const challenge = b64url(crypto.randomBytes(32));
     challenges.set(challenge, { purpose, exp: Date.now() + CHALLENGE_MS });
     const h = hello();

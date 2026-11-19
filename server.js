@@ -64,6 +64,7 @@ app.use((req, res, next) => {
 // Slow-request and blocked-event-loop log (for "JARVIS froze for a few seconds"): a request that takes over 3 s, or one the page gave up on, is logged with its path and time;
 // and if the server itself could not run for over 1.5 s (a long synchronous job) it says how long. Paths only — never bodies or query text.
 app.use((req, res, next) => {
+  if (/^\/api\/marks(?:\/|$)/i.test(req.path)) return next();
   const t0 = Date.now(); let done = false;
   res.on('finish', () => { done = true; const ms = Date.now() - t0; if (ms > 3000) console.log('[slow] ' + req.method + ' ' + req.path + ' ' + ms + ' ms'); });
   res.on('close', () => { if (!done) console.log('[unfinished] ' + req.method + ' ' + req.path + ' after ' + (Date.now() - t0) + ' ms (the page stopped waiting)'); });
@@ -72,18 +73,37 @@ app.use((req, res, next) => {
 { let last = Date.now(); const iv = setInterval(() => { const now = Date.now(), lag = now - last - 500; last = now; if (lag > 1500) console.log('[lag] the server was busy and could not answer for ' + Math.round(lag / 100) / 10 + ' s'); }, 500); if (iv.unref) iv.unref(); }
 // OCR accepts up to 10 MB of base64 image data; leave headroom for JSON framing.
 // 10 MiB decoded image payload needs about 13.34 MiB as base64, plus JSON overhead.
-app.use(express.json({ limit: '14mb' }));
+const parseJARVISJson = express.json({ limit: '14mb' });
+const parseMarksJson = express.json({ limit: '160kb' });
+app.use((req, res, next) => {
+  if (!/^\/api\/marks(?:\/|$)/i.test(req.path)) return parseJARVISJson(req, res, next);
+  res.set('Cache-Control', 'no-store');
+  parseMarksJson(req, res, error => error ? res.status(error.status === 413 ? 413 : 400).json({ error: 'Invalid Marks request.' }) : next());
+});
 // App lock (applock.js): while it is on and not unlocked, every /api request is refused and the page is replaced by a
 // standalone lock page. Mounted before the static files so even index.html is held back. Needs a Windows Hello key.
 let helloApi = null;
 const appLock = require('./applock')({ getConfig: () => config, saveConfig: () => saveConfig(), getHello: () => helloApi, PORT, rootDir: __dirname });
 // (before the lock gate, so the lock page has it too) JARVIS's own pages carry a Content-Security-Policy (csp.js): only its own scripts plus the fingerprinted camera libraries, connections only back here.
 const pageCsp = require('./csp');
-app.use((req, res, next) => { if (pageCsp.isPagePath(req.path)) res.setHeader('Content-Security-Policy', pageCsp.buildCsp()); next(); });
+app.use((req, res, next) => {
+  if (/^\/marks(?:-oauth)?\.html$/i.test(req.path)) {
+    res.setHeader('Content-Security-Policy', "default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+  } else if (pageCsp.isPagePath(req.path)) res.setHeader('Content-Security-Policy', pageCsp.buildCsp());
+  next();
+});
 app.use(appLock.gate);
+app.use((req, res, next) => {
+  const actionPath = req.path.toLowerCase().replace(/\/+$/, '');
+  if (app.locals.taskControl?.status().stopped && actionPath.startsWith('/api/') && req.method !== 'GET' &&
+      !(req.method === 'POST' && /^\/api\/(?:safety\/(?:stop|resume|hotkey)|state|lock\/[\w-]+|hello\/[\w-]+|marks\/(?:cancel|disable|accounts\/disconnect))$/.test(actionPath)))
+    return res.status(409).json({ error: 'Emergency stop is active. Resume explicitly before running another action.', stopped: true });
+  next();
+});
 // no-cache = the browser re-checks each file on load (a cheap 304 when unchanged), so an updated JARVIS is never
 // run with yesterday's scripts still cached.
-app.use(express.static(__dirname, { index: 'index.html', dotfiles: 'ignore', setHeaders: res => res.setHeader('Cache-Control', 'no-cache') }));
+app.use(express.static(__dirname, { index: 'index.html', dotfiles: 'ignore', setHeaders: (res, file) =>
+  res.setHeader('Cache-Control', /^marks(?:-oauth)?\.html$/i.test(path.basename(file)) ? 'no-store' : 'no-cache') }));
 
 /* ---------------- sandbox ---------------- */
 const SANDBOX = path.join(os.homedir(), 'jarvis');
@@ -100,7 +120,17 @@ const CONFIG_FILE = path.join(SANDBOX, '.config.json');
 let config = { roots: [] };
 try { config = { roots: [], ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) }; } catch {}
 config.roots = config.roots.filter(r => { try { return fs.statSync(r).isDirectory(); } catch { return false; } });
-const saveConfig = () => fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+const saveConfig = () => {
+  for(const provider of config.providers||[])if(provider.apiKeyRef&&provider.apiKey&&secretVault.get(provider.apiKeyRef)!==provider.apiKey)secretVault.set(provider.apiKeyRef,provider.apiKey);
+  const serialized=JSON.stringify(config,function(key,value){return key==='apiKey'&&this.apiKeyRef?undefined:value;},2);
+  fs.writeFileSync(CONFIG_FILE+'.tmp',serialized);fs.renameSync(CONFIG_FILE+'.tmp',CONFIG_FILE);
+};
+const secretVault=require('./secret-vault').createVault({file:path.join(SANDBOX,'.secret-vault.json'),supported:IS_WIN&&!process.env.JARVIS_TEST});
+for(const provider of config.providers||[])if(provider.apiKeyRef) {
+  const secret=secretVault.get(provider.apiKeyRef);
+  if(!secret)throw new Error('A configured provider credential is unavailable in the encrypted vault.');
+  provider.apiKey=secret;
+}
 
 // Every AI call goes through llm.js: local Ollama, or a cloud provider with the user's own API key (kept in .config.json).
 // Each call's outcome (model, time, kind of error; never the text or a key) goes to a small history for "check my AI" (aihealth.js).
@@ -209,17 +239,28 @@ function writeStateNow() {
   catch { try { fs.writeFileSync(STATE_FILE, JSON.stringify(appState)); } catch (e) { console.error('could not save app state:', e.message); } }
 }
 const saveState = () => { clearTimeout(stateTimer); stateTimer = setTimeout(writeStateNow, 300); };
+const taskControl = require('./task-control').createControl({ stopped: appState['jarvis.emergencyStopped'] === true,
+  initialEpoch: appState['jarvis.emergencyEpoch'],
+  save: (stopped, epoch) => { appState['jarvis.emergencyStopped'] = stopped; appState['jarvis.emergencyEpoch'] = epoch; appState['jarvis.panic'] = stopped; writeStateNow(); },
+  broadcast: event => app.locals.broadcast?.(event) });
+app.locals.taskControl = taskControl;
+if (taskControl.status().stopped) appState['jarvis.panic'] = true;
+const ownedProcesses = require('./owned-processes').createRegistry({ control: taskControl });
+require('./task-control').register(app, taskControl);
+require('./emergency-hotkey').register(app, { control: taskControl, getConfig: () => config, saveConfig,
+  supported: IS_WIN && !process.env.JARVIS_TEST });
 process.on('exit', () => { if (stateTimer) writeStateNow(); });
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0));
 const STATE_KEY = /^jarvis\.[\w.-]{1,40}$/;
 const StateMerge = require('./statemerge');
+const assistantTools = require('./assistant-tools');
 const scheduler = require('./scheduler');
 scheduler(app, { getState: () => appState, saveState, PORT, IS_WIN, llm, DEFAULT_MODEL, getConfig: () => config, saveConfig, procOf: k => procOf(k) });
 // Ctrl+Shift+J: send the selected text from any app to JARVIS (opt-in in Settings; hotkey.js).
 require('./hotkey')(app, { getState: () => appState, IS_WIN, PORT });
 require('./keepalive')(app, { IS_WIN });  // "Keep JARVIS running": a Task Scheduler task that restarts it if it ever stops (not when you stop it yourself)
 require('./autostart')(app, { IS_WIN }); // "Start with Windows" (Startup-folder link), managed from Settings
-require('./wakeword')(app, { IS_WIN }); // wake word heard by Windows' offline recogniser — works while you're in another tab/app
+const nativeWake = require('./wakeword')(app, { IS_WIN }); // wake word heard by Windows' offline recogniser — works while you're in another tab/app
 
 // A <script src> from another website carries no Origin header, so the global Origin check can't stop it
 // from reading this; Sec-Fetch-Site (set by the browser, not the page) can.
@@ -230,7 +271,7 @@ app.get('/api/state.js', (req, res) => {
 });
 // The lists that more than one tab (or the phone page) can change. When one changes, every OTHER tab is told at once and takes the new copy, so a tab that was
 // open all morning no longer writes its old todos/classes/expenses over what another tab just saved (the page writes whole lists, so the last writer used to win).
-const SYNC_KEYS = new Set(['jarvis.todos', 'jarvis.reminders', 'jarvis.deadlines', 'jarvis.classes', 'jarvis.attendance', 'jarvis.marks', 'jarvis.studyPlans', 'jarvis.expenses', 'jarvis.habits', 'jarvis.memory', 'jarvis.budget', StateMerge.RECEIPTS]);
+const SYNC_KEYS = new Set(['jarvis.todos', 'jarvis.reminders', 'jarvis.deadlines', 'jarvis.classes', 'jarvis.attendance', 'jarvis.marks', 'jarvis.studyPlans', 'jarvis.expenses', 'jarvis.habits', 'jarvis.memory', 'jarvis.budget', 'jarvis.workspaces', StateMerge.RECEIPTS]);
 // "Only one tab says it": every open tab runs the same alert checks, so each would announce the same class or warning. A tab asks to CLAIM an alert first; the first asker
 // wins for `ttlSec` seconds and every other tab is told no. (In memory only: after a restart, the first tab to ask wins again.)
 const claims = new Map();
@@ -257,6 +298,11 @@ app.post('/api/state', (req, res) => {
   if (bad) return res.status(400).json({ error: 'invalid key: ' + bad });
   const changed = [], mergedBack = {}, base = req.body.base && typeof req.body.base === 'object' ? req.body.base : {};
   for (const [k, v0] of Object.entries(set)) {
+    // The stop latch is server-owned. An old tab/state batch cannot clear it,
+    // including the persisted value used after a restart.
+    if (k === 'jarvis.emergencyStopped') { mergedBack[k] = taskControl.status().stopped; continue; }
+    if (k === 'jarvis.emergencyEpoch') { mergedBack[k] = taskControl.status().epoch; continue; }
+    if (k === 'jarvis.panic' && taskControl.status().stopped) { mergedBack[k] = true; continue; }
     let v = v0;
     const before = SYNC_KEYS.has(k) ? JSON.stringify(appState[k]) : null;
     // A whole list from a tab that was not up to date: keep what another tab added meanwhile, honour this tab's deletions (statemerge.js).
@@ -274,6 +320,50 @@ app.post('/api/state', (req, res) => {
     app.locals.broadcast({ type: 'state', key: 'jarvis.chat', value: set['jarvis.chat'], src: String(req.body.src || '').slice(0, 32) });
   }
   res.json({ success: true, merged: mergedBack });      // lists the server combined with another tab's changes: the writing tab takes these
+});
+app.get('/api/inbox/captures', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const folder = path.join(SANDBOX, 'Notes');
+  try {
+    const files = fs.readdirSync(folder, { withFileTypes: true }).filter(item => item.isFile() && /^inbox-\d{4}-\d{2}-\d{2}\.md$/.test(item.name))
+      .map(item => item.name).sort().slice(-31);
+    const entries = files.flatMap(name => {
+      const file = path.join(folder, name);
+      if (blockedPath(file) || fs.statSync(file).size > 512 * 1024) return [];
+      return assistantTools.captures(name, fs.readFileSync(file, 'utf8'));
+    });
+    res.json({ entries: entries.slice(-1000) });
+  } catch (error) {
+    if (error.code === 'ENOENT') return res.json({ entries: [] });
+    res.status(500).json({ error: 'Could not read the quick-capture files.' });
+  }
+});
+app.get('/api/alerts/recap', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ entries: appState['jarvis.quietRecap'] || [] });
+});
+app.post('/api/alerts/recap', (req, res) => {
+  const { kind, text, id } = req.body || {};
+  if (!['ram', 'disk', 'cpu', 'battery', 'charger', 'deadline', 'tasks'].includes(kind) ||
+      typeof text !== 'string' || !text || typeof id !== 'string' || id.length > 120) return res.status(400).json({ error: 'Invalid alert.' });
+  assistantTools.addRecap(appState, { id, kind, text });
+  saveState();
+  res.json({ success: true });
+});
+app.post('/api/inbox/convert', (req, res) => {
+  const { sourceId, kind, text, at } = req.body || {};
+  if (!/^(?:note|capture):[\w:-]{1,120}$/.test(String(sourceId)) || !['task', 'reminder'].includes(kind) ||
+      typeof text !== 'string' || !text.trim() || text.length > 500 ||
+      (kind === 'reminder' && (!Number.isFinite(at) || at <= Date.now()))) return res.status(400).json({ error: 'Invalid inbox conversion.' });
+  const key = kind === 'task' ? 'jarvis.todos' : 'jarvis.reminders';
+  const rows = Array.isArray(appState[key]) ? appState[key] : [];
+  const existing = rows.find(row => row.inboxSource === sourceId && (kind === 'task' || row.at === at));
+  if (existing) return res.json({ success: true, already: true, id: existing.id });
+  const row = { id: crypto.randomUUID(), text: text.trim(), inboxSource: sourceId, ...(kind === 'task' ? { ts: Date.now(), done: false } : { at, fired: false }) };
+  appState[key] = [...rows, row];
+  saveState();
+  if (typeof app.locals.broadcast === 'function') app.locals.broadcast({ type: 'state', key, value: appState[key] });
+  res.json({ success: true, id: row.id });
 });
 // "Erase all" keeps the migrated marker, so another browser's stale localStorage can't repopulate it afterwards.
 app.delete('/api/state', (req, res) => { backup.snapshot('before-erase'); appState = appState['jarvis.migrated'] ? { 'jarvis.migrated': true } : {}; saveState(); res.json({ success: true }); });
@@ -429,6 +519,7 @@ function approvedChange(req, res, action, ...paths) {
   return true;
 }
 const approvals = require('./approvals').createApprovals();
+taskControl.onStop(() => require('./approvals').revokeAll());
 
 // Find by name across the laptop: Desktop, Documents, Downloads (and OneDrive's), the top of your home folder, and
 // other drives a few levels down. Folder- or file-names as people say them (sameName: "dss print" → dsa_sprint; a
@@ -635,6 +726,17 @@ function findAnywhere(name, { kind } = {}) {
   if (!found.length) return null;
   return found.length === 1 ? { path: found[0] } : { choices: found };
 }
+// Saved workspaces contain exact locations. Do not pick a similar name if an item moved.
+function findExactLocation(name, kind) {
+  if (!path.isAbsolute(name) || /^[/\\]{2}/.test(name)) return null;
+  const p = path.resolve(name);
+  try {
+    if (blockedPath(p)) return null;
+    const info = fs.statSync(p);
+    if (kind === 'folder' ? info.isDirectory() : info.isFile()) return { path: p };
+  } catch {}
+  return null;
+}
 // The same answer for every open/read route when a name is ambiguous or missing.
 function notFoundOrChoices(res, f, name) {
   if (f && f.choices) return res.status(300).json({ choices: f.choices, error: `Several places match "${name}" — which one?` });
@@ -821,15 +923,14 @@ const procOf = key => (APPS[key] && APPS[key].proc) || (/^app:/.test(key) && (fi
 
 app.get('/api/apps', async (req, res) => { await installedReady; res.json({ success: true, apps: Object.keys(APPS), installed: installedApps.map(a => a.name) }); });
 
-app.post('/api/tool/openApplication', (req, res) => {
-  const key = String(req.body.app || '').toLowerCase();
-  const entry = APPS[key];
+function launchApplication(key) {
+  const entry = Object.hasOwn(APPS, key) ? APPS[key] : null;
   if (!entry) {
     const inst = /^app:/.test(key) && findInstalled(key);
-    if (!inst) return res.status(400).json({ error: `"${key}" is not installed or not in the allowlist` });
+    if (!inst) return { error: `"${key}" is not installed or not in the allowlist` };
     // explorer.exe reports exit code 1 even when it worked, so the result isn't used.
     execFile('explorer.exe', ['shell:AppsFolder\\' + inst.id], { windowsHide: true }, () => {});
-    return res.json({ success: true, message: `Opening ${inst.name}` });
+    return { success: true, message: `Opening ${inst.name}` };
   }
   if (IS_WIN) {
     exec(`cmd /c ${entry.win}`, { windowsHide: true }, err => {
@@ -841,7 +942,12 @@ app.post('/api/tool/openApplication', (req, res) => {
     p.on('error', e => console.warn(`open ${key} failed:`, e.message));
     p.unref();
   }
-  res.json({ success: true, message: `Opening ${key}` });
+  return { success: true, message: `Opening ${key}` };
+}
+
+app.post('/api/tool/openApplication', (req, res) => {
+  const result = launchApplication(String(req.body.app || '').toLowerCase());
+  res.status(result.error ? 400 : 200).json(result);
 });
 
 app.post('/api/tool/closeApplication', (req, res) => {
@@ -1092,10 +1198,12 @@ HOW TO BEHAVE
 - When asked to quiz the user, ask ONE question at a time, wait for their answer, then say if it was right, give the correct answer briefly, and ask the next question.
 
 ACTIONS
-If the user wants something DONE that a tool below handles, reply with ONLY one line in exactly this format and nothing else:
+If the user requests an action or asks about a live fact a tool below can check, reply with ONLY one line in exactly this format and nothing else:
 <<tool_name {"arg":"value"}>>
 Example: user "yo fire up crome" -> <<open_app {"app":"chrome"}>>
 Example: user "remind me to drink water in 30 min" -> <<remind {"text":"drink water","when":"in 30 minutes"}>>
+Example: user "which local models are in memory?" -> <<ollama_models {"scope":"loaded"}>>
+For this laptop and the user's own data, use the relevant read-only tool before answering. Use ollama_models for model inventory, system_info for resource usage, and list_todos for tasks. Use research for public information. Ask one focused question if the requested fact is ambiguous and the distinction matters. Do not use a tool that changes anything to answer a question about the current state.
 If no tool fits, answer normally in text. Never invent tools.
 
 TOOLS
@@ -1358,7 +1466,8 @@ app.post('/api/tool/upload', express.raw({ type: 'application/octet-stream', lim
 });
 // Opens a file with its usual program (a PDF in the PDF viewer) — anywhere on the laptop except system folders.
 app.post('/api/tool/openFile', (req, res) => {
-  const f = findAnywhere(String(req.body.name || ''), { kind: 'file' });
+  const name = String(req.body.name || '').trim();
+  const f = req.body.exactKind === 'file' ? findExactLocation(name, 'file') : findAnywhere(name, { kind: 'file' });
   if (!f || !f.path) return notFoundOrChoices(res, f, req.body.name);
   const p = f.path;
   if (!/\.(pdf|txt|md|png|jpe?g|gif|webp|svg|docx?|pptx?|xlsx?|csv|html?)$/i.test(p)) return res.status(400).json({ error: 'I only open documents and pictures this way — say "run" for programs' });
@@ -1621,7 +1730,7 @@ try {
 
 app.post('/api/tool/openInEditor', (req, res) => {
   const name = String(req.body.name || '').trim();
-  const f = name ? findAnywhere(name) : { path: SANDBOX };
+  const f = req.body.exactKind === 'folder' ? findExactLocation(name, 'folder') : name ? findAnywhere(name) : { path: SANDBOX };
   if (!f || !f.path) return notFoundOrChoices(res, f, name);
   const p = f.path;
   if (!VSCODE) return res.status(501).json({ error: 'VS Code (code) is not installed or not on PATH' });
@@ -1655,6 +1764,20 @@ require('./agent-platform')(app, { SANDBOX });
 // Skill Hub: explicit workflow notes, safe browser recovery, and read-only local self-diagnostics.
 require('./workflow-memory')(app, { SANDBOX });
 require('./browser-recovery')(app, { SANDBOX, IS_WIN, IS_MAC });
+require('./desktop-automation').register(app, { control: taskControl,getConfig:()=>config,saveConfig });
+require('./agent-jobs').register(app, {
+  file: path.join(SANDBOX, '.agent-jobs.json'), registry: agentTools,
+  control: taskControl,
+  getHistory: () => appState['jarvis.agentRuns'] || [],
+  executors: require('./agent-background-tools')({ getState: () => appState, safePath, llm, DEFAULT_MODEL }),
+  notify: ev => app.locals.notifyAgentJob?.(ev)
+});
+require('./mcp-client').register(app, { file: path.join(SANDBOX, '.mcp-connections.json'), ownPort: PORT, control: taskControl });
+require('./secret-vault').register(app,{vault:secretVault,getConfig:()=>config,saveConfig,control:taskControl});
+require('./account-connections').register(app,{vault:secretVault,getConfig:()=>config,saveConfig,control:taskControl,port:PORT});
+require('./managed-browser').register(app,{root:path.join(SANDBOX,'.managed-browser'),control:taskControl,getConfig:()=>config,saveConfig,ownedProcesses});
+require('./office-exports').register(app,{SANDBOX,safePath,control:taskControl});
+require('./reviewed-execution').register(app,{SANDBOX,safePath,getConfig:()=>config,saveConfig,control:taskControl,ownedProcesses});
 require('./diagnostics')(app, { root: __dirname, sandbox: SANDBOX, ollamaUrl: OLLAMA, defaultModel: DEFAULT_MODEL });
 // "Check my AI": Ollama, recent AI errors, disks, memory (aihealth.js).
 require('./aihealth')(app, { llm, recorder: aiCalls, OLLAMA, DEFAULT_MODEL, SANDBOX });
@@ -1675,6 +1798,10 @@ require('./pdftools')(app, { findAllowed, anyPath, approvedChange, openPath, rel
 require('./diskcare')(app, { SANDBOX, TRASH, blockedPath, approvedChange, anyPath, findAllowed, knownFolder, allRoots, scopeDir });
 // Camera pictures: document scans → one searchable PDF, "solve this from a photo", room-watch snapshots. Local only (scan.js).
 require('./scan')(app, { SANDBOX, llm, DEFAULT_MODEL, rel, openPath, IS_WIN });
+require('./pdf-ocr-index').register(app, {
+  isWindows: IS_WIN, resolve: name => findAnywhere(name, { kind: 'file' })?.path,
+  recognize: image => app.locals.ocrWords(image),
+});
 // Your old chats, saved one file per month in ~/jarvis/.chat-archive so they can be searched ("what did I decide about X last week"). Laptop page only (chatarchive.js).
 require('./chatarchive')(app, { SANDBOX, llm, DEFAULT_MODEL });
 // Student tools, server half: lecture transcript → study notes in pieces the local AI can hold; exam questions with model answers from a note or topic (studyserver.js).
@@ -1682,9 +1809,13 @@ require('./chatarchive')(app, { SANDBOX, llm, DEFAULT_MODEL });
 require('./mirror')(app, { SANDBOX, roots: () => config.roots, blockedPath, approvedChange, snapshot: () => backup.snapshot('mirror') });
 require('./shotindex')(app, { SANDBOX, IS_WIN });   // search your screenshots by what is in them (OCR index, laptop page only)
 require('./calendar')(app, { getConfig: () => config, saveConfig });
+require('./regional-news').register(app);
+require('./media-server').register(app);
 require('./homeassistant')(app, { getConfig: () => config, saveConfig });
 require('./devtools')(app, { llm, DEFAULT_MODEL, roots: () => config.roots, blockedPath, SANDBOX });   // git summary, commit message, "why did my build fail" (laptop page only)
-require('./whisper')(app, { SANDBOX });   // offline speech-to-text for lecture mode (whisper.cpp, installed by install-whisper.ps1; laptop page only)
+const whisperService=require('./whisper')(app, { SANDBOX });   // offline speech-to-text for lecture mode (whisper.cpp, installed by install-whisper.ps1; laptop page only)
+require('./content-workflows').register(app,{safePath,pdfPages:pdf.pdfPages,docText});
+require('./media-workflows').register(app,{SANDBOX,safePath,control:taskControl,ownedProcesses,whisper:whisperService});
 require('./studyserver')(app, { llm, DEFAULT_MODEL, SANDBOX, findAllowed, rel, readSource: async p => (/\.pdf$/i.test(p) ? (await pdf.pdfPages(p)).pages.join('\n') : fs.readFileSync(p, 'utf8')) });
 require('./jarviscode')(app, { llm, DEFAULT_MODEL, SANDBOX, anyPath, approvedChange, whereDir, rel, TRASH });
 
@@ -1855,6 +1986,7 @@ app.post('/api/tool/startProcess', (req, res) => {
   if (!dir || !start) return res.status(404).json({ error: `No ${which} found in "${rel(projDir)}" (looked for a package.json script or a known entry file)` });
   const id = 'proc_' + (++devProcSeq);
   const child = spawn(start.cmd, start.args, { cwd: dir, windowsHide: true, detached: !IS_WIN });
+  ownedProcesses.track(child);
   const rec = { id, pid: child.pid, project: rel(projDir), projDir, which, dir, label: start.label, alive: true, exitCode: null, out: '', port: null };
   DEV_PROCS.set(id, rec);
   const onData = b => {
@@ -1958,6 +2090,7 @@ app.post('/api/tool/portOwner', (req, res) => {
 });
 
 function runProc(cmd, args, opts, stdin) {
+  taskControl.assertRunning();
   return new Promise(resolve => {
     const t0 = Date.now();
     const env = { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0', PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' };
@@ -1968,6 +2101,7 @@ function runProc(cmd, args, opts, stdin) {
         exitCode: err ? (typeof err.code === 'number' ? err.code : 1) : 0, timedOut: !!(err && err.killed), ms: Date.now() - t0,
       });
     });
+    ownedProcesses.track(child);
     if (child.stdin) child.stdin.end(stdin || '');
   });
 }
@@ -2065,12 +2199,14 @@ function decodeEntities(s) {
 const stripTags = s => decodeEntities(String(s).replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
 
 // Fetches a public web page and returns its readable text.
-async function pageText(href, { timeout = 10000, max = 8000 } = {}) {
+async function pageText(href, { timeout = 10000, max = 8000, signal } = {}) {
   let url;
   try { url = new URL(String(href || '')); } catch { throw new Error('Invalid URL'); }
   if (!['http:', 'https:'].includes(url.protocol) || PRIVATE_HOST.test(url.hostname)) throw new Error('Only public http(s) pages');
   // netsafe.js: the host is resolved and every address checked, and redirects are followed one hop at a time with the same check (a public page may not send us to this laptop).
-  const r = await NetSafe.safeFetch(url.href, { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html,text/plain', 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(timeout) });
+  const deadline = AbortSignal.timeout(timeout);
+  const r = await NetSafe.safeFetch(url.href, { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'text/html,text/plain', 'Accept-Language': 'en-US,en;q=0.9' },
+    signal: signal ? AbortSignal.any([signal, deadline]) : deadline });
   if (!r.ok) throw new Error(`Page returned HTTP ${r.status}`);
   const html = await NetSafe.readText(r, 1024 * 1024);   // stops downloading at 1 MB; non-text pages (PDF, images) are refused
   const title = stripTags((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
@@ -2145,15 +2281,16 @@ function relevance(results, q) {
 }
 // Bing's no-JS results fixate on the first word of some queries ("who won X" → dictionary pages),
 // so low-relevance results are retried with the most specific word first and with the words reversed.
-async function webSearch(q) {
+async function webSearch(q, { signal } = {}) {
   const key = q.toLowerCase();
   const hit = searchCache.get(key);
   if (hit && Date.now() - hit.t < 10 * 60e3) return hit.results;
-  let best = await searchOnce(q), bestScore = relevance(best, q);
+  let best = await searchOnce(q, signal), bestScore = relevance(best, q);
   // DuckDuckGo reads natural questions better ("who won the last ipl" → IPL winners, where Bing returned the
   // South Korean won), so it is the first retry.
   if (bestScore < 0.55) {
-    const d = await searchDDG(q).catch(() => []);
+    const d = await searchDDG(q, signal).catch(() => []);
+    signal?.throwIfAborted();
     const sc = relevance(d, q);
     if (sc > bestScore) { best = d; bestScore = sc; }
   }
@@ -2170,7 +2307,8 @@ async function webSearch(q) {
     if (specific.length) variants.push(specific.concat(everyday).join(' '));
     variants.push(words.filter(w => !SEARCH_STOP.has(w.toLowerCase())).reverse().join(' '));
     for (const v of [...new Set(variants)].filter(v => v && v.toLowerCase() !== key)) {
-      const r = await searchOnce(v).catch(() => []);
+      const r = await searchOnce(v, signal).catch(() => []);
+      signal?.throwIfAborted();
       const sc = relevance(r, q);
       if (sc > bestScore) { best = r; bestScore = sc; }
       if (bestScore >= 0.55) break;
@@ -2179,9 +2317,10 @@ async function webSearch(q) {
   if (best.length) searchCache.set(key, { t: Date.now(), results: best });
   return best;
 }
-async function searchOnce(q) {
+async function searchOnce(q, signal) {
+  const deadline = AbortSignal.timeout(8000);
   const r = await fetch('https://www.bing.com/search?setlang=en&cc=IN&q=' + encodeURIComponent(q), {
-    headers: { 'User-Agent': BROWSER_UA, 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(8000),
+    headers: { 'User-Agent': BROWSER_UA, 'Accept-Language': 'en-US,en;q=0.9' }, signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
   });
   const html = await r.text();
   const results = [];
@@ -2197,9 +2336,10 @@ async function searchOnce(q) {
   return results;
 }
 // DuckDuckGo's plain-HTML results (no key). Links come wrapped as //duckduckgo.com/l/?uddg=<real url>.
-async function searchDDG(q) {
+async function searchDDG(q, signal) {
+  const deadline = AbortSignal.timeout(8000);
   const r = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q), {
-    headers: { 'User-Agent': BROWSER_UA, 'Accept-Language': 'en-US,en;q=0.9' }, signal: AbortSignal.timeout(8000),
+    headers: { 'User-Agent': BROWSER_UA, 'Accept-Language': 'en-US,en;q=0.9' }, signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
   });
   if (r.status !== 200) return [];   // 202 = DuckDuckGo wants a check it can't get here
   const html = await r.text();
@@ -2618,10 +2758,91 @@ app.post('/api/tool/checkPort', (req, res) => {
 });
 
 /* ---------------- health ---------------- */
+const marks = require('./marks');
+const getMarksSettings = () => appState['jarvis.settings'] || {};
+const marksPower = require('./marks-power').createPowerControl({ getSample: () => app.locals.marksPowerSample?.(), getSettings: getMarksSettings });
+app.locals.marksPowerActive = marksPower.enabled;
+async function completeMarksPlan(system, text, signal) {
+  await marksPower.wait(signal);
+  const settings = getMarksSettings();
+  if (settings.llm === false) throw new Error('Enable AI answers in settings to generate a plan or draft.');
+  return llm.complete({ model: settings.model || DEFAULT_MODEL, system, signal, priority: 2, maxTokens: 1800,
+    messages: [{ role: 'user', content: text }] });
+}
+const marksAdapters = require('./marks-tools')({
+    nlu: agentTools.NLU, calculate: agentTools.NLU.tryCalc, llm, defaultModel: DEFAULT_MODEL,
+    localAnswer: marks.localAnswer({ url: process.env.JARVIS_MARKS_OLLAMA_URL || OLLAMA,
+      model: process.env.JARVIS_MARKS_LOCAL_MODEL || DEFAULT_MODEL }),
+    portableAnswer: marks.localAnswer({ url: process.env.JARVIS_MARKS_OLLAMA_URL || OLLAMA,
+      model: process.env.JARVIS_MARKS_PORTABLE_MODEL || '', maxBytes: 2 * 1024 ** 3 }),
+    launchApp: process.env.JARVIS_TEST ? app => ({ message: `Isolated test launch: ${app}` }) : launchApplication,
+    search: webSearch, readPage: pageText,
+    getSettings: getMarksSettings,
+    power: marksPower,
+    async diagnostics(signal) {
+      let internet = { name: 'Internet', ok: null, detail: 'Probe skipped while Online tools are disabled.' };
+      if (getMarksSettings().online === true && !process.env.JARVIS_TEST) {
+        try {
+          const response = await fetch('https://www.bing.com/', { method: 'HEAD', redirect: 'error',
+            signal: AbortSignal.any([signal, AbortSignal.timeout(2500)]) });
+          internet = { name: 'Internet', ok: response.ok, detail: `Search provider returned HTTP ${response.status}.` };
+        } catch { internet = { name: 'Internet', ok: false, detail: 'Could not reach the search provider.' }; }
+      }
+      const result = await require('./diagnostics').runDiagnostics({ root: __dirname, sandbox: SANDBOX,
+        ollamaUrl: OLLAMA, defaultModel: DEFAULT_MODEL });
+      return { checks: [internet, ...result.checks] };
+    },
+});
+const marksWorkspace = marks.register(app, {
+  mode: process.env.JARVIS_MARKS,
+  file: path.join(SANDBOX, '.marks-history.json'),
+  control: taskControl,
+  registry: agentTools,
+  wakeReady: () => nativeWake.status().listening,
+  hasAccess: appLock.hasAccess,
+  disablePower: marksPower.disable,
+  adapters: marksAdapters,
+  createLibrary: () => require('./marks-library').createLibrary({ sandbox: SANDBOX, control: taskControl,
+    complete: completeMarksPlan, answer: marksAdapters.answer }),
+  createBatch: () => require('./marks-batch').createBatch({ sandbox: SANDBOX, safePath, control: taskControl, power: marksPower }),
+  createConnected: () => {
+    const accounts = require('./marks-accounts').createAccounts({ port: PORT });
+    const online = () => getMarksSettings().online === true;
+    const readers = require('./marks-account-readers').createAccountReaders({ accessToken: accounts.accessToken });
+    const fileReaders = require('./agent-background-tools')({ getState: () => appState, safePath, llm, DEFAULT_MODEL });
+    return { accounts,
+      sentry: require('./marks-sentry').createSentry({ control: taskControl, readers, online,
+        downloads: () => knownFolder('downloads'), getDeadlines: () => appState['jarvis.deadlines'] || [],
+        notify: (...args) => process.env.JARVIS_TEST ? undefined : app.locals.marksDesktopAlert?.(...args) }),
+      toolbox: require('./marks-toolbox').createToolbox({ control: taskControl, readers, safePath, online,
+        adapters: marksAdapters, readCode: fileReaders.read_file, complete: completeMarksPlan,
+        terminalInfo: signal => new Promise((resolve, reject) => {
+          execFile(process.execPath, ['--version'], { signal, windowsHide: true, timeout: 3000, maxBuffer: 8192 },
+            (error, stdout) => error ? reject(new Error('Could not read the installed Node runtime version.')) : resolve(`${stdout.trim()} · ${process.platform}`));
+        }),
+      }),
+    };
+  },
+  createPrecision: () => require('./marks-precision').createPrecision({ control: taskControl, safePath,
+    supported: IS_WIN && !process.env.JARVIS_TEST, complete: completeMarksPlan, readScreen: signal => app.locals.readMarksScreen(signal) }),
+  createJobs: acceptProfile => require('./marks-jobs').createJobs({
+    sandbox: SANDBOX, control: taskControl, registry: agentTools, acceptProfile,
+    readers: require('./agent-background-tools')({ getState: () => appState, safePath, DEFAULT_MODEL, llm: {
+      async complete(options) {
+        await marksPower.wait(options.signal);
+        return llm.complete(options);
+      },
+    } }),
+    research: (text, signal) => marksAdapters.research({ text, signal, profile: { model: 'default' } }),
+    complete: completeMarksPlan,
+  }),
+});
+app.locals.routeMarksWake = marksWorkspace.routeWake;
 // The cinematic landing page (landing.html) also lives at /welcome.
 app.get(['/welcome', '/home'], (req, res) => res.sendFile(path.join(__dirname, 'landing.html')));
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'online', timestamp: new Date().toISOString(), sandbox: SANDBOX, platform: process.platform, pid: process.pid, port: PORT });
+  res.json({ status: 'online', timestamp: new Date().toISOString(), sandbox: SANDBOX, platform: process.platform, pid: process.pid, port: PORT,
+    ...(marksWorkspace.enabled() && { marksEnabled: true }) });
 });
 
 // Stop JARVIS itself (Settings → Data → Stop). The no-window launcher keeps no console open, so this
@@ -2638,7 +2859,7 @@ app.post('/api/quit', (req, res) => {
 require('./update')(app, { appVersion: require('./package.json').version });
 
 /* ---------------- translation (Telugu / Kannada ↔ English) ---------------- */
-const LANG_NAMES = { en: 'English', te: 'Telugu', kn: 'Kannada' };
+const LANG_NAMES = { en: 'English', te: 'Telugu', kn: 'Kannada', hi: 'Hindi' };
 
 // Google Translate's public web endpoint (no key). Used only for replies when "online translation" is on.
 async function googleTranslate(text, to) {
@@ -2679,7 +2900,7 @@ async function translateMarkdown(text, to) {
 app.post('/api/translate', async (req, res) => {
   const to = String(req.body.to || 'en');
   const mode = req.body.mode === 'command' ? 'command' : 'text';
-  if (!LANG_NAMES[to]) return res.status(400).json({ error: 'to must be en, te or kn' });
+  if (!LANG_NAMES[to]) return res.status(400).json({ error: 'to must be en, te, kn or hi' });
   if (req.body.engine === 'online' && mode === 'text') {
     const md = String(req.body.text || '').trim().slice(0, 6000);
     if (!md) return res.status(400).json({ error: 'text required' });
@@ -2783,6 +3004,7 @@ async function startConfiguredPhoneHubGateway() {
       allowedOrigins: String(process.env.JARVIS_PHONEHUB_ALLOWED_ORIGINS || '').split(',').map(v => v.trim()).filter(Boolean),
       getStatus: async () => ({ online: true, platform: process.platform, uptimeSeconds: Math.floor(process.uptime()) }),
       getNotifications: async () => phoneHubNotifications.list(50),
+      ...(marksWorkspace.enabled() && { getMarksStatus: marksWorkspace.phoneStatus, getMarksReport: marksWorkspace.phoneReport }),
       subscribeNotifications: listener => phoneHubNotifications.subscribe(listener),
       allowTailscalePeers: String(process.env.JARVIS_PHONEHUB_ALLOW_TAILSCALE || '').toLowerCase() === 'true',
       makeCall: (input, metadata) => callingService.call(input, metadata),

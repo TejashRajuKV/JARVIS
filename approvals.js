@@ -2,9 +2,17 @@
 // one set of paths, works once, and expires (5 minutes by default): a stale, replayed or swapped approval does nothing.
 'use strict';
 const crypto = require('crypto');
+const instances = new Set();
+function revokeAll() {
+  for (const ref of instances) {
+    const tokens = ref.deref();
+    if (tokens) tokens.clear(); else instances.delete(ref);
+  }
+}
 
 function createApprovals({ ttl = 5 * 60e3, max = 500, now = () => Date.now() } = {}) {
   const tokens = new Map();   // token → { sig, exp }
+  instances.add(new WeakRef(tokens));
   function issue(sig) {
     const t = now();
     for (const [k, v] of tokens) if (v.exp <= t) tokens.delete(k);
@@ -22,7 +30,7 @@ function createApprovals({ ttl = 5 * 60e3, max = 500, now = () => Date.now() } =
     tokens.delete(k);
     return true;
   }
-  return { issue, consume, size: () => tokens.size };
+  return { issue, consume, clear: () => tokens.clear(), size: () => tokens.size };
 }
 
-module.exports = { createApprovals };
+module.exports = { createApprovals, revokeAll };

@@ -1027,6 +1027,169 @@ const hit = new Set();
       check('Portwatch', 'read-only check reports ports or an explicit OS limitation', (v.status === 200 && Array.isArray(v.json.ports)) || (v.status === 501 && /unavailable/i.test(v.json.error)), v.status);
     }
 
+    check('Desktop control', 'isolated test profiles cannot inspect or control the real desktop',
+      (await get('/api/desktop/windows')).status === 501 &&
+      (await post('/api/desktop/inspect', {windowId:'unknown'})).status === 501 &&
+      (await post('/api/desktop/action', {action:'click'})).status === 501);
+
+    /* ---------- durable jobs and approval-gated MCP, using only local fakes ---------- */
+    {
+      const initial = await get('/api/agent/jobs');
+      check('Background', 'queue advertises only its supported server executors', initial.status === 200 &&
+        initial.json.tools.includes('read_file') && !initial.json.tools.includes('desktop_click'));
+      fs.writeFileSync(path.join(SB, 'background-fixture.md'), 'Database joins fixture.');
+      const submitted = await post('/api/agent/jobs', { plan: { goal: 'Read fixture', steps: [{tool:'read_file',args:{name:'background-fixture.md'}}] } });
+      check('Background', 'a supported plan is accepted with a durable task ID', submitted.status === 202 && !!submitted.json.job.id);
+      let result;
+      for (let i=0; i<50; i++) {
+        result = await get('/api/agent/jobs/' + submitted.json.job.id);
+        if (!['queued','running'].includes(result.json.status)) break;
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      check('Background', 'server finishes the file read without a browser', result.status === 200 && result.json.status === 'completed' && result.json.steps[0].output === 'Database joins fixture.', result.json);
+      const unsafe = await post('/api/agent/jobs', {plan:{steps:[{tool:'desktop_click',args:{control:'Save'}}]}});
+      check('Background', 'interactive permission-bearing actions cannot enter the queue', unsafe.status === 400 && /interactive/.test(unsafe.json.error));
+      const cancelled = await post('/api/agent/jobs/' + submitted.json.job.id + '/cancel', {});
+      check('Background', 'finished tasks cannot be replayed or cancelled again', cancelled.status === 409);
+
+      let calls = 0;
+      const fake = require('node:http').createServer(async (req,res) => {
+        let text=''; for await (const chunk of req) text += chunk;
+        const body=JSON.parse(text);
+        if (body.method === 'notifications/initialized') { res.writeHead(202); res.end(); return; }
+        let value;
+        if (body.method === 'initialize') value={protocolVersion:'2025-11-25',capabilities:{tools:{}}};
+        if (body.method === 'tools/list') value={tools:[{name:'echo',inputSchema:{type:'object'}}]};
+        if (body.method === 'tools/call') { calls++; value={content:[{type:'text',text:body.params.arguments.text}]}; }
+        res.setHeader('Content-Type','application/json'); res.end(JSON.stringify({jsonrpc:'2.0',id:body.id,result:value}));
+      });
+      await new Promise(resolve => fake.listen(0,'127.0.0.1',resolve));
+      try {
+        const config={name:'Fixture',url:'http://127.0.0.1:'+fake.address().port+'/mcp'};
+        const offer=await post('/api/mcp/connect',config);
+        check('MCP', 'connection requires an exact approval',offer.status===409 && offer.json.needsApproval);
+        const connected=await post('/api/mcp/connect',{...config,approved:true,approvalToken:offer.json.approvalToken});
+        check('MCP', 'approved connection discovers the fake tool',connected.status===200 && connected.json.tools[0].name==='echo',connected.json);
+        const servers=await get('/api/mcp/servers');
+        check('MCP', 'connected catalogue is available to the page',servers.status===200 && servers.json.servers.some(s=>s.id===connected.json.id && s.connected));
+        const input={serverId:connected.json.id,tool:'echo',arguments:{text:'Meet at 5 PM'}};
+        const preview=await post('/api/mcp/call',input);
+        check('MCP', 'tool has not run before approval',preview.status===409 && calls===0);
+        const ran=await post('/api/mcp/call',{...input,approved:true,approvalToken:preview.json.approvalToken});
+        check('MCP', 'one approved external call returns the fixture response',ran.status===200 && ran.json.content[0].text==='Meet at 5 PM' && calls===1);
+        const replay=await post('/api/mcp/call',{...input,approved:true,approvalToken:preview.json.approvalToken});
+        check('MCP', 'approval cannot replay an external tool',replay.status===409 && calls===1);
+        check('MCP', 'explicit disconnect succeeds',(await post('/api/mcp/disconnect',{serverId:connected.json.id})).status===200);
+        check('MCP', 'explicit remove succeeds',(await post('/api/mcp/remove',{serverId:connected.json.id})).status===200);
+      } finally { await new Promise(resolve=>fake.close(resolve)); }
+    }
+
+    /* ---------- inbox, quiet recap, PDF OCR and media ---------- */
+    fs.mkdirSync(path.join(SB, 'Notes'), { recursive: true });
+    fs.writeFileSync(path.join(SB, 'Notes', 'inbox-2026-11-17.md'), '# Inbox\n- 10:30 AM — Review database joins\n');
+    const inbox = await get('/api/inbox/captures');
+    check('Inbox', 'returns the captured line and stable source ID', inbox.status === 200 &&
+      inbox.json.entries?.some(item => item.id === 'capture:2026-11-17:1' && item.text === 'Review database joins'), inbox.json);
+    const conversion = { sourceId: 'capture:2026-11-17:1', text: 'Review database joins', kind: 'task' };
+    const created = await post('/api/inbox/convert', conversion);
+    const duplicate = await post('/api/inbox/convert', conversion);
+    check('Inbox', 'repeating a task conversion reuses the original task', created.json.success && duplicate.json.already && created.json.id === duplicate.json.id, duplicate.json);
+    const alert = { id: 'fixture-cpu', kind: 'cpu', text: 'CPU was busy' };
+    await post('/api/alerts/recap', alert);
+    await post('/api/alerts/recap', alert);
+    const recap = await get('/api/alerts/recap');
+    check('Quiet hours', 'a repeated held alert appears once in the recap', recap.status === 200 &&
+      recap.json.entries?.filter(item => item.id === alert.id && item.text === alert.text).length === 1, recap.json);
+    check('PDF OCR', 'missing files and jobs return clear errors',
+      (await post('/api/pdf/ocr/index', { file: 'no-such.pdf' })).status === 404 &&
+      (await get('/api/pdf/ocr/jobs/unknown')).status === 404 && (await del('/api/pdf/ocr/jobs/unknown')).status === 404 &&
+      (await post('/api/pdf/ocr/search', { id: 'unknown', query: 'joins' })).status === 409);
+    check('Media', 'bundled HLS player is served and external media requires an enabled or registered source',
+      (await get('/api/media/hls.js')).status === 200 &&
+      (await post('/api/media/podcast', { online: false })).status === 400 &&
+      (await get('/api/media/episode/unknown')).status === 404 &&
+      (await get('/api/media/radio/0')).status === 404 && (await get('/api/media/radio-part/unknown')).status === 404);
+    check('Regional News', 'a disabled online setting refuses before contacting a publisher',
+      (await post('/api/news/regional', { city: 'Bengaluru', online: false })).status === 400);
+
+    /* ---------- optional Marks routes stay closed in a default installation ---------- */
+    {
+      const profiles=await get('/api/marks/profiles');
+      check('Marks','the default install exposes no enabled profiles',profiles.status===200 && profiles.json.enabled===false && profiles.json.profiles.length===0);
+      if(profiles.json.enabled!==false)throw Error('The default Marks permission boundary is open; refusing to call action routes.');
+      // Exercise every actual default-denied endpoint, including concurrent additions.
+      // Enabled positive paths remain the responsibility of marks.test.js.
+      for(const route of ROUTES.filter(route=>/^(?:GET|POST) \/api\/marks\//.test(route) && route!=='GET /api/marks/profiles')) {
+        const [method,pattern]=route.split(' '),url=pattern.replace(/:[\w]+/g,'missing-fixture');
+        check('Marks','disabled route refuses '+method+' '+pattern,(await (method==='GET'?get(url):post(url,{}))).status===404);
+      }
+    }
+    /* ---------- opt-in workflow adapters: local fixtures, no account or OS actions ---------- */
+    {
+      const vault = await get('/api/vault/status');
+      check('Vault', 'isolated profiles cannot access the Windows credential store',
+        vault.status === 200 && Array.isArray(vault.json.keys) &&
+        vault.json.supported === false && (await post('/api/vault/migrate', {})).status === 400);
+      const accounts = await get('/api/accounts/status');
+      check('Accounts', 'new profiles have no configured or connected accounts', accounts.status === 200 &&
+        accounts.json.providers.length === 2 && accounts.json.providers.every(p => !p.connected && !p.configured));
+      check('Accounts', 'configuration refuses unavailable encrypted storage and sign-in refuses missing setup',
+        (await post('/api/accounts/configure', {provider:'google',clientId:'fixture-client-123'})).status === 400 &&
+        (await post('/api/accounts/begin', {provider:'google'})).status === 400);
+      check('Accounts', 'forged callbacks and unconnected reads fail without contacting providers',
+        (await get('/api/accounts/callback?state=forged&code=fixture')).status === 400 &&
+        (await post('/api/accounts/read', {provider:'google',kind:'mail'})).status === 400);
+      check('Accounts', 'disconnect with no stored token is local and idempotent',
+        (await post('/api/accounts/disconnect', {provider:'google'})).json.success === true);
+      check('Browser', 'separate browser starts disabled and closed',
+        (await get('/api/browser/status')).json.enabled === false);
+      check('Browser', 'enabling requires approval and disabled actions cannot run',
+        (await post('/api/browser/configure', {enabled:true})).status === 409 &&
+        (await post('/api/browser/open', {url:'https://example.com'})).status === 400 &&
+        (await post('/api/browser/inspect', {})).status === 400 &&
+        (await post('/api/browser/action', {})).status === 400);
+      check('Browser', 'closing an unused session is safe', (await post('/api/browser/close', {})).json.success === true);
+      check('Desktop', 'extended native permissions remain disabled in the isolated install',
+        (await get('/api/desktop/extended')).json.enabled === false &&
+        (await post('/api/desktop/extended', {enabled:true})).status === 501);
+      check('Execution', 'native script execution starts disabled and configuration requires review',
+        (await get('/api/execution/status')).json.enabled === false &&
+        (await post('/api/execution/configure', {enabled:true})).status === 409 &&
+        (await post('/api/execution/execute', {program:'node',code:'console.log(42)'})).status === 400);
+      const document = await post('/api/exports/office', {kind:'docx',title:'Fixture report',text:'Database joins tested.'});
+      check('Office', 'a real editable document is written and downloadable', document.status === 200 &&
+        document.json.bytes > 1000 && (await get(document.json.url)).status === 200, document.json);
+      fs.writeFileSync(path.join(SB,'workflow-evidence.txt'), 'Sender: Alice\nTotal: INR 1250\nDue date: 2026-12-01\n');
+      const content = await post('/api/content/analyze', {name:'workflow-evidence.txt'});
+      check('Content', 'local evidence yields quoted facts and a page reference', content.status === 200 &&
+        content.json.pages === 1 && content.json.facts.length > 0, content.json);
+      check('Media', 'image support is reported and invalid sources fail safely',
+        (await get('/api/media/workflows/status')).json.image === true &&
+        (await post('/api/media/workflows/image', {name:'missing.png'})).status === 400 &&
+        (await post('/api/media/workflows/audio', {name:'missing.wav'})).status === 400);
+    }
+
+    /* ---------- emergency control: no live OS action is used ---------- */
+    {
+      const status = await get('/api/safety/status');
+      check('Emergency', 'status starts running', status.status === 200 && status.json.stopped === false);
+      const hotkey = await get('/api/safety/hotkey');
+      check('Emergency', 'isolated profiles never register a real global hotkey', hotkey.status === 200 && hotkey.json.running === false && hotkey.json.supported === false);
+      check('Emergency', 'disabling the isolated shortcut succeeds', (await post('/api/safety/hotkey', { enabled: false })).status === 200);
+      const stopped = await post('/api/safety/stop', {});
+      check('Emergency', 'stop is authoritative at the server', stopped.status === 200 && stopped.json.stopped === true);
+      const blocked = await post('/api/agent/jobs', { plan: { steps: [{ tool: 'list_todos', args: {} }] } });
+      check('Emergency', 'new background work is refused while stopped', blocked.status === 409 && blocked.json.stopped === true);
+      const uppercase = await post('/API/EXPORTS/OFFICE/', {kind:'docx',title:'Must never be written',text:'blocked'});
+      check('Emergency', 'case and trailing slash cannot bypass the stop gate', uppercase.status===409 && uppercase.json.stopped===true);
+      await post('/api/state', { set: { 'jarvis.emergencyStopped': false, 'jarvis.panic': false } });
+      check('Emergency', 'a stale state write cannot clear the server stop latch', (await get('/api/safety/status')).json.stopped === true);
+      check('Emergency', 'data erasure cannot bypass the stop latch', (await del('/api/state')).status === 409);
+      check('Emergency', 'read-only status remains available', (await get('/api/agent/jobs')).status === 200);
+      const resumed = await post('/api/safety/resume', {});
+      check('Emergency', 'explicit resume restores dispatch', resumed.status === 200 && resumed.json.stopped === false);
+    }
+
     /* ---------- erase all (guarded; allowed here because Hello isn't enrolled in the temp install) ---------- */
     r = await del('/api/state');
     check('Settings', 'erase all data clears state (after a safety snapshot)', r.json.success && !/revise dbms/.test((await S.get('/api/state.js')).text), r.json);

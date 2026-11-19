@@ -1,0 +1,71 @@
+'use strict';
+const assert=require('./lib/assertions')('vault-accounts');
+const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
+const {createVault,dpapi}=require('../secret-vault'),{createConnections}=require('../account-connections');
+(async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'jarvis-account-'));
+ try {
+  const key=crypto.randomBytes(32);
+  const protect=value=>{const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',key,iv),data=Buffer.concat([cipher.update(value),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),data]);};
+  const unprotect=value=>{const cipher=crypto.createDecipheriv('aes-256-gcm',key,value.subarray(0,12));cipher.setAuthTag(value.subarray(12,28));return Buffer.concat([cipher.update(value.subarray(28)),cipher.final()]);};
+  const file=path.join(dir,'vault.json'),vault=createVault({file,protect,unprotect,supported:true});
+  vault.set('fixture/key','private-fixture-value');
+  assert.equal(vault.get('fixture/key'),'private-fixture-value');
+  assert.ok(!fs.readFileSync(file,'utf8').includes('private-fixture-value'));
+  assert.equal(createVault({file,protect,unprotect,supported:true}).get('fixture/key'),'private-fixture-value');
+  assert.throws(()=>vault.set('__proto__','unsafe'),/Invalid/);
+  vault.remove('fixture/key');assert.equal(vault.get('fixture/key'),null);
+  let now=100000,calls=[];const config={};
+  const control=require('../task-control').createControl();
+  const fetchImpl=async(url,options)=>{
+    calls.push({url,options});assert.equal(options.redirect,'error');
+    if(url.includes('/token'))return Response.json({access_token:'fixture-access',refresh_token:'fixture-refresh',expires_in:3600});
+    if(url.includes('graph.microsoft.com'))return Response.json({value:[{id:'event_1',subject:'DBMS Exam'},{id:'event_2',subject:'Lunch'}]});
+    return Response.json({items:[{id:'item_1',summary:'Fixture meeting'}],messages:[{id:'message_1'}]});
+  };
+  const accounts=createConnections({vault,getConfig:()=>config,saveConfig(){},fetchImpl,control,now:()=>now});
+  const body={provider:'google',clientId:'fixture-client-123',clientSecret:'fixture-secret'};
+  const preview=accounts.configure(body);assert.equal(preview.status,409);assert.equal(calls.length,0);
+  const configured=accounts.configure({...body,approved:true,approvalToken:preview.body.approvalToken});assert.equal(configured.status,200);
+  assert.equal(config.accounts.google.clientSecret,undefined);
+  const beginOffer=accounts.begin({provider:'google'});assert.equal(beginOffer.status,409);
+  const started=accounts.begin({provider:'google',approved:true,approvalToken:beginOffer.body.approvalToken}),url=new URL(started.url);
+  assert.equal(url.searchParams.get('code_challenge_method'),'S256');
+  assert.ok(url.searchParams.get('scope').includes('readonly')&&!url.searchParams.get('scope').includes('gmail.send'));
+  await assert.rejects(()=>accounts.callback({state:'forged',code:'x'}),/state/);
+  await accounts.callback({state:url.searchParams.get('state'),code:'fixture-code'});
+  assert.equal(accounts.status().providers[0].connected,true);
+  assert.ok(!JSON.stringify(accounts.status()).includes('fixture-access'));
+  await assert.rejects(()=>accounts.callback({state:url.searchParams.get('state'),code:'fixture-code'}),/state/);
+  const input={provider:'google',kind:'calendar',query:'exam'};
+  const offer=await accounts.read(input),before=calls.length;
+  assert.equal(offer.status,409);assert.equal(calls.length,before);
+  const read=await accounts.read({...input,approved:true,approvalToken:offer.body.approvalToken});
+  assert.equal(read.body.data.items[0].id,'item_1');
+  assert.equal(new URL(calls.at(-1).url).searchParams.get('q'),'exam');
+  assert.equal((await accounts.read({...input,approved:true,approvalToken:offer.body.approvalToken})).status,409);
+  const pending=await accounts.read(input);control.stop();control.resume();
+  assert.equal((await accounts.read({...input,approved:true,approvalToken:pending.body.approvalToken})).status,409);
+  accounts.disconnect('google');assert.equal(accounts.status().providers[0].connected,false);
+  await assert.rejects(()=>accounts.read(input),/Connect/);
+  const ms={provider:'microsoft',clientId:'fixture-microsoft-123'};
+  const msp=accounts.configure(ms);accounts.configure({...ms,approved:true,approvalToken:msp.body.approvalToken});
+  const msBegin=accounts.begin(ms);const signin=accounts.begin({...ms,approved:true,approvalToken:msBegin.body.approvalToken});assert.ok(new URL(signin.url).searchParams.get('scope').includes('Mail.Read'));
+  now+=11*60000;await assert.rejects(()=>accounts.callback({state:new URL(signin.url).searchParams.get('state'),code:'expired'}),/expired/);
+  const freshOffer=accounts.begin(ms),fresh=accounts.begin({...ms,approved:true,approvalToken:freshOffer.body.approvalToken});
+  await accounts.callback({state:new URL(fresh.url).searchParams.get('state'),code:'ms-fixture-code'});
+  const calendar={provider:'microsoft',kind:'calendar',query:'DBMS'};
+  const calendarOffer=await accounts.read(calendar);
+  const msRead=await accounts.read({...calendar,approved:true,approvalToken:calendarOffer.body.approvalToken});
+  assert.equal(msRead.body.data.value.length,1);assert.equal(msRead.body.data.value[0].id,'event_1');
+  assert.match(msRead.body.data.jarvisNote,/not an exhaustive/);
+  const oldOffer=accounts.begin(ms),oldSignin=accounts.begin({...ms,approved:true,approvalToken:oldOffer.body.approvalToken});
+  const configOffer=accounts.configure(ms);accounts.configure({...ms,approved:true,approvalToken:configOffer.body.approvalToken});
+  await assert.rejects(()=>accounts.callback({state:new URL(oldSignin.url).searchParams.get('state'),code:'old-client'}),/state/);
+  if(process.platform==='win32') {
+    const sample=Buffer.from('isolated DPAPI fixture');const encrypted=dpapi('protect',sample);
+    assert.ok(!encrypted.equals(sample));assert.equal(dpapi('unprotect',encrypted).toString(),sample.toString());
+  }
+  assert.report();
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+})().catch(error=>{console.error(error);process.exitCode=1;});

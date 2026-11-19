@@ -1,0 +1,23 @@
+:root {
+  color-scheme: light;
+  --jarvis-paper: #f6f3e9;
+  --jarvis-surface: #fffdf6;
+  --jarvis-lilac: #ebe9f6;
+  --jarvis-peach: #f3dbc7;
+  --jarvis-border: #d9d6cb;
+  --jarvis-border-strong: #a8a59e;
+  --jarvis-ink: #202733;
+  --jarvis-muted: #4d5660;
+  --jarvis-secondary: #606771;
+  --jarvis-indigo: #434678;
+  --jarvis-navy: #263044;
+  --jarvis-navy-hover: #3a4964;
+  --jarvis-navy-panel: #222d44;
+  --jarvis-on-navy: #fff9ed;
+  --jarvis-amber: #e9ac67;
+  --jarvis-success: #2f6847;
+  --jarvis-danger: #a33440;
+  --jarvis-warning: #80510f;
+  --jarvis-info: #3a5781;
+  --jarvis-gradient: linear-gradient(165deg, #deddf0 0%, var(--jarvis-peach) 54%, var(--jarvis-paper) 96%);
+}

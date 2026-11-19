@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#f6f3e9">
 <title>JARVIS — an assistant that runs on your own laptop</title>
 <meta name="description" content="JARVIS is a voice and chat assistant that runs on your own Windows laptop. It controls apps and settings, plans your study, answers from your notes and PDFs, and checks that every action really happened.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23111213'/><path d='M11 9h10M16 9v11a4 4 0 0 1-8 0' fill='none' stroke='%23e9a23b' stroke-width='2.4' stroke-linecap='round'/></svg>">
@@ -11,14 +12,14 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5/600.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5/400.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5/500.css">
+<link rel="stylesheet" href="/site-theme.css">
 <style>
-/* One neutral dark ground, one warm accent, hairline rules, mono for anything you'd type. No glows, no gradients. */
 :root{
-  --bg:#101112; --panel:#16171a; --rule:#26282b; --rule2:#34363a;
-  --ink:#ebe8e2; --dim:#a19d95; --faint:#6f6b64;
-  --acc:#e9a23b; --ok:#8fb573; --bad:#d8685c; --run:#7fa8c9;
+  --bg:var(--jarvis-paper); --panel:var(--jarvis-surface); --rule:var(--jarvis-border); --rule2:var(--jarvis-border-strong);
+  --ink:var(--jarvis-ink); --dim:var(--jarvis-muted); --faint:var(--jarvis-secondary);
+  --acc:var(--jarvis-amber); --ok:#b4dca0; --bad:#ffa99e; --run:#9fc2e6;
   --sans:'IBM Plex Sans','Segoe UI',system-ui,sans-serif; --mono:'IBM Plex Mono',Consolas,monospace;
-  --w:1080px; --gut:clamp(16px,4vw,40px);
+  --w:1240px; --gut:clamp(18px,5vw,64px);
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -30,32 +31,59 @@ code,kbd,.mono{font-family:var(--mono);font-size:.92em}
 kbd{border:1px solid var(--rule2);border-bottom-width:2px;border-radius:4px;padding:1px 6px;font-size:.82em;color:var(--dim)}
 
 /* nav */
-nav{position:sticky;top:0;z-index:10;background:rgba(16,17,18,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--rule)}
-nav .wrap{display:flex;align-items:center;gap:28px;height:56px}
+nav{position:sticky;top:0;z-index:10;background:rgba(246,243,233,.94);backdrop-filter:blur(10px);border-bottom:1px solid var(--rule)}
+nav .wrap{display:flex;align-items:center;gap:28px;min-height:64px}
 .mark{font-family:var(--mono);font-weight:500;font-size:14px;letter-spacing:.14em;text-decoration:none;display:flex;align-items:center;gap:10px}
 .mark i{width:8px;height:8px;background:var(--acc);border-radius:1px}
 .links{display:flex;gap:24px;margin-left:auto;font-size:14px}
 .links a{color:var(--dim);text-decoration:none}
 .links a:hover{color:var(--ink)}
-.btn{display:inline-flex;align-items:center;gap:8px;font:500 14px var(--sans);text-decoration:none;border-radius:6px;padding:9px 16px;border:1px solid transparent;cursor:pointer;white-space:nowrap}
-.btn.primary{background:var(--acc);color:#1a1206}
-.btn.primary:hover{background:#f2b556}
+.btn{display:inline-flex;align-items:center;gap:8px;font:500 14px var(--sans);text-decoration:none;border-radius:5px;padding:11px 17px;border:1px solid transparent;cursor:pointer;white-space:nowrap;background:none}
+.btn.primary{background:var(--jarvis-navy);color:var(--jarvis-on-navy)}
+.btn.primary:hover{background:var(--jarvis-navy-hover)}
 .btn.plain{border-color:var(--rule2);color:var(--ink)}
 .btn.plain:hover{border-color:var(--dim)}
-.btn:focus-visible,.links a:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+:is(a,button,select,summary):focus-visible{outline:2px solid #906013;outline-offset:3px}
 
 /* hero */
-.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:56px;align-items:start;padding:88px 0 72px}
-.hero h1{font-size:clamp(34px,4.6vw,54px);line-height:1.08;font-weight:600;letter-spacing:-.02em}
-.hero p{margin-top:22px;font-size:18px;color:var(--dim);max-width:30em}
-.hero .cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:32px}
-.facts{margin-top:40px;display:grid;grid-template-columns:repeat(3,auto);justify-content:start;gap:4px 28px;font-size:13px;color:var(--faint)}
+main{scroll-margin-top:64px}
+.hero{position:relative;isolation:isolate;overflow:hidden;background:var(--jarvis-gradient)}
+.hero::before{content:'';position:absolute;inset:0;z-index:-1;background-image:linear-gradient(to right,#30365219 1px,transparent 1px),linear-gradient(to bottom,#30365219 1px,transparent 1px);background-size:clamp(54px,9vw,144px) clamp(54px,9vw,144px);mask-image:linear-gradient(#000 25%,transparent 100%)}
+.hero .wrap{position:relative;display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);grid-template-areas:'title art' 'intro art' 'facts facts';column-gap:28px;align-items:center;padding-top:clamp(64px,9vw,146px)}
+.hero h1{grid-area:title;align-self:end;font-size:clamp(49px,7.2vw,108px);line-height:.98;font-weight:600;letter-spacing:-.068em;max-width:12ch}
+.hero h1 span{color:var(--jarvis-indigo)}
+.hero-intro{grid-area:intro;align-self:start;padding-top:25px}
+.hero p{font-size:clamp(17px,1.6vw,20px);color:#414958;max-width:33em}
+.hero .cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}
+.facts{grid-area:facts;margin-top:clamp(44px,7vw,100px);display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid #8d829057;gap:12px;padding:21px 0 24px;font-size:13px;color:var(--dim)}
 .facts b{display:block;font:500 15px var(--mono);color:var(--ink)}
+.hero-art{grid-area:art;position:relative;isolation:isolate;display:grid;place-items:center;width:min(100%,490px);aspect-ratio:1;justify-self:center}
+.hero-art::before{content:'';position:absolute;inset:1%;z-index:-1;background:radial-gradient(ellipse,#fff9dd 6%,#ffcc9366 32%,#b5a5df6b 52%,transparent 71%)}
+.orbit{position:absolute;inset:7%;border:1px solid #53597858;border-radius:50%;transform:rotate(-34deg) scaleY(.48)}
+.orbit::after{content:'';position:absolute;left:12%;bottom:12%;width:10px;aspect-ratio:1;border-radius:50%;background:#fff2ce;box-shadow:0 0 14px 4px #fff0bc}
+.orbit.second{inset:12%;transform:rotate(37deg) scaleY(.71);border-style:dashed}
+.orbit.second::after{left:auto;right:12%;top:12%;bottom:auto;width:6px;background:#555b91;box-shadow:none}
+.reactor{position:relative;display:grid;place-items:center;width:58%;aspect-ratio:1;border-radius:50%;border:1px solid #4a50768c;background:repeating-conic-gradient(from 8deg,#515883 0deg 2deg,transparent 2deg 20deg) border-box;mask-image:radial-gradient(#000 67%,transparent 71%);animation:reactor-in 850ms ease-out both}
+.reactor::before{content:'';position:absolute;inset:7%;border-radius:50%;border:1px solid #636d9c;background:radial-gradient(circle at 45% 38%,#746da0,#292f4e 68%);box-shadow:inset 0 0 0 7px #ced0ea45,inset 0 0 0 8px #e2d9f4a0}
+.reactor::after{content:'';position:absolute;inset:21%;border:1px dashed #c0b3ef;border-radius:50%}
+.reactor span{position:relative;width:45%;aspect-ratio:1;border:5px solid #fff5d9;border-radius:50%;background:radial-gradient(circle at 48% 44%,#fffce6,#efba93 35%,#afa0db 66%,#7376ab);box-shadow:0 0 26px #d1b8ff,0 0 0 7px #e9deff50,inset 0 0 12px #635d9c}
+@keyframes reactor-in{from{opacity:.35;transform:scale(.88) rotate(-15deg)}to{opacity:1;transform:scale(1) rotate(0)}}
 
 /* run log: a real JARVIS multi-step run, replayed */
+.demo{--ink:#f4f2ff;--dim:#d8deef;--faint:#b1bdd5;--rule:#526380;--panel:var(--jarvis-navy-panel);background:var(--jarvis-navy);color:var(--ink)}
+.demo-layout{display:grid;grid-template-columns:minmax(0,.72fr) minmax(0,1.28fr);align-items:start;gap:clamp(26px,6vw,84px)}
+.demo h2{max-width:11ch}
+.demo p{max-width:30em;margin-top:16px;color:var(--dim)}
+.demo-controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:23px}
+.demo-controls[hidden]{display:none}
+.demo-controls select{max-width:100%;background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:5px;padding:8px;font:inherit;font-size:14px}
+.demo-controls .btn{background:var(--acc);color:#252034}
+.demo-controls .btn[aria-disabled="true"]{opacity:.75;cursor:default}
+.demo :is(button,select):focus-visible{outline-color:#ffc78e}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .log{background:var(--panel);border:1px solid var(--rule);border-radius:8px;font:13.5px/1.7 var(--mono);overflow:hidden}
 .log header{display:flex;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--rule);color:var(--faint);font-size:12px}
-.log .body{padding:18px 16px 20px;min-height:330px}
+.log .body{padding:18px 16px 20px;min-height:270px}
 .log .you{color:var(--ink)}
 .log .you::before{content:'> ';color:var(--acc)}
 .log .line{display:grid;grid-template-columns:1.6em 1.4em minmax(0,1fr) auto;gap:0 6px;color:var(--dim)}
@@ -66,18 +94,12 @@ nav .wrap{display:flex;align-items:center;gap:28px;height:56px}
 .log .sum b{color:var(--ink);font-weight:500}
 .log .head{color:var(--ink);margin:14px 0 6px}
 .log .ask{margin:10px 0 4px;color:var(--dim)}
-.log .ask span{display:inline-block;margin-right:8px;padding:0 8px;border:1px solid var(--rule2);border-radius:4px;color:var(--ink)}
-.log .ask span.go{border-color:var(--acc);color:var(--acc)}
-.caret{display:inline-block;width:.55em;height:1.1em;background:var(--acc);vertical-align:-3px;animation:blink 1s steps(1) infinite}
-@keyframes blink{50%{opacity:0}}
 
 /* sections */
-section{border-top:1px solid var(--rule);padding:80px 0}
-.sec-head{display:grid;grid-template-columns:140px minmax(0,1fr);gap:24px;margin-bottom:44px}
-.num{font:500 13px var(--mono);color:var(--faint);padding-top:6px}
-h2{font-size:clamp(26px,3vw,34px);line-height:1.2;font-weight:600;letter-spacing:-.015em}
+section{border-top:1px solid var(--rule);padding:clamp(56px,8vw,108px) 0;scroll-margin-top:64px}
+.sec-head{margin-bottom:36px}
+h2{font-size:clamp(36px,4.5vw,62px);line-height:1.03;font-weight:600;letter-spacing:-.052em}
 .sec-head p{margin-top:12px;color:var(--dim);max-width:40em}
-.indent{margin-left:164px}
 
 /* pipeline */
 .pipe{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--rule);border-radius:8px}
@@ -89,9 +111,17 @@ h2{font-size:clamp(26px,3vw,34px);line-height:1.2;font-weight:600;letter-spacing
 .pipe code{color:var(--ink)}
 
 /* what you can say */
-.says{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 48px}
-.group{padding:22px 0;border-bottom:1px solid var(--rule)}
-.group h3{font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:10px}
+.examples-layout{display:grid;grid-template-columns:minmax(0,.74fr) minmax(0,1.26fr);gap:clamp(24px,6vw,88px);align-items:start}
+.examples-layout .sec-head{margin-bottom:0}
+.says{border-top:1px solid var(--rule2)}
+.group{border-bottom:1px solid var(--rule2)}
+.group[open]{background:var(--jarvis-lilac)}
+.group summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;padding:15px 18px;font-size:19px;font-weight:600;list-style:none}
+.group summary::-webkit-details-marker{display:none}
+.group summary::after{content:'';display:block;width:8px;height:8px;margin:0 4px 4px;border:solid currentColor;border-width:0 1px 1px 0;transform:rotate(45deg)}
+.group[open] summary::after{transform:rotate(225deg);margin-bottom:-4px}
+.group summary:hover{background:#e6e3ed}
+.group ul{padding:0 18px 16px}
 .group ul{list-style:none}
 .group li{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;padding:6px 0;font-size:14.5px}
 .group li code{color:var(--ink);font-size:13.5px}
@@ -113,34 +143,39 @@ h2{font-size:clamp(26px,3vw,34px);line-height:1.2;font-weight:600;letter-spacing
 .req{margin-top:40px;padding:16px 18px;border:1px solid var(--rule);border-radius:8px;font-size:14px;color:var(--dim)}
 .req b{color:var(--ink);font-weight:500}
 
-.end{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:24px}
-.end h2{max-width:18em}
+.end{text-align:center;background:linear-gradient(155deg,#ebe8f7,#f4dfca 68%,var(--bg))}
+.end .btn{margin-top:25px}
 footer{border-top:1px solid var(--rule);padding:28px 0 40px;font-size:13px;color:var(--faint)}
 footer .wrap{display:flex;flex-wrap:wrap;gap:8px 24px}
 footer .sp{margin-left:auto}
 
 @media (max-width:920px){
-  .hero{grid-template-columns:minmax(0,1fr);gap:40px;padding-top:56px}
   .pipe{grid-template-columns:minmax(0,1fr)}
   .pipe div{border-left:0;border-top:1px solid var(--rule)}
   .pipe div:first-child{border-top:0}
-  .says,.setup{grid-template-columns:minmax(0,1fr)}
-  .sec-head{grid-template-columns:minmax(0,1fr);gap:6px}
-  .indent{margin-left:0}
+  .setup{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:760px){
   .links{display:none}
   nav .btn{margin-left:auto}
 }
+@media (max-width:680px){
+  .hero .wrap{grid-template-columns:minmax(0,1fr);grid-template-areas:'title' 'intro' 'art' 'facts';padding-top:48px}
+  .hero h1{font-size:clamp(41px,9vw,61px)}
+  .hero-art{width:min(70%,260px);margin-top:14px}
+  .facts{margin-top:12px}
+  .demo-layout,.examples-layout{grid-template-columns:minmax(0,1fr)}
+}
 @media (max-width:560px){
-  .facts{grid-template-columns:repeat(2,auto)}
+  .facts{grid-template-columns:repeat(auto-fit,minmax(105px,1fr))}
   .group li{grid-template-columns:minmax(0,1fr);gap:0}
   .rules li{grid-template-columns:32px minmax(0,1fr);gap:4px 12px}
   .rules li span{grid-column:2}
   .log{font-size:12.5px}
   .log .line{grid-template-columns:1.4em 1.2em minmax(0,1fr)}
   .log .line .note{grid-column:3;text-align:left}
-  section{padding:56px 0}
 }
-@media (prefers-reduced-motion:reduce){.caret{animation:none}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.reactor{animation:none}}
 </style>
 </head>
 <body>
@@ -153,14 +188,21 @@ footer .sp{margin-left:auto}
   </div>
 </nav>
 
-<main id="top" class="wrap">
+<main id="top">
   <header class="hero">
-    <div>
-      <h1>An assistant that runs on your own laptop.</h1>
-      <p>Talk or type. JARVIS opens your apps, plans your study, answers from your notes and PDFs, and fixes your code. It then checks that each thing actually happened.</p>
-      <div class="cta">
-        <a class="btn primary" href="/">Launch JARVIS</a>
-        <a class="btn plain" href="#how">How a request runs</a>
+    <div class="wrap">
+      <h1>An assistant that runs on <span>your own laptop.</span></h1>
+      <div class="hero-art" aria-hidden="true">
+        <div class="orbit"></div>
+        <div class="orbit second"></div>
+        <div class="reactor"><span></span></div>
+      </div>
+      <div class="hero-intro">
+        <p>Talk or type. JARVIS opens your apps, plans your study, answers from your notes and PDFs, and fixes your code. It then checks that each thing actually happened.</p>
+        <div class="cta">
+          <a class="btn primary" href="/">Launch JARVIS</a>
+          <a class="btn plain" href="#demo">See a request run</a>
+        </div>
       </div>
       <div class="facts">
         <span><b>Windows 10/11</b>laptop controls</span>
@@ -168,16 +210,41 @@ footer .sp{margin-left:auto}
         <span><b>EN · తెలుగు · ಕನ್ನಡ</b>voice</span>
       </div>
     </div>
-
-    <div class="log" aria-label="Example: one request run as a checked plan">
-      <header><span>jarvis · agent</span><span id="runId">AGT-20260930-004</span></header>
-      <div class="body" id="log"></div>
-    </div>
   </header>
 
+  <section class="demo" id="demo" aria-labelledby="demo-title">
+    <div class="wrap demo-layout">
+      <div>
+        <h2 id="demo-title">From request to result.</h2>
+        <p>Follow an example from the original command through approval, execution, and verification.</p>
+        <div class="demo-controls" id="demo-controls" hidden>
+          <select id="demo-example" aria-label="Example run">
+            <option>Study session</option>
+            <option>Developer setup</option>
+          </select>
+          <button class="btn" id="demo-replay" type="button">Replay example</button>
+        </div>
+        <p id="demo-status" class="visually-hidden" role="status"></p>
+      </div>
+      <div class="log" aria-label="Example run log">
+        <header><span>JARVIS · EXAMPLE RUN</span><span id="runId">STUDY SESSION</span></header>
+        <div class="body" id="log">
+          <div class="you">Set volume to 30, close distracting apps, open my DBMS notes, and start a 45-minute study session.</div>
+          <div class="head">Study</div>
+          <div class="ask">Permission to close distracting apps: approved.</div>
+          <div class="line"><span class="n">1</span><span class="ok">✓</span><span>Set the volume to 30</span><span class="note">volume is 30%</span></div>
+          <div class="line"><span class="n">2</span><span class="ok">✓</span><span>Close distracting apps</span><span class="note">closed Discord, Spotify</span></div>
+          <div class="line"><span class="n">3</span><span class="ok">✓</span><span>Open my DBMS notes</span><span class="note">exists: DBMS Notes.md</span></div>
+          <div class="line"><span class="n">4</span><span class="ok">✓</span><span>Start a 45-minute session</span><span class="note">running · 45:00</span></div>
+          <div class="sum"><b>4 of 4 verified</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
   <section id="how">
     <div class="sec-head">
-      <span class="num">01</span>
       <div>
         <h2>How a request runs</h2>
         <p>Every request goes through the same five stages, whether it is one command or a whole routine. You see the plan before anything changes.</p>
@@ -192,53 +259,51 @@ footer .sp{margin-left:auto}
     </div>
   </section>
 
-  <section id="say">
+  <section id="say" class="examples-layout">
     <div class="sec-head">
-      <span class="num">02</span>
       <div>
         <h2>What you can say</h2>
-        <p>Say it however you like: casual, Indian English, or chained with “and” or “then”. These are real commands, not marketing copy.</p>
+        <p>Talk naturally or chain several commands with “and” or “then”. Pick a category to see examples.</p>
       </div>
     </div>
     <div class="says">
-      <div class="group"><h3>Laptop</h3><ul>
+      <details class="group" name="commands" open><summary>Laptop</summary><ul>
         <li><code>volume 30 and dark mode</code><span>sets both, reads them back</span></li>
         <li><code>close distracting apps</code><span>Discord, Spotify, WhatsApp, Steam</span></li>
         <li><code>system status</code><span>apps, radios, battery, CPU in one view</span></li>
         <li><code>what’s on my screen?</code><span>reads it with OCR</span></li>
-      </ul></div>
-      <div class="group"><h3>Study</h3><ul>
+      </ul></details>
+      <details class="group" name="commands"><summary>Study</summary><ul>
         <li><code>plan my GATE prep, exam on 12 Feb</code><span>day-by-day plan with review days</span></li>
         <li><code>take my DBMS viva</code><span>spoken questions, scored answers</span></li>
         <li><code>can I bunk tomorrow?</code><span>checks the 75% line</span></li>
         <li><code>what gpa do I need for an 8.5 cgpa?</code><span>from your saved semesters</span></li>
-      </ul></div>
-      <div class="group"><h3>Notes &amp; files</h3><ul>
+      </ul></details>
+      <details class="group" name="commands"><summary>Notes &amp; files</summary><ul>
         <li><code>what does unit2.pdf say about 3NF?</code><span>answer with page numbers</span></li>
         <li><code>open my DBMS notes</code><span>finds “DBMS Notes.md”</span></li>
         <li><code>make flashcards from lecture3.pdf</code><span>spaced repetition</span></li>
-      </ul></div>
-      <div class="group"><h3>Code</h3><ul>
+      </ul></details>
+      <details class="group" name="commands"><summary>Code</summary><ul>
         <li><code>create a C++ project called bst</code><span>compiles, repairs errors up to twice</span></li>
         <li><code>prepare my environment for AgriLoop</code><span>editor, backend, frontend, browser</span></li>
         <li><code>tell copilot to add tests</code><span>hands off to your coding AI</span></li>
-      </ul></div>
-      <div class="group"><h3>Automation</h3><ul>
+      </ul></details>
+      <details class="group" name="commands"><summary>Automation</summary><ul>
         <li><code>when I plug in my charger, start study mode</code><span>trigger, once per 10 min at most</span></li>
         <li><code>remind me every month on the 5th at 9am</code><span>fires even with the tab closed</span></li>
-        <li><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>J</kbd><span>explain any selected text</span></li>
-      </ul></div>
-      <div class="group"><h3>When it gets it wrong</h3><ul>
+        <li><span><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>J</kbd></span><span>explain any selected text</span></li>
+      </ul></details>
+      <details class="group" name="commands"><summary>When it gets it wrong</summary><ul>
         <li><code>no, that’s wrong</code><span>remembers the miss</span></li>
         <li><code>what didn’t you understand?</code><span>teach it the phrase</span></li>
         <li><code>undo that</code><span>reverses the last change</span></li>
-      </ul></div>
+      </ul></details>
     </div>
   </section>
 
   <section id="safety">
     <div class="sec-head">
-      <span class="num">03</span>
       <div>
         <h2>What it won’t do</h2>
         <p>An assistant that controls your laptop should be predictable. These rules are enforced by the server, not left to the AI’s judgement.</p>
@@ -255,7 +320,6 @@ footer .sp{margin-left:auto}
 
   <section id="setup">
     <div class="sec-head">
-      <span class="num">04</span>
       <div><h2>Setup</h2><p>No account and no subscription.</p></div>
     </div>
     <div class="setup">
@@ -266,58 +330,94 @@ footer .sp{margin-left:auto}
     <p class="req"><b>Needs:</b> Windows 10 or 11, Node.js 18+, and Chrome or Edge for voice. <b>Optional:</b> an NVIDIA GPU for the local model (a 6 GB RTX 3050 runs a 4B model comfortably), plus Python, g++ and VS Code for the coding tools.</p>
   </section>
 
+  </div>
+
   <section class="end">
-    <h2>It’s already running on this computer.</h2>
-    <a class="btn primary" href="/">Launch JARVIS</a>
+    <div class="wrap">
+      <h2>It’s already running on this computer.</h2>
+      <a class="btn primary" href="/">Launch JARVIS</a>
+    </div>
   </section>
 </main>
 
 <footer><div class="wrap"><span>JARVIS · local assistant</span><span>Your data stays on this laptop unless you choose a cloud model.</span><span class="sp">MIT licence</span></div></footer>
 
 <script>
-/* Replays a real JARVIS run (the same statuses and notes the app prints). Plain text only; stops when off-screen. */
+/* The examples illustrate the plan and execution states without running any commands. */
 (() => {
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const log = document.getElementById('log');
-  const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const example = document.getElementById('demo-example');
+  const replay = document.getElementById('demo-replay');
+  const status = document.getElementById('demo-status');
   const RUNS = [
-    { cmd: "I'm going to study. Volume 30, close distracting apps, open my DBMS notes and start a 45-minute session",
-      goal: 'Study', ask: true,
+    { label: 'Study session', cmd: 'Set volume to 30, close distracting apps, open my DBMS notes, and start a 45-minute study session.',
+      goal: 'Study', approval: 'Permission to close distracting apps',
       steps: [['Set the volume to 30', 'volume is 30%'], ['Close distracting apps', 'closed Discord, Spotify'], ['Open my DBMS notes', 'exists: DBMS Notes.md'], ['Start a 45-minute session', 'running · 45:00']],
-      note: 'Plan: “focus mode” is covered by the 45-minute session.', sum: '4 of 4 verified' },
-    { cmd: 'prepare my environment for AgriLoop', goal: 'Prepare AgriLoop', ask: false,
+      sum: '4 of 4 verified' },
+    { label: 'Developer setup', cmd: 'prepare my environment for AgriLoop', goal: 'Prepare AgriLoop',
       steps: [['Locate AgriLoop', 'found: D:\\projects\\AgriLoop'], ['Open in VS Code', 'already open → reuse'], ['Start the backend', 'port 5055 in use', 'bad'], ['Start the frontend', 'skipped: needs step 3', 'skip'], ['Open in the browser', 'skipped: needs step 4', 'skip']],
       note: 'Port 5055 is held by another program, so JARVIS left it alone.', sum: '2 of 5 verified · 1 failed · 2 not run' },
   ];
-  const sleep = ms => new Promise(r => setTimeout(r, reduce ? 0 : ms));
-  let visible = true;
-  new IntersectionObserver(es => { visible = es[0].isIntersecting; }).observe(log);
-  const until = async () => { while (!visible) await new Promise(r => setTimeout(r, 400)); };
-  const add = html => { const d = document.createElement('div'); d.innerHTML = html; log.appendChild(d); return d; };
-  async function play(run) {
-    log.innerHTML = '';
-    const you = add('<span class="you"></span><span class="caret"></span>');
-    const y = you.firstChild;
-    for (let i = 1; i <= run.cmd.length; i++) { y.textContent = run.cmd.slice(0, i); if (!reduce) await sleep(18 + Math.random() * 22); }
-    you.lastChild.remove();
-    await sleep(500);
-    add('<div class="head">' + esc(run.goal) + '</div>');
-    const rows = run.steps.map((s, i) => add('<div class="line"><span class="n">' + (i + 1) + '</span><span class="wait">·</span><span>' + esc(s[0]) + '</span><span class="note"></span></div>').firstChild);
-    if (run.ask) {
-      const a = add('<div class="ask">Needs permission to close apps: <span class="go">EXECUTE</span><span>CANCEL</span></div>');
-      await sleep(1400); a.firstChild.lastChild.previousSibling.textContent = 'EXECUTE ✓'; await sleep(500); a.remove();
-    }
-    for (let i = 0; i < rows.length; i++) {
-      const [, note, kind] = run.steps[i], r = rows[i];
-      if (kind === 'skip') { r.children[1].textContent = '·'; r.children[3].textContent = note; continue; }
-      r.children[1].textContent = '…'; await sleep(520);
-      r.children[1].textContent = kind === 'bad' ? '✗' : '✓'; r.children[1].className = kind === 'bad' ? 'bad' : 'ok';
-      r.children[3].textContent = note;
-      await sleep(260);
-    }
-    add('<div class="sum"><b>' + esc(run.sum) + '</b><br>' + esc(run.note) + '</div>');
+  function add(parent, tag, className, content) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (content) node.textContent = content;
+    parent.append(node);
+    return node;
   }
-  (async () => { for (let k = 0; ; k = (k + 1) % RUNS.length) { await until(); await play(RUNS[k]); if (reduce) return; await sleep(5200); } })();
+
+  function stages(run) {
+    log.replaceChildren();
+    document.getElementById('runId').textContent = run.label.toUpperCase();
+    add(log, 'div', 'you', run.cmd);
+    return [
+      () => {
+        add(log, 'div', 'head', run.goal);
+        if (run.approval) add(log, 'div', 'ask', run.approval + ': approved.');
+      },
+      ...run.steps.map(([action, note, kind], index) => () => {
+        const row = add(log, 'div', 'line');
+        add(row, 'span', 'n', String(index + 1));
+        const icon = kind === 'bad' ? '✗' : kind === 'skip' ? '·' : '✓';
+        add(row, 'span', kind === 'skip' ? 'wait' : kind || 'ok', icon).setAttribute('aria-hidden', 'true');
+        add(row, 'span', '', action);
+        add(row, 'span', 'note', note);
+      }),
+      () => {
+        const summary = add(log, 'div', 'sum');
+        add(summary, 'b', '', run.sum);
+        if (run.note) add(summary, 'div', '', run.note);
+        status.textContent = run.label + ': ' + run.sum + '.';
+      },
+    ];
+  }
+
+  let timer;
+  function showExample(animate) {
+    clearTimeout(timer);
+    status.textContent = '';
+    replay.removeAttribute('aria-disabled');
+    const updates = stages(RUNS[example.selectedIndex]);
+    if (!animate || motion.matches) {
+      updates.forEach(update => update());
+      return;
+    }
+    replay.setAttribute('aria-disabled', 'true');
+    let next = 0;
+    function advance() {
+      updates[next++]();
+      if (next < updates.length) timer = setTimeout(advance, 480);
+      else replay.removeAttribute('aria-disabled');
+    }
+    timer = setTimeout(advance, 480);
+  }
+
+  example.addEventListener('change', () => showExample(false));
+  replay.addEventListener('click', () => {
+    if (replay.getAttribute('aria-disabled') !== 'true') showExample(true);
+  });
+  document.getElementById('demo-controls').hidden = false;
 })();
 </script>
 </body>

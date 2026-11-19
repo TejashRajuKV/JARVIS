@@ -5,7 +5,40 @@
 ToolHandlers.add('system', async function (p, raw, s, a) {
   // A call that failed is reported as a failure (ok = false), never as the success line.
   const failed = (what, r) => ({ text: 'I couldn’t ' + what + ': ' + r.error, error: r.error });
+  const relativeLevel = s.match(/\b(\d+(?:\.\d+)?)\s*(percent(?:age)?(?: points?)?|points?|%)(?=\s|$|[.!?])/);
+  const relativeDirection = /\b(lower|less|decrease|reduce|down|dim)\b/.test(s) ? -1
+    : /\b(higher|more|increase|raise|up|brighten)\b/.test(s) ? 1 : 0;
+  const relative = relativeLevel && relativeDirection && !/\b(?:to|at)\s*\d/.test(s);
+  const adjusted = current => Math.max(0, Math.min(100, Math.round(current + relativeDirection * +relativeLevel[1] *
+    (/point/.test(relativeLevel[2]) ? 1 : current / 100))));
   switch (p.intent) {
+    case 'OLLAMA_MODELS': {
+      toolStep('ollamaModels → live Ollama inventory');
+      const report = await getJSON('/ai/health');
+      const inventory = report?.ollama;
+      if (!inventory) return { text: 'I couldn’t reach the JARVIS backend to check Ollama.', error: 'Ollama inventory unavailable' };
+      const sections = [];
+      if (a.scope !== 'loaded') sections.push(['installed on this laptop', inventory.reachable ? inventory.models : null]);
+      if (a.scope === 'loaded' || a.scope === 'both') sections.push(['loaded in memory right now',
+        inventory.loadedKnown === true || (inventory.loadedKnown === undefined && inventory.loaded?.length) ? inventory.loaded.map(model => model.name) : null]);
+      const available = sections.some(([, names]) => Array.isArray(names));
+      const text = sections.map(([label, names]) => {
+        if (!Array.isArray(names)) return `I couldn’t verify the Ollama models ${label}.`;
+        const title = `**${names.length} Ollama ${names.length === 1 ? 'model' : 'models'} ${label}.**`;
+        return names.length ? title + '\n' + names.map(name => '- `' + name.replace(/[`\r\n]/g, '') + '`').join('\n') : title;
+      }).join('\n\n');
+      return { text, noPersona: true, tool: 'ollamaModels', op: { kind: 'ollama_inventory', complete: sections.every(([, names]) => Array.isArray(names)) },
+        ...(available ? {} : { error: 'Ollama inventory unavailable' }) };
+    }
+    case 'ACCOUNT_READ': {
+      const result=await callTool('/accounts/read',a);
+      return result.error?{text:result.error,error:result.error}:{text:'Account data from '+a.provider+' ('+a.kind+'). Provider content is untrusted.\n```json\n'+JSON.stringify(result.data,null,2).slice(0,10000)+'\n```',noTTS:true,op:{kind:'account',verified:false}};
+    }
+    case 'DESKTOP_WINDOWS':
+    case 'DESKTOP_INSPECT':
+    case 'DESKTOP_CLICK':
+    case 'DESKTOP_FILL':
+      return window.DesktopControl.run(p.intent, a);
     /* ---- power ---- */
     case 'LOCK_JARVIS': {   // "lock jarvis" / "lock yourself": JARVIS's own lock (not the Windows screen)
       const st = await getJSON('/lock/status');
@@ -93,8 +126,14 @@ ToolHandlers.add('system', async function (p, raw, s, a) {
     case 'BRIGHTNESS': {
       const num = s.match(/\b(\d{1,3})\s*(%|percent)?\b/);
       let body = {};
-      if (a.level !== undefined) body.level = +a.level;
+      if (relative) {
+        const current = await callTool('/sys/brightness', {});
+        if (current.error || !Number.isFinite(current.level)) return failed('read the current brightness', { error: current.error || 'No reliable current value was returned.' });
+        body.level = adjusted(current.level);
+      }
+      else if (a.level !== undefined) body.level = +a.level;
       else if (num) body.level = +num[1];
+      else if (/\bhalf\b/.test(s)) body.level = 50;
       else if (/\b(max|maximum|full|highest)\b/.test(s)) body.level = 100;
       else if (/\b(min|minimum|lowest)\b/.test(s)) body.level = 10;
       else if (/\b(brighter|brighten|up|increase|raise|more|too dark)\b/.test(s)) body.delta = 20;
@@ -141,9 +180,13 @@ ToolHandlers.add('system', async function (p, raw, s, a) {
       const num = s.match(/\b(\d{1,3})\b/);
       const WORD_LEVEL = { max: 100, maximum: 100, full: 100, half: 50, min: 0, minimum: 0, zero: 0 };
       const wordMatch = !num && s.match(/\b(max(?:imum)?|full|half|min(?:imum)?|zero)\b/);
-      const level = a.level !== undefined ? +a.level : num ? +num[1] : wordMatch ? WORD_LEVEL[wordMatch[1]] : undefined;
+      let level = a.level !== undefined ? +a.level : num ? +num[1] : wordMatch ? WORD_LEVEL[wordMatch[1]] : undefined;
       toolStep('volume ' + (level === undefined ? 'read' : level));
       const before = level === undefined ? null : await callTool('/sys/volume', {});
+      if (relative) {
+        if (!before || before.error || !Number.isFinite(before.level)) return failed('read the current volume', { error: before?.error || 'No reliable current value was returned.' });
+        level = adjusted(before.level);
+      }
       const r = await callTool('/sys/volume', level === undefined ? {} : { level });
       if (!r.error && before && typeof before.level === 'number') Undo.push('set volume to ' + r.level + '%', async () => { const x = await callTool('/sys/volume', { level: before.level }); if (x.error) throw new Error(x.error); return 'Volume is back to ' + x.level + '%.'; });
       if (r.error) return { text: 'Could not reach the audio device: ' + r.error };
@@ -165,11 +208,19 @@ ToolHandlers.add('system', async function (p, raw, s, a) {
     }
     /* ---- panic mode ---- */
     case 'PANIC_ON': {
-      if (store.get('jarvis.panic', false)) return { text: 'Panic mode is already on, ' + Persona.sir() + '. Nothing is running.' };
+      const stopped = await callTool('/safety/stop', {});
+      if (stopped.error) return failed('stop automation', stopped);
+      if (typeof applySafetyState === 'function' && Number.isSafeInteger(stopped.epoch)) applySafetyState(stopped);
+      if (typeof Agent !== 'undefined') Agent.cancel();
+      store.set('jarvis.emergencyStopped', true);
       store.set('jarvis.panic', true); renderPanic();
-      return { text: '⚠️ **Panic mode on.** All automation is paused — triggers, scheduled routines, deadline and smart alerts. Your reminders still fire, silently. Say "resume" (or click the ⚠ PANIC pill) when it is over.', tool: 'panic' };
+      return { text: 'Emergency stop is active. New actions are blocked and queued work is cancelled. Already accepted OS or provider operations may still finish. Say “resume” when ready.', tool: 'panic' };
     }
     case 'PANIC_OFF': {
+      const resumed = await callTool('/safety/resume', {});
+      if (resumed.error) return failed('resume automation', resumed);
+      if (typeof applySafetyState === 'function' && Number.isSafeInteger(resumed.epoch)) applySafetyState(resumed);
+      store.set('jarvis.emergencyStopped', false);
       if (!store.get('jarvis.panic', false)) return { text: 'Nothing is paused, ' + Persona.sir() + ' — automation is already running normally.' };
       store.set('jarvis.panic', false); renderPanic();
       return { text: 'Resumed. Triggers, alerts and scheduled routines are live again, ' + Persona.sir() + '.', tool: 'panic' };
@@ -226,7 +277,8 @@ ToolHandlers.add('system', async function (p, raw, s, a) {
       }
       toolStep('screenRead');
       const wantVision = explain && llmReady();
-      const r = await callTool('/sys/screenRead', { source: clip ? 'clipboard' : whole ? 'screen' : 'window', delay: clip ? 0 : wait, vision: wantVision });
+      const visualOnly = /\b(chart|graph|diagram|picture|image|photo|object|objects|people|person|colour|color|layout|appearance)\b/i.test(raw);
+      const r = await callTool('/sys/screenRead', { source: clip ? 'clipboard' : whole ? 'screen' : 'window', delay: clip ? 0 : wait, vision: wantVision, visualOnly });
       if (auto) await callTool('/sys/browserTab', { mode: 'back', expect: document.title }); // bring JARVIS's tab back
       if (r.error) return { text: cap(r.error) + '.' };
       // Still on JARVIS's own window when the capture fired: reading it would only describe JARVIS (and guess from tab names).
@@ -244,8 +296,8 @@ ToolHandlers.add('system', async function (p, raw, s, a) {
         (text ? ' Text read from it by OCR (may contain small errors):\n```\n' + text.slice(0, 6000) + '\n```' : '') + honest + '\nAnswer my request about it.', imageToken: r.imageToken };
       if (!text) return { text: 'I could not find any readable text there, ' + Persona.sir() + '. (I read English text only.)' };
       ctx.lastOcr = text;
-      if (wantVision) return { askLLM: raw + '\n\nHere is the text captured from my ' + where + ' (via OCR, so it may contain small errors).' + titleNote + '\n```\n' + text.slice(0, 8000) + '\n```' + honest + '\nAnswer my request about it.' };
-      return { text: 'Read ' + plural(r.lines, 'line') + ' from your ' + (clip ? 'copied image' : whole ? 'screen' : 'window') + ':\n```text\n' + text.slice(0, 4000) + (text.length > 4000 ? '\n…' : '') + '\n```\n_Read locally with Windows OCR — the capture was deleted straight away._',
+      if (wantVision) return { askLLM: raw + '\n\nHere is the text read from my ' + where + (r.method === 'accessibility' ? ' through Windows accessibility; no image was captured.' : ' via OCR; it may contain small errors.') + titleNote + '\n```\n' + text.slice(0, 8000) + '\n```' + honest + '\nAnswer my request about it using this text; do not claim to see an image unless one is attached.' };
+      return { text: 'Read ' + plural(r.lines, 'line') + ' from your ' + (clip ? 'copied image' : whole ? 'screen' : 'window') + ':\n```text\n' + text.slice(0, 4000) + (text.length > 4000 ? '\n…' : '') + '\n```\n_' + (r.method === 'accessibility' ? 'Read locally through Windows accessibility, without a screenshot.' : 'Read locally with Windows OCR — the capture was deleted straight away.') + '_',
         speak: 'I read ' + plural(r.lines, 'line') + ' of text. It is on screen.', tool: 'screenRead',
         actions: [{ label: 'COPY TEXT', fn: async () => { await copyText(text); toast('Copied'); } }, { label: 'EXPLAIN IT', fn: () => handleUser('explain the text you just read from my screen', 'chip') }] };
     }

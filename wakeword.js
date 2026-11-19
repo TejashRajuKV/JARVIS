@@ -146,7 +146,9 @@ function createNativeWake({ isWin, broadcast, run = spawn, now = () => Date.now(
 }
 
 module.exports = function setupNativeWake(app, { IS_WIN }) {
-  const native = createNativeWake({ isWin: !!IS_WIN, broadcast: ev => app.locals.broadcast && app.locals.broadcast(ev) });
+  const native = createNativeWake({ isWin: !!IS_WIN, broadcast: ev => {
+    if (!app.locals.routeMarksWake?.(ev)) app.locals.broadcast?.(ev);
+  } });
   process.on('exit', () => native.stop());
   app.get('/api/wake/native', (req, res) => res.json(native.status()));
   app.post('/api/wake/native', (req, res) => {

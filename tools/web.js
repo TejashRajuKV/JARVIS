@@ -87,6 +87,7 @@ ToolHandlers.add('web', async function (p, raw, s, a) {
       }
       if (w.approximate) return { text: 'Your internet connection only tells me the country, not the city, so I would be guessing. Tell me your city — say "my city is Bengaluru" — and I will remember it.', suggestions: ['My city is Bengaluru', 'Weather in Bengaluru'] };
       ctx.lastIntent = 'WEATHER';
+      ctx.lastWeatherCity = city || settings.city || w.place || '';
       if (/tomorrow/.test(s) && w.tomorrow) return { text: 'Tomorrow in **' + w.place + '**: ' + w.tomorrow.desc.toLowerCase() + ', ' + w.tomorrow.minC + '–' + w.tomorrow.maxC + '°C.', tool: 'weather' };
       const umbrella = w.rainChance >= 50 ? ' Chance of rain is ' + w.rainChance + '% — take an umbrella.' : '';
       return { text: '**' + w.place + '**: ' + w.tempC + '°C and ' + w.desc.toLowerCase() + ' (feels like ' + w.feelsC + '°C). Today ' + w.minC + '–' + w.maxC + '°C.' + umbrella, card: [['HUMIDITY', w.humidity + '%'], ['WIND', w.windKmph + ' km/h'], ['RAIN CHANCE', w.rainChance + '%']], tool: 'weather' };

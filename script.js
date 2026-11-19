@@ -50,7 +50,7 @@ const store = (() => {
   let timer = null;
   // What this tab last knew to be on the server for the lists that several tabs edit (their ids), so the server can tell "I deleted it" from "another tab added it"
   // when this tab saves a whole list (statemerge.js). Updated when the page loads, when another tab's change is taken, and when a save is acknowledged.
-  const MERGE_KEYS = /^jarvis\.(todos|deadlines|classes|studyPlans|expenses|habits|memory|marks|attendance|actionReceipts)$/;
+  const MERGE_KEYS = /^jarvis\.(todos|deadlines|classes|studyPlans|expenses|habits|memory|marks|attendance|actionReceipts|workspaces)$/;
   const idsOf = s => { try { const v = JSON.parse(s); if (Array.isArray(v)) return v.every(x => x && typeof x === 'object' && x.id !== undefined && x.id !== null) ? v.map(x => x.id) : null; return v && typeof v === 'object' ? Object.keys(v) : null; } catch (e) { return null; } };
   const synced = {}, sentSeq = {};
   for (const k of Object.keys(cache)) if (MERGE_KEYS.test(k)) { const ids = idsOf(cache[k]); if (ids) synced[k] = ids; }
@@ -60,7 +60,9 @@ const store = (() => {
     const keys = Object.keys(pending);
     if (!keys.length) return;
     const sent = {}; keys.forEach(k => { sent[k] = pending[k]; });
-    const base = {}; keys.forEach(k => { if (MERGE_KEYS.test(k) && pending[k] !== null && synced[k]) base[k] = synced[k]; });
+    const base = {}; keys.forEach(k => {
+      if (MERGE_KEYS.test(k) && pending[k] !== null && (synced[k] || k === 'jarvis.workspaces')) base[k] = synced[k] || [];
+    });
     // From the moment this save leaves, what it carries counts as known to the server: a later save (sent before this one is answered) must not mistake this tab's
     // own items for another tab's additions, or treat what it deletes next as someone else's. If the save fails, the old knowledge is put back.
     const before = {}, seq = {};
@@ -130,6 +132,15 @@ Persona.setAddressSource(() => {
   return settings.persona === 'friday' && a === 'sir' ? 'boss' : a;
 });
 const saveSettings = () => store.set('jarvis.settings', settings);
+const fmRadio = FMRadio.create({
+  settings,
+  save: saveSettings,
+  open: async url => !(await callTool('/tool/openUrl', { url })).error,
+  play: (station, official) => window.MediaCenter?.radio(station, official),
+});
+const renderRadio = FMRadio.mount(document, fmRadio);
+const savedWorkspaces = DailyFeatures.createWorkspaces({ store, id: rid, open: callTool });
+const focusAudio = FocusAudio.create();
 // The attendance percentage your college asks for (75 unless you changed it: "my college needs 80% attendance" or Settings).
 const attMin = () => Math.min(95, Math.max(40, Math.round(+settings.attendanceMin) || 75));
 // Durable personal memory is deliberately bounded and normalized at the storage boundary.
@@ -289,6 +300,7 @@ function memClearAll() {
 
 // Conversation context for follow-ups ("close it", "what about RAM").
 const ctx = { lastApp: null, lastIntent: null, lastFile: null, pending: null, recentlyClosedApp: store.get('jarvis.recentlyClosedApp', null) };
+if (typeof Understanding !== 'undefined') Understanding.persistPending(ctx, store);
 // What the conversation is about right now: the folder / file JARVIS last showed, found or made, and the numbered
 // results of the last list or search — so "create a folder there", "open it" and "open the second one" mean something.
 ctx.focus = { folder: null, file: null, created: null, results: [] };
@@ -565,6 +577,9 @@ const stateMeta = {
 };
 function setState(s, msg) {
   state = s; const m = stateMeta[s] || stateMeta.IDLE;
+  const duckAudio = s === 'SPEAKING' || (s === 'LISTENING' && !String(msg).startsWith('Say "'));
+  focusAudio.duck(duckAudio);
+  window.MediaCenter?.duck(duckAudio);
   document.body.dataset.state = { IDLE: 'idle', LISTENING: 'listen', PROCESSING: 'proc', EXECUTING: 'exec', SPEAKING: 'speak', ERROR: 'err', BOOT: 'boot' }[s];
   stateChip.textContent = m[0];
   stateMsg.textContent = msg !== undefined ? msg : m[1];
@@ -598,12 +613,38 @@ const llmReady = () => settings.llm && llm.online && !!llm.model;
 
 // A server that was online and misses one check is asked again with more time before the page calls it offline:
 // on a laptop busy running the local AI, one slow answer is not an outage (and the offline screen interrupts you).
+const marksBtn = $('#marksBtn');
+function openMarks(profileId) {
+  const url = profileId ? '/marks.html?profile=' + encodeURIComponent(profileId) : '/marks.html';
+  window.open(url, '_blank', 'noopener');
+}
+marksBtn?.addEventListener('click', () => openMarks());
+
+async function marksChatCommand(text) {
+  const profile = /^(?:enable|activate|open|use|switch to|turn on) (?:the )?mark[ -]?(\d+)(?: profile)?$/.exec(text);
+  if (!profile && !/^(?:open|show) (?:the )?marks?(?: workspace| controls)?$/.test(text)) return null;
+
+  const catalog = await getJSON('/marks/profiles');
+  if (catalog?.error || typeof catalog?.enabled !== 'boolean') return { text: 'I couldn’t check whether the Marks workspace is available.' };
+  if (!catalog.enabled) return { text: 'The Marks workspace is disabled in this JARVIS session.' };
+
+  const target = profile && catalog.profiles.find(item => item.id === 'mark-' + profile[1] && item.available);
+  if (profile && !target) return { text: 'Mark ' + profile[1] + ' is unavailable. Open Marks to see the available profiles.',
+    actions: [{ label: 'Open Marks', fn: () => openMarks() }] };
+
+  const label = target?.name || 'Marks';
+  const open = () => openMarks(target?.id);
+  open();
+  return { text: label + ' opens in the separate Marks workspace. If a new tab didn’t open, use the button below.',
+    actions: [{ label: 'Open ' + label, fn: open }] };
+}
 async function checkBackend(patient = backend.online) {
   try {
     let r;
     try { r = await fetch(API + '/health', { signal: AbortSignal.timeout(2500) }); }
     catch (e) { if (!patient) throw e; await new Promise(res => setTimeout(res, 1000)); r = await fetch(API + '/health', { signal: AbortSignal.timeout(8000) }); }
     const d = await r.json();
+    if (marksBtn) marksBtn.hidden = d.marksEnabled !== true;
     // A different pid means the server really restarted (the page reloads for that); the same pid was just slow.
     backend.restarted = !!(backend.pid && d.pid && d.pid !== backend.pid);
     if (d.pid) backend.pid = d.pid;
@@ -613,6 +654,7 @@ async function checkBackend(patient = backend.online) {
     $('#sandboxPath').textContent = 'SANDBOX ' + backend.sandbox;
     $('#sandboxNote').textContent = backend.sandbox;
   } catch (e) {
+    if (marksBtn) marksBtn.hidden = true;
     backend.online = false;
     setEngine('core', 'down', 'offline — press START JARVIS');
     setPill('pillCore', 'bad', 'Backend offline — press START JARVIS above (or the desktop icon)');
@@ -743,7 +785,7 @@ function awaitAnswer(show, ms = 600000) {
     const fin = ok => {
       clearTimeout(timer); if (pendingApproval === fin) pendingApproval = null; resolve(!!ok);
       // input that waited behind the card: the paused turn drains it when it ends; if no turn is running (the card came from a button, not a turn), start it now
-      setTimeout(() => { if (!busy && !pendingApproval && inputQueue.length) { const [t, s2] = inputQueue.shift(); handleUser(t, s2); } }, 150);
+      setTimeout(() => { if (!busy && !pendingApproval && inputQueue.length) handleUser(...inputQueue.shift()); }, 150);
     };
     pendingApproval = fin;
     timer = setTimeout(() => { if (pendingApproval === fin) { toast('No answer for ' + Math.round(ms / 60000) + ' minutes — taking that as “no”', true); fin(false); } }, ms);
@@ -757,8 +799,10 @@ function askApproval(action, paths, kind) {
   if (typeof idleState === 'function') idleState();
   return awaitAnswer(done => {
     const list = paths.map(p => '`' + p + '`').join(' and ');
-    const reason = kind === 'homeAssistant' ? 'This changes a Home Assistant device, so I need your permission.' : 'That is outside `~/jarvis`, so I need your permission.';
+    const reason = kind === 'desktop' ? 'This acts on the selected application window. Review the window, control, and any text before approving.'
+      : kind === 'homeAssistant' ? 'This changes a Home Assistant device, so I need your permission.' : 'That is outside `~/jarvis`, so I need your permission.';
     jarvisSay({ text: '⚠ JARVIS wants to **' + (APPROVAL_VERB[action] || action) + '** ' + list + '.\n' + reason + ' _(You can also just say **yes**.)_', intent: 'APPROVAL', noPersona: true, noTTS: true,
+      instant: ['desktop','mcp','account','vault','browser','execution'].includes(kind), correctionCommand: turnTrace?.said, isPending: () => pendingApproval === done,
       confirm: { yes: 'ALLOW', no: 'CANCEL', onConfirm: () => done(true), onCancel: () => done(false) } });
   }).then(ok => { if (typeof busy !== 'undefined') busy = wasBusy; return ok; });
 }
@@ -773,8 +817,13 @@ async function callTool(endpoint, data, helloToken) {
   const j = await callToolRaw(endpoint, data, helloToken);
   if (j && j.needsApproval && !(data && data.approved)) {
     if (!(await askApproval(j.action, j.paths || [], j.approvalKind))) return { error: approvalsBlocked > 0 && j.approvalKind === 'homeAssistant' ? 'Approve Home Assistant actions on the laptop' : approvalsBlocked > 0 ? 'That changes files outside ~/jarvis — do it at the laptop, where I can ask you first' : 'Cancelled — nothing was changed', cancelled: true };
-    return callToolRaw(endpoint, Object.assign({}, data, { approved: true, approvalToken: j.approvalToken }), helloToken);
+    const approvedData=Object.assign({}, data, { approved: true, approvalToken: j.approvalToken });
+    let approved = await callToolRaw(endpoint, approvedData, helloToken);
+    if(approved.needHello&&/^act[a-f0-9]{17}$/.test(approved.purpose)&&approvalsBlocked===0){const token=await Hello.approve(approved.purpose);if(!token)return {cancelled:true,error:'Windows Hello approval was not completed.'};approved=await callToolRaw(endpoint,approvedData,token);}
+    if (busy && turnTrace?.said) savedWorkspaces.record(endpoint, data, approved);
+    return approved;
   }
+  if (busy && turnTrace?.said) savedWorkspaces.record(endpoint, data, j);
   return j;
 }
 // How long a call may take before the page stops waiting. Without a limit, one stuck request (a hung PowerShell, a dead provider) keeps JARVIS "busy" forever.
@@ -906,7 +955,7 @@ setInterval(() => {
 }, 1000);
 
 /* ============ canvas: background + wave + orb ============ */
-let themeRGB = '63,217,255', themeHiRGB = '157,241,255'; // follow the HUD theme (see applyTheme)
+let themeRGB = '52,87,122', themeHiRGB = '38,62,91'; // follow the HUD theme (see applyTheme)
 const bctx = bgCanvas.getContext('2d'), wctx = waveCanvas.getContext('2d');
 const DPR = Math.min(window.devicePixelRatio || 1, 2);
 function fit(c, cx) { const r = c.getBoundingClientRect(); c.width = Math.max(2, r.width * DPR); c.height = Math.max(2, r.height * DPR); cx.setTransform(DPR, 0, 0, DPR, 0, 0); }
@@ -1106,7 +1155,7 @@ const speechQueue = SpeechStream.createQueue({
   },
 });
 // "stop" / the STOP button / Esc: the voice, the sentences still waiting, and the answer being written, all at once.
-function stopEverything() { stopSpeaking(); if (llmAbort) llmAbort.abort(); }
+function stopEverything() { window.AssistantPage?.cancelVoice(); stopSpeaking(); if (llmAbort) llmAbort.abort(); }
 // Keeps Telugu/Kannada letters too — otherwise every Telugu reply looked empty and was never recognised as an echo.
 const simpleWords = s => String(s).toLowerCase().replace(/[^a-zఀ-೿' ]/g, ' ').replace(/\s+/g, ' ').trim();
 // Chrome's speechSynthesis.speaking can stay stuck at true after a reply; trusting it forever kept the wake word
@@ -1253,11 +1302,22 @@ async function renderReply(o) {
     node.extraEl.appendChild(dl);
   }
   if (o.confirm) {
+    if (document.body.classList.contains('immersive') && window.JarvisCode?.state.on) window.JarvisCode.open(false);
     const d = document.createElement('div'); d.className = 'confirmRow';
     const yes = document.createElement('button'); yes.className = 'cbtn danger'; yes.textContent = o.confirm.yes || 'CONFIRM';
     const no = document.createElement('button'); no.className = 'cbtn'; no.textContent = o.confirm.no || 'CANCEL';
-    yes.addEventListener('click', () => { d.classList.add('done'); sfx.ok(); o.confirm.onConfirm(); });
-    no.addEventListener('click', () => { d.classList.add('done'); if (o.confirm.onCancel) o.confirm.onCancel(); else jarvisSay({ text: 'Understood — cancelled.', intent: 'CANCELLED' }); });
+    let settled = false, untrack;
+    const answer = ok => {
+      if (settled) return;
+      settled = true; yes.disabled = no.disabled = true; d.classList.add('done'); untrack?.();
+      if (o.isPending && !o.isPending()) return;
+      if (ok) { sfx.ok(); o.confirm.onConfirm(); }
+      else if (o.confirm.onCancel) o.confirm.onCancel();
+      else jarvisSay({ text: 'Understood — cancelled.', intent: 'CANCELLED' });
+    };
+    if (o.correctionCommand) untrack = window.AssistantPage?.trackApproval(o.correctionCommand, () => answer(false), o.isPending);
+    yes.addEventListener('click', () => answer(true));
+    no.addEventListener('click', () => answer(false));
     d.append(yes, no); node.extraEl.appendChild(d);
   }
   if (o.actions) {
@@ -1294,26 +1354,7 @@ function restoreChat() {
 }
 
 /* ============ safe math ============ */
-function tryCalc(text) {
-  let e = text.toLowerCase()
-    .replace(/(\d+(?:\.\d+)?)\s*(?:%|percent) of\s*(\d+(?:\.\d+)?)/g, '($1/100*$2)')
-    .replace(/(?:square root of|sqrt)\s*\(?\s*(\d+(?:\.\d+)?)\s*\)?/g, (_, n) => String(Math.sqrt(+n)))
-    .replace(/(?:cube root of|cbrt)\s*\(?\s*(\d+(?:\.\d+)?)\s*\)?/g, (_, n) => String(Math.cbrt(+n)))
-    .replace(/(\d+(?:\.\d+)?)\s*squared/g, '($1**2)').replace(/(\d+(?:\.\d+)?)\s*cubed/g, '($1**3)')
-    .replace(/(\d+)\s*!/g, (_, n) => { let f = 1; for (let i = 2; i <= Math.min(+n, 170); i++) f *= i; return String(f); })
-    .replace(/what is|what's|calculate|compute|solve|evaluate|equals|equal to|\?|=/g, ' ')
-    .replace(/\bplus\b/g, '+').replace(/\bminus\b/g, '-').replace(/\b(times|multiplied by|into)\b/g, '*')
-    .replace(/\b(divided by|over|by)\b/g, '/').replace(/\b(mod|modulo)\b/g, '%').replace(/to the power of|\bpower\b/g, '**')
-    .replace(/(\d)\s*[x×]\s*(?=[\d(])/g, '$1*').replace(/÷/g, '/').replace(/\^/g, '**').replace(/(\d),(\d{3})/g, '$1$2');
-  e = e.replace(/[^0-9+\-*/().%\s]/g, ' ').replace(/\s+/g, ' ').trim();
-  if (!/\d/.test(e) || !/[+\-*/%]/.test(e.replace(/^-/, ''))) return null;
-  if (!/^[0-9+\-*/().%\s]+$/.test(e)) return null;
-  try {
-    const val = Function('"use strict";return (' + e + ')')();
-    if (typeof val !== 'number' || !isFinite(val)) return null;
-    return { expr: e, val: parseFloat(val.toPrecision(12)) };
-  } catch (err) { return null; }
-}
+const tryCalc = NLU.tryCalc;
 
 /* ============ CS quick tools ============ */
 const BASES = { binary: 2, bin: 2, hex: 16, hexadecimal: 16, octal: 8, oct: 8, decimal: 10, dec: 10 };
@@ -1403,29 +1444,51 @@ function restoreTimers() {
 }
 let focus = null;
 // A focus session (and its break) survives a reload: its state is kept in the shared store and picked up again when the page opens, if its time has not run out.
-const saveFocus = () => { try { store.set('jarvis.focusState', focus ? { phase: focus.phase, end: focus.end, min: focus.min, count: focus.count, subject: focus.subject || '' } : null); } catch (e) {} };
+const saveFocus = () => { try { store.set('jarvis.focusState', focus ? { phase: focus.phase, end: focus.end, min: focus.min, count: focus.count, subject: focus.subject || '', sound: focus.sound || '' } : null); } catch (e) {} };
+function renderFocusAudio() {
+  const button = $('#focusAudioControl');
+  button.hidden = focus?.phase !== 'focus' || !FocusAudio.valid(focus.sound);
+  button.textContent = focusAudio.playing() ? 'Mute focus audio' : 'Play focus audio';
+  window.MediaCenter?.refresh();
+}
+async function playFocusAudio() {
+  const session = focus;
+  if (session?.phase !== 'focus' || !FocusAudio.valid(session.sound)) return false;
+  window.MediaCenter?.pause();
+  const started = await focusAudio.play(session.sound);
+  renderFocusAudio();
+  return started && session === focus;
+}
+$('#focusAudioControl').addEventListener('click', async () => {
+  if (focusAudio.playing()) { focusAudio.stop(); renderFocusAudio(); }
+  else if (!await playFocusAudio()) toast('Focus audio could not start in this browser.');
+});
 function restoreFocus() {
   try {
     const f = store.get('jarvis.focusState', null);
     if (!f || !f.end || f.end <= Date.now() || (f.phase !== 'focus' && f.phase !== 'break') || focus) { if (f) store.set('jarvis.focusState', null); return false; }
-    focus = { phase: f.phase, end: f.end, min: f.min || 25, count: f.count || 0, subject: f.subject || undefined };
+    focus = { phase: f.phase, end: f.end, min: f.min || 25, count: f.count || 0, subject: f.subject || undefined, sound: f.sound };
+    renderFocusAudio();
     log('info', 'restored the ' + f.phase + ' session after the reload');
     return true;
   } catch (e) { return false; }
 }
 const fmtLeft = ms => { const s = Math.ceil(ms / 1000); return (s >= 3600 ? Math.floor(s / 3600) + ':' + pad(Math.floor(s % 3600 / 60)) : Math.floor(s / 60)) + ':' + pad(s % 60); };
-function startFocus(min) {
+function startFocus(min, sound = '') {
   stopFocus(true);
   min = clamp(Math.round(min || settings.focusMin || 25), 1, 180);
   const saved = store.get('jarvis.focusToday', { d: '', n: 0 });
   const count = saved.d === new Date().toDateString() ? saved.n : 0;
-  focus = { phase: 'focus', end: Date.now() + min * 6e4, min, count };
+  focus = { phase: 'focus', end: Date.now() + min * 6e4, min, count, sound };
   saveFocus();
+  renderFocusAudio();
   return min;
 }
 function stopFocus(silent) {
   if (!focus) return false;
+  if (focus.phase === 'focus' && Number(store.get('jarvis.quietUntil', 0)) === focus.end) store.set('jarvis.quietUntil', 0);
   focus = null; $('#focusStat').hidden = true; saveFocus();
+  focusAudio.stop(); renderFocusAudio();
   if (!silent) log('info', 'focus session stopped');
   return true;
 }
@@ -1444,6 +1507,7 @@ function focusTick(now) {
     store.set('jarvis.focusToday', { d: new Date().toDateString(), n: focus.count });
     const b = clamp(+settings.breakMin || 5, 1, 60);
     focus.phase = 'break'; focus.end = now + b * 6e4; saveFocus();
+    focusAudio.stop(); renderFocusAudio();
     notify('Focus session complete', 'Take a ' + b + '-minute break.');
     jarvisSay({ text: 'Focus session ' + focus.count + ' complete, ' + Persona.sir() + '. Well done. I would recommend a ' + b + '-minute break — stretch, and perhaps some water.', intent: 'FOCUS', tool: 'focus' });
   } else {
@@ -1601,13 +1665,37 @@ setInterval(() => {
   tasksTick(now);
 }, 500);
 restoreTimers(); restoreFocus();
+let lastSafetyEpoch = store.get('jarvis.emergencyEpoch', -1);
+function applySafetyState(result) {
+  if (!Number.isSafeInteger(result.epoch) || result.epoch <= lastSafetyEpoch) return false;
+  lastSafetyEpoch = result.epoch;
+  store.set('jarvis.emergencyEpoch', result.epoch);
+  store.set('jarvis.emergencyStopped', result.stopped); store.set('jarvis.panic', result.stopped);
+  if (result.stopped) {
+    stopEverything(); inputQueue.length = 0;
+    if (typeof Agent !== 'undefined') Agent.cancel();
+    if (pendingApproval) { const reject = pendingApproval; pendingApproval = null; reject(false); }
+    window.AssistantPage?.cancelVoice();
+  }
+  renderPanic(); return true;
+}
 if (serverScheduler && 'EventSource' in window) {
   const events = new EventSource('api/events');
+  events.addEventListener('emergency-stop', e => {
+    applySafetyState(JSON.parse(e.data));
+  });
+  events.addEventListener('agent-job', e => {
+    const ev = JSON.parse(e.data);
+    if (!ev.lead || ev.quiet) return;
+    toast('Task ' + ev.status + ': ' + ev.goal);
+    jarvisSay({ text: 'Background task **' + ev.status + '**: ' + ev.goal + '. Say “show background tasks” to review the result.', noPersona: true, noTTS: true });
+    void window.AgentRuntimePage?.refreshJobs();
+  });
   events.addEventListener('reminder', e => {
     const ev = JSON.parse(e.data);
     const r = reminders.find(x => x.id === ev.id);
     if (r) { r.at = ev.at; r.fired = ev.fired; saveTasks(); }
-    if (!ev.lead) return; // only one open tab announces it
+    if (!ev.lead || ev.quiet) return; // only one open tab announces it
     if (ev.digest) { sfx.alarm(); jarvisSay({ text: ev.text, intent: 'WEEK_REPORT', noTTS: true }); return; } // the Sunday weekly summary
     if (r && r.kind === 'tenders' && typeof Tenders !== 'undefined') { log('ok', 'tender digest'); Tenders.digest(r); return; }   // the daily KPPP digest (tenders-page.js)
     sfx.alarm(); toast('⏰ ' + ev.text, true); notify('Reminder', ev.text);
@@ -1622,6 +1710,7 @@ if (serverScheduler && 'EventSource' in window) {
     'jarvis.todos': v => { todos = v; }, 'jarvis.reminders': v => { reminders = v; }, 'jarvis.deadlines': v => { deadlines = v; }, 'jarvis.classes': v => { classes = v; },
     'jarvis.attendance': v => { attendance = v || {}; }, 'jarvis.marks': v => { marks = v || []; }, 'jarvis.studyPlans': v => { studyPlans = v; }, 'jarvis.memory': v => { memory = v; },
     'jarvis.actionReceipts': v => { if(typeof ActionReceipts!=='undefined')ActionReceipts.adopt(v); },
+    [DailyFeatures.key]: () => renderSavedWorkspaces(),
     'jarvis.expenses': () => {}, 'jarvis.habits': () => {}, 'jarvis.budget': () => {},       // read from the store each time they are used
   };
   // A backup was restored or imported (from this tab or another one): everything on screen is out of date, so reload rather than risk writing the old copy back.
@@ -1631,7 +1720,7 @@ if (serverScheduler && 'EventSource' in window) {
     const ev = JSON.parse(e.data), take = SYNCED[ev.key];
     if (!take || ev.src === TAB_ID) return;
     if (ev.value === null && !/budget/.test(ev.key)) return;
-    if (/memory|todos|reminders|deadlines|classes|studyPlans|expenses|habits|actionReceipts/.test(ev.key) && !Array.isArray(ev.value)) return;
+    if (/memory|todos|reminders|deadlines|classes|studyPlans|expenses|habits|actionReceipts|workspaces/.test(ev.key) && !Array.isArray(ev.value)) return;
     if (!store.adopt(ev.key, ev.value)) return;
     take(ev.value);
     try { renderTasks(); if (ev.key === 'jarvis.memory' && typeof renderMemory === 'function') renderMemory(); if (typeof renderDash === 'function') renderDash(); if (typeof Routines !== 'undefined') Routines.render(); } catch (err) { /* a panel that is not drawn yet */ }
@@ -1701,16 +1790,17 @@ if (serverScheduler && 'EventSource' in window) {
   events.addEventListener('trigger', e => {
     const ev = JSON.parse(e.data);
     if (!ev.lead) return;
-    sfx.alarm(); log('ok', 'trigger: ' + ev.text);
-    jarvisSay({ text: ev.text, intent: 'TRIGGER', noTTS: true });
+    log('ok', 'trigger: ' + ev.text);
+    if (!ev.quiet) { sfx.alarm(); jarvisSay({ text: ev.text, intent: 'TRIGGER', noTTS: true }); }
     if (typeof Routines !== 'undefined') Routines.runById(ev.routineId, true);
   });
   // Charger plugged in / unplugged (announced by the server, needs no trigger): one tab says it out loud.
-  events.addEventListener('charger', e => {
+  events.addEventListener('charger', async e => {
     const ev = JSON.parse(e.data);
-    if (!ev.lead || settings.chargerAlerts === false) return;
+    if (!ev.lead || ev.quiet || settings.chargerAlerts === false) return;
     const line = ev.plugged ? 'Charger connected' : 'Charger disconnected';
     const detail = typeof ev.battery === 'number' ? ' — battery at ' + ev.battery + '%' : '';
+    if (await window.AssistantPage?.quietAlert('charger', line + detail)) return;
     sfx.wake(); toast('🔌 ' + line + detail, true); notify('Charger', line + detail.replace(' — ', ', '));
     log('ok', 'charger: ' + line + detail);
     jarvisSay({ text: '🔌 **' + line + '**' + detail + '.', speak: line + ', ' + Persona.Sir() + '.', intent: 'CHARGER_ALERTS' });
@@ -1722,7 +1812,7 @@ if (serverScheduler && 'EventSource' in window) {
   });
   events.addEventListener('deadline', e => {
     const ev = JSON.parse(e.data);
-    if (!ev.lead) return;
+    if (!ev.lead || ev.quiet) return;
     const hrs = Math.max(1, Math.round((ev.due - Date.now()) / 36e5));
     sfx.wake(); toast('⏳ ' + ev.title + ' is due soon', true); notify('Heads up', ev.title + ' is due at ' + fmtTime(ev.due));
     jarvisSay({ text: '⏳ **' + ev.title + '** is due at ' + fmtTime(ev.due) + ' — about ' + hrs + 'h left.', intent: 'ALERT', alert: true, suggestions: ['Start a focus session', 'Block distractions'] });
@@ -1982,8 +2072,9 @@ function conversationReply(p) {
     case 'REMEMBER': {
       const m = p.original.match(/(?:remember|note that|keep in mind)\s+(?:that\s+|this\s+)?(.+)/i);
       const fact = (m ? m[1] : p.original).trim().replace(/[.!]$/, '');
-      memAdd('note', cap(fact)); log('ok', 'memory saved');
-      return { text: 'Got it — I will remember that ' + fact.replace(/^my /i, 'your ').replace(/\bi am\b/i, 'you are').replace(/\bi\b/g, 'you') + '.' };
+      if (!memAdd('note', cap(fact))) return { text: 'That note is already in your inbox.', noLocalize: true };
+      log('ok', 'memory saved');
+      return { text: 'Saved to your local Notes inbox.', noLocalize: true };
     }
     case 'RECALL_ALL':
       if (!memory.length) return { text: 'My memory of you is empty so far. Tell me things like "remember that my exam is on the 12th".' };
@@ -2372,8 +2463,10 @@ function alertOnce(key, everyMs, msg, suggestions) {
   const last = alertedAt.get(key);
   if (last && (everyMs === Infinity || Date.now() - last < everyMs)) return;
   alertedAt.set(key, Date.now());
-  claimAlert('alert:' + key, everyMs === Infinity ? 86400 : Math.max(60, everyMs / 1000)).then(won => {
+  claimAlert('alert:' + key, everyMs === Infinity ? 86400 : Math.max(60, everyMs / 1000)).then(async won => {
     if (!won) return;                                  // another open tab already said it
+    const kind = key.startsWith('dl') ? 'deadline' : key.startsWith('evening') ? 'tasks' : key;
+    if (await window.AssistantPage?.quietAlert(kind, msg.replace(/\*\*/g, ''))) return;
     sfx.wake(); toast(msg.replace(/\*\*/g, ''), true); notify('Heads up', msg.replace(/\*\*/g, ''));
     log('warn', 'alert: ' + msg.replace(/\*\*/g, ''));
     const m = msg.match(/^(\p{Extended_Pictographic}\S*)\s+(.*)$/su);
@@ -2470,10 +2563,10 @@ function updateLangUI() {
 }
 const THEMES = {
   // Same values as the html[data-theme] accents in ui.css.
-  arc: { label: 'Arc reactor blue', rgb: '111,179,210', hi: '169,211,230' },
-  gold: { label: 'Mark 85 gold', rgb: '233,162,59', hi: '243,199,127' },
-  crimson: { label: 'Crimson', rgb: '205,92,108', hi: '230,161,171' },
-  violet: { label: 'Violet', rgb: '160,140,210', hi: '203,191,232' },
+  arc: { label: 'Arc reactor blue', rgb: '52,87,122', hi: '38,62,91' },
+  gold: { label: 'Mark 85 gold', rgb: '128,81,15', hi: '95,60,11' },
+  crimson: { label: 'Crimson', rgb: '163,52,64', hi: '119,31,45' },
+  violet: { label: 'Violet', rgb: '67,70,120', hi: '48,50,91' },
 };
 function applyTheme(t) {
   if (!THEMES[t]) t = 'arc';
@@ -2675,6 +2768,10 @@ async function executeTool(p, raw) {
 
 /* ============ LLM bridge ============ */
 const LLM_TOOLS = {
+  desktop_windows: () => ({intent:'DESKTOP_WINDOWS'}),
+  desktop_inspect: a => ({intent:'DESKTOP_INSPECT',args:{window:a.window}}),
+  desktop_click: a => ({intent:'DESKTOP_CLICK',args:{control:a.control}}),
+  desktop_fill: a => ({intent:'DESKTOP_FILL',args:{control:a.control,value:a.value}}),
   open_app: (a) => ({ intent: 'OPEN_APPLICATION', args: { app: a.app } }),
   close_app: (a) => ({ intent: 'CLOSE_APPLICATION', args: { app: a.app } }),
   open_url: (a) => ({ intent: 'OPEN_URL', args: { url: a.url } }),
@@ -2694,6 +2791,7 @@ const LLM_TOOLS = {
   media: (a) => ({ intent: { next: 'MEDIA_NEXT', prev: 'MEDIA_PREV', stop: 'MEDIA_STOP' }[a.key] || 'MEDIA_PLAY' }),
   screenshot: () => ({ intent: 'SCREENSHOT' }),
   battery: () => ({ intent: 'SYS_BATTERY' }),
+  ollama_models: args => ({ intent: 'OLLAMA_MODELS', args: { scope: args.scope || 'installed' } }),
   system_info: () => ({ intent: 'SYS_ALL' }),
   processes: () => ({ intent: 'SYS_PROCESSES' }),
   lock: () => ({ intent: 'SYS_LOCK' }),
@@ -3088,6 +3186,7 @@ async function deliver(result, p) {
     }
   }
   for (const it of items) {
+    if (it.confirm && p?.original) it.correctionCommand ||= p.original;
     if (!it.meta) { it.intent = it.intent || p.intent; it.tool = it.tool || null; it.meta = it.intent + (it.tool ? ' · ' + it.tool + '()' : '') + (p.viaAI ? ' · via AI' : ' · ' + (p.confidence || 1).toFixed(2)); }
     // Rule-based replies get JARVIS's voice; AI answers (it.node) already have it via the system prompt.
     if (!it.node && !it.noPersona && it.text) {
@@ -3147,9 +3246,35 @@ async function confirmCloud(kind) {
   if (ok) cloudAllowed.add(kind);
   return ok;
 }
-async function handleUser(text, source) {
+async function handleUser(text, source, correctedTurn = false) {
+  const safetyText = NLU.normalize(String(text || ''), settings.wakeWord).text;
+  // Emergency controls must bypass busy turns, speech output and pending approvals.
+  if (/^(?:panic(?: mode)?|stop everything|all stop|hold everything|pause everything|freeze all (?:automation|triggers)|emergency stop)[.!?]*$/i.test(safetyText)) {
+    stopEverything(); inputQueue.length = 0;
+    if (typeof Agent !== 'undefined') Agent.cancel();
+    if (pendingApproval) { const reject = pendingApproval; pendingApproval = null; reject(false); }
+    const result = await callTool('/safety/stop', {});
+    if (!result.error) applySafetyState(result);
+    jarvisSay({ text: result.error || 'Emergency stop is active. New actions are blocked and queued work is cancelled. An OS or external operation already accepted may still finish. Say “resume” when ready.', noPersona: true, noTTS: true, instant: true });
+    return;
+  }
+  if (store.get('jarvis.emergencyStopped', false) && /^(?:resume|unpanic|all clear|stand down)[.!?]*$/i.test(safetyText)) {
+    const result = await callTool('/safety/resume', {});
+    if (!result.error) applySafetyState(result);
+    jarvisSay({ text: result.error || 'Ready. Cancelled tasks and old approvals remain cancelled; review any work you want to start again.', noPersona: true, instant: true });
+    return;
+  }
+  if (store.get('jarvis.emergencyStopped', false)) {
+    jarvisSay({ text: 'Emergency stop is active. Say “resume” explicitly before starting another command. Existing task results remain available in Apps.', noPersona: true, noTTS: true, instant: true });
+    return;
+  }
   text = (text || '').trim(); if (!text) return;
   if (typeof window.__lockPing === 'function') window.__lockPing();   // spoken commands count as "still here" for the auto-lock
+  if (document.body.classList.contains('immersive') && immersiveCloseCommand.test(text)) {
+    closeImmersivePanel(true);
+    return;
+  }
+  if (!correctedTurn && window.AssistantPage?.prepareVoice(text, source, handleUser)) return;
   const rawHeard = text;   // for the inspector: what the mic gave us, before repairs
   // Spoken English: repair words the recogniser mishears ("front and" → frontend) before anything reads it.
   if ((source === 'voice' || source === 'wake') && typeof SpeechFix !== 'undefined' && Lang.detect(text) === 'en') {
@@ -3166,7 +3291,7 @@ async function handleUser(text, source) {
     jarvisSay({ text: 'Stopped.', intent: 'STOP', noTTS: true, noPersona: true, noLog: true });
     return;
   }
-  if (busy) { inputQueue.push([text, source]); toast('Queued: "' + text.slice(0, 40) + '"'); return; }
+  if (busy) { inputQueue.push([text, source, correctedTurn]); toast('Queued: "' + text.slice(0, 40) + '"'); return; }
   // A permission card (ALLOW/CANCEL) is still on screen: typed "yes"/"no" presses it. Anything else is a
   // new request — the card stays up until it is answered or cancelled.
   if (typeof pendingApproval === 'function' && pendingApproval) {
@@ -3174,7 +3299,7 @@ async function handleUser(text, source) {
     if (typeof APPROVAL_YES !== 'undefined' && APPROVAL_YES.test(t)) { const done = pendingApproval; pendingApproval = null; addMsg('user', text, { source: source || 'text' }); logChat('user', text, '', source || 'text'); toast('Approved — carrying on…'); done(true); return; }
     if (!(typeof APPROVAL_NO !== 'undefined' && APPROVAL_NO.test(t))) {
       // not an answer: it waits its turn (the running turn is paused on the card)
-      inputQueue.push([text, source]); toast('Waiting for your answer on the card above — say yes or no. Queued: "' + text.slice(0, 40) + '"', true); return;
+      inputQueue.push([text, source, correctedTurn]); toast('Waiting for your answer on the card above — say yes or no. Queued: "' + text.slice(0, 40) + '"', true); return;
     }
     if (typeof APPROVAL_NO !== 'undefined' && APPROVAL_NO.test(t)) { const done = pendingApproval; pendingApproval = null; addMsg('user', text, { source: source || 'text' }); logChat('user', text, '', source || 'text'); done(false); return; }
   }
@@ -3188,6 +3313,61 @@ async function handleUser(text, source) {
     if (cmdHistory[cmdHistory.length - 1] !== text) { cmdHistory.push(text); if (cmdHistory.length > 50) cmdHistory.shift(); store.set('jarvis.cmdHistory', cmdHistory); }
     log('info', 'input (' + (source || 'text') + '): "' + text + '"');
     setState('PROCESSING', 'Understanding…');
+
+    const marks = await marksChatCommand(safetyText);
+    if (marks) {
+      await deliver({ ...marks, noPersona: true, noLocalize: true }, { intent: 'SYSTEM', confidence: 1, text });
+      return;
+    }
+
+    if (document.body.classList.contains('immersive')) {
+      const view = /^(?:jarvis[, ]+)?(?:show|open) (?:my |the )?(calendar|tasks|notes|workspaces|media)[.!?]?$/i.exec(text)?.[1].toLowerCase();
+      if (view) {
+        openImmersivePanel(view);
+        if (view === 'notes') void window.AssistantPage?.refreshInbox();
+        await deliver({ text: 'Opened ' + immersiveViews[view].title + '.', noPersona: true, noLocalize: true },
+          { intent: 'IMMERSIVE_VIEW', confidence: 1, text });
+        return;
+      }
+    }
+
+    const account = await window.AccountPage?.command(text);
+    if(account){await deliver(account,{intent:'ACCOUNT_READ',confidence:1,text,original:text});return;}
+    const runtime = await window.AgentRuntimePage?.command(text);
+    if (runtime) {
+      await deliver({ ...runtime, noPersona: true, noLocalize: true }, { intent:'AGENT_RUNTIME', confidence:1, text, original:text });
+      return;
+    }
+    const desktop = await window.DesktopControl?.command(text);
+    if (desktop) {
+      await deliver({ ...desktop, noPersona: true, noLocalize: true }, { intent:'DESKTOP_CONTROL', confidence:1, text, original:text });
+      return;
+    }
+    const extra = await window.AssistantPage?.command(text);
+    if (extra) {
+      await deliver({ ...extra, noLocalize: true }, { intent: 'DAILY_TOOLS', text, original: text, confidence: 1 });
+      return;
+    }
+
+    const mediaReply = await window.MediaCenter?.command(text);
+    if (mediaReply) {
+      await deliver({ text: mediaReply, noPersona: true, noLocalize: true }, { intent: 'MEDIA_PLAYER', confidence: 1, text });
+      return;
+    }
+    const radioReply = await fmRadio.handle(text);
+    if (radioReply) {
+      renderRadio();
+      switchTab('chat');
+      await deliver({ text: radioReply, noPersona: true, noLocalize: true }, { intent: 'FM_RADIO', confidence: 1, text, args: {} });
+      return;
+    }
+
+    const daily = DailyFeatures.parse(text);
+    if (daily) {
+      const reply = await runDailyCommand(daily);
+      await deliver(reply, { intent: reply.intent, confidence: 1, text, args: {} });
+      return;
+    }
 
     // Opt-in Home Assistant commands are matched only after a connection exists; writes always ask first.
     if (typeof HomeAssistant !== 'undefined') {
@@ -3226,12 +3406,45 @@ async function handleUser(text, source) {
     const sw = Lang.switchRequest(text);
     if (sw) { await deliver(setLanguage(sw), { intent: 'LANG_SWITCH', confidence: 1 }); return; }
     // Telugu / Kannada: translate to English for the rule engine; replies come back in the user's language.
-    let cmdText = text;
-    const inLang = Lang.detect(text);
+    if (typeof Understanding !== 'undefined') {
+      const stack=store.get('jarvis.dialogueStack',[]).filter(item=>item.expires>Date.now() && ['REMIND','SET_TIMER','LANG_DAY'].includes(item.pending?.intent));
+      if (/^(?:resume|return to|continue) (?:the |my )?(?:previous|earlier|last) (?:topic|conversation|question)[.!?]*$/i.test(text.trim())) {
+        const saved=stack.pop();store.set('jarvis.dialogueStack',stack);
+        if(saved) {ctx.pending=saved.pending;await deliver({text:saved.pending.intent==='REMIND'?'Returning to your reminder: '+saved.pending.text+'. When should I remind you?':saved.pending.intent==='SET_TIMER'?'Returning to your timer. For how long?':'Returning to your schedule request. Did “kal” mean tomorrow or yesterday?',noPersona:true},{intent:'DIALOGUE_RESUME'});}
+        else await deliver({text:'There is no saved unfinished topic to resume.',noPersona:true},{intent:'DIALOGUE_RESUME'});
+        return;
+      }
+      if (ctx.pending && ['REMIND','SET_TIMER','LANG_DAY'].includes(ctx.pending.intent)) {
+        const next=text.replace(/^wait[, ]+(?:first[, ]+)?/i,'');
+        const candidate=NLU.classify(NLU.normalize(next,settings.wakeWord),{});
+        if(candidate.confidence>=.85 && candidate.intent!=='CONVERSATION' && candidate.intent!==ctx.pending.intent && !NLU.parseWhen(next)) {
+          stack.push({expires:Date.now()+30*60000,pending:structuredClone(ctx.pending)});
+          store.set('jarvis.dialogueStack',stack.slice(-5));ctx.pending=null;text=next;
+        }
+      }
+    }
+    if (ctx.pending?.intent === 'LANG_DAY') {
+      const pending=ctx.pending;
+      if (/^(?:tomorrow|yesterday)$/i.test(text.trim())) { text=pending.original.replace(/\bkal\b|कल/gi,text.trim().toLowerCase());ctx.pending=null; }
+      else if (/^(?:cancel|never mind)$/i.test(text.trim())) {ctx.pending=null;await deliver({text:'Cancelled.',noPersona:true},{intent:'CANCELLED'});return;}
+      else {await deliver({text:'Say “tomorrow”, “yesterday”, or “cancel” for the pending request.',noPersona:true},{intent:'CLARIFY'});return;}
+    }
+    let cmdText = text, knownTranslation = false;
+    if (typeof Understanding !== 'undefined') {
+      const understood = Understanding.understand(text, { nlu: NLU, context: ctx });
+      if (understood.clarification) {
+        if (understood.language.startsWith('hi') && understood.clarification.includes('kal')) ctx.pending={intent:'LANG_DAY',original:text};
+        await deliver({ text: understood.clarification, noPersona: true, noLocalize: true }, { intent: 'CLARIFY', confidence: 1 });
+        return;
+      }
+      const translated = Understanding.translateKnown(text);
+      if (translated.translated) {cmdText = translated.text;knownTranslation=true;}
+    }
+    const inLang = typeof Understanding !== 'undefined' && Understanding.language(text).startsWith('hi') ? 'hi' : Lang.detect(text);
     const spoken = source === 'voice' || source === 'wake';
     Lang.setTurn(spoken && settings.speechLang !== 'en' ? settings.speechLang : inLang);
     if (spoken && inLang !== 'en' && settings.speechLang !== 'en' && inLang !== settings.speechLang) log('warn', 'recogniser returned ' + Lang.NAMES[inLang] + ' script — replying in ' + Lang.NAMES[settings.speechLang]);
-    if (inLang !== 'en') {
+    if (inLang !== 'en' && !knownTranslation) {
       if (!llmReady()) { await deliver({ text: Lang.line('unsure', inLang) + ' (AI core offline — I can only understand English right now.)', noLocalize: true, intent: 'UNKNOWN' }, { intent: 'UNKNOWN' }); return; }
       setState('PROCESSING', 'Translating…');
       const en = await Lang.toEnglish(text);
@@ -3661,7 +3874,7 @@ async function handleUser(text, source) {
   } finally {
     busy = false;
     if (!pumping && state !== 'LISTENING') idleState();
-    if (inputQueue.length) { const [t, s2] = inputQueue.shift(); setTimeout(() => handleUser(t, s2), 50); }
+    if (inputQueue.length) { const pending = inputQueue.shift(); setTimeout(() => handleUser(...pending), 50); }
   }
 }
 
@@ -3728,17 +3941,32 @@ const piecesOf = ev => Array.from(ev.results, r => ({ isFinal: r.isFinal,
   text: r.isFinal && r.length > 1 && typeof SpeechFix !== 'undefined' ? SpeechFix.pickAlternative(Array.from(r, a => a.transcript)) : (r[0] && r[0].transcript) || '' }));
 const showHeard = t => { liveTranscript.textContent = t; liveTranscript.classList.toggle('on', !!t); };
 let dictUtt = null, dictTick = 0, dictSource = 'voice';
+let dictOnText = null, dictationPreparing = false;
+function deliverDictation(text) {
+  const onText = dictOnText;
+  dictOnText = null;
+  if (onText) onText(text);
+  else if (text) { handleUser(text, dictSource); return; }
+  if (state === 'LISTENING') idleState();
+}
 // opts.source: 'voice' (mic button) or 'wake' (after "Jarvis" was heard in the background); opts.prompt: say
 // "Yes, sir?" first, then listen — the mic starts only after the prompt so JARVIS doesn't hear itself.
 async function startDictation(opts = {}) {
-  if (micHeld) return;
+  if (micHeld || dictationPreparing) return false;
+  dictOnText = opts.onText || null;
   if (wakeOn) { wakePaused = true; retireWakeRec(); }   // one recogniser at a time: the wake listener steps aside
   stopSpeaking();
   ensureAnalyser();
   dictSource = opts.source || 'voice';
   if (opts.prompt) { micHeld = true; sfx.wake(); const yes = Persona.say('wake'); setState('LISTENING', yes); await speak(yes); micHeld = false; }
-  if (settings.speechEngine === 'whisper') { await startOfflineDictation(false); return; }
-  if (!SR || navigator.onLine === false) { await startOfflineDictation(true); return; }
+  if (opts.whisper || settings.speechEngine === 'whisper' || !SR || navigator.onLine === false) {
+    dictationPreparing = true;
+    try { return await startOfflineDictation(!opts.whisper && settings.speechEngine !== 'whisper'); }
+    finally {
+      dictationPreparing = false;
+      if (!micHeld) deliverDictation('');
+    }
+  }
   try {
     rec = makeRec(true); micActive = true;
     dictUtt = Voice.createUtterance({ silenceMs: pauseMs(), maxMs: 30000, idleMs: 8000, isEcho,
@@ -3755,7 +3983,8 @@ async function startDictation(opts = {}) {
     micHeld = true; micBtn.classList.add('live');
     setState('LISTENING', 'Listening… I’ll answer when you pause (tap the mic to send now)'); engine('stt', true);
     clearInterval(dictTick); dictTick = setInterval(() => dictUtt && dictUtt.tick(), 150);
-  } catch (e) { log('err', 'speech failed to start: ' + e.message); micActive = false; micHeld = false; }
+    return true;
+  } catch (e) { log('err', 'speech failed to start: ' + e.message); micActive = false; micHeld = false; deliverDictation(''); return false; }
 }
 let offlineDictation = null, offlineDictationText = [], offlineDictationFinishing = false, offlineLastSpeech = 0, offlineFinishTimer = 0;
 async function startOfflineDictation(fallback = true) {
@@ -3778,8 +4007,9 @@ async function startOfflineDictation(fallback = true) {
       lang: (Lang.SPEECH[settings.speechLang] || 'en-IN').slice(0, 2), chunkSec: 25, silenceMs: pauseMs(),
       onActivity: t => { offlineLastSpeech = t; },
       onText: text => {
-        if (!offlineDictation) return;
+        if (!offlineDictation && !offlineDictationFinishing) return;
         offlineDictationText.push(text); showHeard(offlineDictationText.join(' '));
+        if (offlineDictationFinishing) return;
         clearTimeout(offlineFinishTimer); offlineFinishTimer = setTimeout(() => {
           if (Date.now() - offlineLastSpeech >= pauseMs()) finishOfflineDictation();
         }, pauseMs() + 100);
@@ -3789,6 +4019,7 @@ async function startOfflineDictation(fallback = true) {
     micHeld = true; micActive = true; micBtn.classList.add('live');
     setState('LISTENING', 'Offline Whisper is listening… tap the mic to send'); engine('stt', true);
     log('ok', 'offline Whisper dictation started' + (fallback ? ' after browser speech service was unavailable' : ' (browser speech recognition unavailable)'));
+    return true;
   } catch (e) {
     offlineDictation = null; micHeld = false; micActive = false; micBtn.classList.remove('live');
     if (fallback) voiceError('network');
@@ -3801,7 +4032,11 @@ function startOfflineFallback() {
   if (old) { old.onend = null; old.onerror = null; old.onresult = null; try { old.stop(); } catch (e) {} }
   clearInterval(dictTick); dictUtt = null; micHeld = false; micActive = false;
   micBtn.classList.remove('live'); showHeard(''); engine('stt', false); dropBoost();
-  startOfflineDictation(true);
+  dictationPreparing = true;
+  startOfflineDictation(true).finally(() => {
+    dictationPreparing = false;
+    if (!micHeld) deliverDictation('');
+  });
 }
 async function finishOfflineDictation() {
   if (!offlineDictation || offlineDictationFinishing) return;
@@ -3812,7 +4047,7 @@ async function finishOfflineDictation() {
   offlineDictationText = []; offlineDictationFinishing = false;
   micHeld = false; micActive = false; micBtn.classList.remove('live'); showHeard(''); engine('stt', false);
   if (wakeOn && wakePaused) { wakePaused = false; loopWake(); }
-  if (text) handleUser(text, dictSource); else if (state === 'LISTENING') idleState();
+  deliverDictation(text);
 }
 function finishDictation(t) {
   clearInterval(dictTick); dictUtt = null;
@@ -3821,8 +4056,7 @@ function finishDictation(t) {
   micHeld = false; micActive = false; micBtn.classList.remove('live'); showHeard(''); engine('stt', false);
   if (wakeOn && wakePaused) { wakePaused = false; loopWake(); }
   if (!wakeOn) dropBoost();   // release the microphone when nothing is listening
-  if (t) handleUser(t, dictSource);
-  else if (state === 'LISTENING') idleState();
+  deliverDictation(t);
 }
 // Tap again / let go of a held mic: send what was heard right away.
 function stopDictation() { if (offlineDictation) finishOfflineDictation(); else if (dictUtt) dictUtt.flush(); else if (rec) finishDictation(''); }
@@ -4029,6 +4263,68 @@ wakeBtn.addEventListener('click', () => { wakeOn ? stopWake() : startWake(); });
 if (!SR) { micBtn.classList.add('off'); if (!/win/i.test(navigator.userAgentData && navigator.userAgentData.platform || navigator.platform || '')) wakeBtn.classList.add('off'); }
 
 /* ============ input / chips / shortcuts ============ */
+const immersiveToggle = $('#immersiveToggle');
+const immersivePanel = $('#immersivePanel');
+const immersivePanelContent = $('#immersivePanelContent');
+const immersivePlayerDock = $('#immersivePlayerDock');
+const immersivePlayer = $('#compactMedia');
+const immersivePlayerHome = document.createComment('compact media location');
+immersivePlayer.before(immersivePlayerHome);
+const immersiveViews = {
+  calendar: { title: 'Calendar', selector: '#todayCalendarSection' },
+  tasks: { title: 'Tasks', selector: '[data-pane="tasks"]' },
+  notes: { title: 'Notes', selector: '[data-pane="notes"]' },
+  workspaces: { title: 'Workspaces', selector: '[data-pane="workspaces"]' },
+  desktop: { title: 'Apps', selector: '[data-pane="desktop"]' },
+  media: { title: 'Media', selector: '[data-pane="media"]' },
+};
+const immersiveCloseCommand = /^(?:jarvis[, ]+)?(?:close|hide) (?:the )?(?:side )?panel[.!?]?$/i;
+let immersiveView;
+
+function focusImmersiveComposer() {
+  const composer = $('.controls').classList.contains('coding') ? $('#codeInput') : chatInput;
+  composer.focus({ preventScroll: true });
+}
+function closeImmersivePanel(returnFocus = false) {
+  if (!immersiveView) return false;
+  const { view, home } = immersiveView;
+  const wasFocused = immersivePanel.contains(document.activeElement);
+  home.replaceWith(view);
+  immersivePanel.hidden = true;
+  immersiveView = null;
+  if (returnFocus || wasFocused) focusImmersiveComposer();
+  return true;
+}
+function openImmersivePanel(name) {
+  if (immersiveView?.name === name) return;
+  closeImmersivePanel();
+  const { title, selector } = immersiveViews[name];
+  const view = $(selector), home = document.createComment('immersive view location');
+  view.before(home);
+  immersiveView = { name, view, home };
+  $('#immersivePanelTitle').textContent = title;
+  immersivePanelContent.append(view);
+  immersivePanelContent.scrollTop = 0;
+  immersivePanel.hidden = false;
+  if (name === 'calendar') $('#todayCalendar').dispatchEvent(new Event('jarvis:refresh-calendar'));
+}
+$('#immersivePanelClose').addEventListener('click', () => closeImmersivePanel(true));
+immersiveToggle.addEventListener('click', () => {
+  const active = document.body.classList.toggle('immersive');
+  immersiveToggle.setAttribute('aria-pressed', String(active));
+  immersiveToggle.textContent = active ? 'Show controls' : 'Hide controls';
+  immersiveToggle.title = active ? 'Return to the full dashboard' : 'Show only the reactor and conversation';
+  if (active) {
+    immersivePlayerDock.append(immersivePlayer);
+    immersivePlayerDock.hidden = false;
+    messages.scrollTop = messages.scrollHeight;
+  } else {
+    closeImmersivePanel();
+    immersivePlayerHome.after(immersivePlayer);
+    immersivePlayerDock.hidden = true;
+  }
+});
+
 function sendInput() { const v = chatInput.value; chatInput.value = ''; histIdx = -1; if (v.trim()) handleUser(v, 'text'); }
 sendBtn.addEventListener('click', sendInput);
 chatInput.addEventListener('keydown', e => {
@@ -4038,12 +4334,17 @@ chatInput.addEventListener('keydown', e => {
 });
 let spaceHeld = false;
 document.addEventListener('keydown', e => {
-  const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+  const focused = document.activeElement;
+  const typing = focused.matches('input, textarea, select, [contenteditable]');
   if (e.key === 'Escape') {
+    if (!$('#settingsDrawer').classList.contains('open') && closeImmersivePanel(true)) {
+      e.preventDefault();
+      return;
+    }
     stopEverything();
     closeDrawer(); document.body.classList.remove('show-left');
   } else if (e.key === '/' && !typing) { e.preventDefault(); chatInput.focus(); }
-  else if (e.code === 'Space' && !typing && !e.repeat && !spaceHeld && SR) {
+  else if (e.code === 'Space' && !typing && !focused.matches('button:not(#micBtn), a[href], [role="button"]') && !e.repeat && !spaceHeld && SR) {
     e.preventDefault();
     if (micHeld) { stopDictation(); return; }
     spaceHeld = true; pressStart = performance.now(); startDictation();
@@ -4089,7 +4390,197 @@ function switchTab(name) {
   if (name === 'chat') messages.scrollTop = messages.scrollHeight;
 }
 $$('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+function openDailyPane(name) {
+  if (document.body.classList.contains('immersive') && immersiveViews[name]) return openImmersivePanel(name);
+  switchTab(name);
+}
+async function regionalNews(city = settings.city, language = '') {
+  const base = { intent: 'REGIONAL_NEWS', noPersona: true, noLocalize: true };
+  if (!settings.online) return { ...base, text: 'Enable Online tools to get regional headlines.' };
+  if (!city) return { ...base, text: 'Set a Home City or say “Brief me on Bengaluru in Kannada”.' };
+  const news = await callTool('/news/regional', { city, language, online: true });
+  if (news.error) return { ...base, text: news.error };
+  if (!Array.isArray(news.headlines) || !news.headlines.length) return { ...base, text: 'No recent headlines from the regional feed for ' + (news.city || city) + '.' };
+  const formatDate = new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' });
+  const rows = news.headlines.map(item => {
+    // Publisher headlines are plain text. Only the verified article URL becomes a link.
+    const title = item.title.replace(/[[\]*\x60]/g, '');
+    const url = item.url.replace(/\)/g, '%29');
+    return '- ' + title + ' · [' + item.source + '](' + url + ') · ' + formatDate.format(new Date(item.publishedAt)) + ' IST';
+  });
+  const speak = news.headlines.map(item => item.title.replace(/[.!?।]+$/, '') + '.').join(' ');
+  return { ...base, text: '**' + news.city + ' headlines (' + news.language + ')**\n' + rows.join('\n'), speak };
+}
+async function runDailyCommand(command) {
+  const base = { noPersona: true, noLocalize: true };
+  if (command.action === 'news') {
+    switchTab('chat');
+    return regionalNews(command.city, command.language);
+  }
+  if (command.action === 'resume' || command.action === 'checkpoint') {
+    const matches = savedWorkspaces.list().filter(item => item.name.toLocaleLowerCase() === command.name.trim().replace(/\s+/g, ' ').toLocaleLowerCase());
+    switchTab('chat');
+    let text = 'No workspace matches that name. Create one in Workspaces first.';
+    if (matches.length === 1) {
+      if (command.action === 'checkpoint') {
+        savedWorkspaces.checkpoint(matches[0], command.next, command.task); renderSavedWorkspaces();
+        text = 'Saved the workspace checkpoint.';
+      } else text = DailyFeatures.describeResume(await savedWorkspaces.resume(matches[0]));
+    }
+    if (matches.length > 1) text = 'More than one workspace uses that name. Open Workspaces to pick one.';
+    return { ...base, intent: 'WORKSPACE_RESUME', text };
+  }
+  if (command.action === 'workspaces') {
+    openDailyPane('workspaces');
+    return { ...base, intent: 'WORKSPACE_LIST', text: 'Opened your saved workspaces.' };
+  }
+  if (command.action === 'note') {
+    const saved = memAdd('note', command.text);
+    switchTab('chat');
+    return { ...base, intent: 'VOICE_NOTE', text: saved ? 'Saved to your Notes inbox.' : 'That note is already in your inbox.' };
+  }
+  $('#voiceNoteSearch').value = command.query || '';
+  $('#inboxDate').value = '';
+  if (window.AssistantPage) await window.AssistantPage.refreshInbox();
+  const count = renderVoiceNotes();
+  openDailyPane('notes');
+  return { ...base, intent: 'VOICE_NOTE', text: count ? 'Found ' + plural(count, 'note') + ' in your inbox.' : 'No notes match.' };
+}
+
+function renderVoiceNotes() {
+  const host = $('#voiceNoteList');
+  const notes = window.AssistantPage ? window.AssistantPage.inboxRows(memory) :
+    AssistantTools.inbox(memory, [], $('#voiceNoteSearch').value);
+  host.replaceChildren();
+  for (const [index, note] of notes.entries()) {
+    const row = document.createElement('article');
+    const text = document.createElement('p'); text.textContent = (index + 1) + '. ' + note.text;
+    const when = document.createElement('time');
+    if (note.at) {
+      const date = new Date(note.at);
+      if (!Number.isNaN(date.getTime())) { when.dateTime = date.toISOString(); when.textContent = note.source + ' · ' + date.toLocaleString(); }
+    }
+    row.append(text, when);
+    if (window.AssistantPage) row.append(window.AssistantPage.inboxActions(note));
+    if (note.source === 'Notes') {
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn'; remove.textContent = 'Remove';
+      remove.onclick = () => { memDel(note.id.slice(5)); $('#voiceNoteStatus').textContent = 'Note removed. Say “undo” to restore it.'; };
+      row.append(remove);
+    }
+    host.append(row);
+  }
+  if (!notes.length) host.textContent = $('#voiceNoteSearch').value ? 'No notes match.' : 'No saved notes yet.';
+  return notes.length;
+}
+$('#voiceNoteSearch').addEventListener('input', renderVoiceNotes);
+$('#voiceNoteForm').addEventListener('submit', event => {
+  event.preventDefault();
+  const draft = $('#voiceNoteDraft');
+  if (!draft.value.trim()) { $('#voiceNoteStatus').textContent = 'Enter or dictate a note first.'; return; }
+  const saved = memAdd('note', draft.value);
+  $('#voiceNoteStatus').textContent = saved ? 'Note saved.' : 'That note is already in your inbox.';
+  if (saved) { draft.value = ''; $('#voiceNoteSearch').value = ''; renderVoiceNotes(); }
+});
+const noteRecord = $('#voiceNoteRecord');
+noteRecord.addEventListener('click', async () => {
+  const status = $('#voiceNoteStatus');
+  if (dictOnText && micHeld) { stopDictation(); return; }
+  if (micHeld || dictationPreparing) { status.textContent = 'Finish the current dictation first.'; return; }
+  noteRecord.disabled = true;
+  status.textContent = 'Opening the microphone…';
+  const started = await startDictation({
+    whisper: $('#voiceNoteWhisper').checked,
+    onText: text => {
+      const draft = $('#voiceNoteDraft');
+      if (text) draft.value = [draft.value, text].filter(Boolean).join(' ').slice(0, 500);
+      status.textContent = text ? 'Review the transcript, then save the note.' : 'No speech captured. Try again or type a note.';
+      noteRecord.textContent = 'Dictate note';
+    },
+  });
+  noteRecord.disabled = false;
+  if (started && dictOnText) {
+    status.textContent = 'Listening for a note…';
+    noteRecord.textContent = 'Finish dictation';
+  }
+});
+
+let workspaceEditId = '';
+const workspaceForm = $('#savedWorkspaceForm');
+const workspaceStatus = $('#savedWorkspaceStatus');
+const workspaceFields = {
+  name: $('#savedWorkspaceName'), project: $('#savedWorkspaceProject'),
+  notes: $('#savedWorkspaceNotes'), links: $('#savedWorkspaceLinks'),
+};
+function resetWorkspaceForm() {
+  workspaceEditId = '';
+  workspaceForm.reset();
+  $('#savedWorkspaceCancel').hidden = true;
+}
+$('#savedWorkspaceCancel').addEventListener('click', () => { resetWorkspaceForm(); workspaceStatus.textContent = ''; });
+workspaceForm.addEventListener('submit', event => {
+  event.preventDefault();
+  try {
+    const values = Object.fromEntries(Object.entries(workspaceFields).map(([key, input]) => [key, input.value]));
+    const entry = savedWorkspaces.save(values, workspaceEditId);
+    resetWorkspaceForm(); renderSavedWorkspaces();
+    workspaceStatus.textContent = 'Saved ' + entry.name + '.';
+  } catch (error) { workspaceStatus.textContent = error.message; }
+});
+function renderSavedWorkspaces() {
+  const host = $('#savedWorkspaceList');
+  host.replaceChildren();
+  const entries = savedWorkspaces.list();
+  for (const entry of entries) {
+    const row = document.createElement('article');
+    const title = document.createElement('h3'); title.textContent = entry.name;
+    const info = document.createElement('p');
+    info.textContent = [entry.project, plural(entry.notes.length, 'note'), plural(entry.links.length, 'link')].filter(Boolean).join(' · ');
+    const actions = document.createElement('div'); actions.className = 'daily-actions';
+    const addAction = (label, fn) => {
+      const button = document.createElement('button'); button.className = 'btn'; button.type = 'button'; button.textContent = label; button.onclick = fn;
+      actions.append(button);
+      return button;
+    };
+    addAction('Resume', async event => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      workspaceStatus.textContent = 'Opening ' + entry.name + '…';
+      try { workspaceStatus.textContent = DailyFeatures.describeResume(await savedWorkspaces.resume(entry)); }
+      finally { button.disabled = false; }
+    });
+    addAction('Edit', () => {
+      workspaceEditId = entry.id;
+      for (const [key, input] of Object.entries(workspaceFields)) input.value = Array.isArray(entry[key]) ? entry[key].join('\n') : entry[key];
+      $('#savedWorkspaceCancel').hidden = false;
+      workspaceFields.name.focus();
+    });
+    const taskLabel = document.createElement('label'); taskLabel.textContent = 'Current task ';
+    const task = document.createElement('input'); task.maxLength = 150; task.value = entry.checkpoint?.task || '';
+    taskLabel.append(task);
+    const checkpoint = document.createElement('label'); checkpoint.textContent = 'Next step ';
+    const handoff = document.createElement('input'); handoff.maxLength = 500; handoff.value = entry.checkpoint?.next || '';
+    checkpoint.append(handoff);
+    addAction('Save checkpoint', () => {
+      try {
+        savedWorkspaces.checkpoint(entry, handoff.value, task.value); renderSavedWorkspaces();
+        workspaceStatus.textContent = 'Checkpoint saved.';
+      } catch (error) { workspaceStatus.textContent = error.message; }
+    });
+    addAction('Remove', () => {
+      if (!confirm('Remove the saved workspace “' + entry.name + '”?')) return;
+      savedWorkspaces.remove(entry);
+      if (workspaceEditId === entry.id) resetWorkspaceForm();
+      renderSavedWorkspaces();
+      workspaceStatus.textContent = 'Workspace removed.';
+    });
+    row.append(title, info, taskLabel, checkpoint, actions); host.append(row);
+  }
+  if (!entries.length) host.textContent = 'No saved workspaces yet.';
+}
+renderSavedWorkspaces();
 function renderMemory() {
+  renderVoiceNotes();
   memoryList.innerHTML = '';
   $('#memCount').textContent = memory.length;
   if (!memory.length) { memoryList.innerHTML = '<div class="tempty">I do not know anything about you yet.<br>Try "my name is …" or "remember that my exam is on the 12th".</div>'; return; }
@@ -4594,7 +5085,7 @@ $('#addressSelect').addEventListener('change', e => {
 $('#lenSelect').value = settings.responseLen;
 $('#lenSelect').addEventListener('change', e => { settings.responseLen = e.target.value; saveSettings(); });
 $('#cityInput').value = settings.city;
-$('#cityInput').addEventListener('change', e => { settings.city = e.target.value.trim(); saveSettings(); });
+$('#cityInput').addEventListener('change', e => { settings.city = e.target.value.trim(); saveSettings(); renderRadio(); });
 $('#focusMin').value = settings.focusMin; $('#breakMin').value = settings.breakMin;
 $('#focusMin').addEventListener('change', e => { settings.focusMin = clamp(+e.target.value || 25, 5, 120); e.target.value = settings.focusMin; saveSettings(); });
 $('#breakMin').addEventListener('change', e => { settings.breakMin = clamp(+e.target.value || 5, 1, 60); e.target.value = settings.breakMin; saveSettings(); });

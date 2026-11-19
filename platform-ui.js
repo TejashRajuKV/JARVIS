@@ -11,16 +11,16 @@
   }
   const style = document.createElement('style');
   style.textContent = `
-  #jarvisPlatformOpen{position:fixed;left:18px;bottom:18px;z-index:8998;border:1px solid #3fd9ff88;border-radius:999px;padding:11px 15px;background:#061522f2;color:#b0f3ff;font:600 11px ui-monospace,monospace;letter-spacing:.08em;box-shadow:0 0 20px #3fd9ff20;cursor:pointer}
-  #jarvisPlatformShade{position:fixed;inset:0;z-index:8999;background:#02070cbb;backdrop-filter:blur(7px);display:none;align-items:center;justify-content:center;padding:16px}
-  #jarvisPlatformShade.open{display:flex} #jarvisPlatform{width:min(850px,100%);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;background:#06131ff7;border:1px solid #3fd9ff66;border-radius:14px;color:#e2f7ff;font:14px system-ui,sans-serif;box-shadow:0 20px 80px #000b}
-  #jarvisPlatform *{box-sizing:border-box} .jp-head{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid #3fd9ff33}
-  .jp-head h2{font:700 16px ui-monospace,monospace;letter-spacing:.1em;margin:0;color:#b0f3ff}.jp-tabs{display:flex;gap:7px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid #3fd9ff22}
-  .jp-btn{border:1px solid #3fd9ff44;border-radius:7px;padding:8px 11px;background:#071b2a;color:#ccefff;cursor:pointer;font:inherit}.jp-btn[aria-selected=true]{background:#0d3b50;border-color:#3fd9ff}
-  .jp-content{padding:16px;overflow:auto}.jp-label{display:block;color:#8aa9bd;font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin:10px 0 5px}
-  .jp-field{display:block;width:100%;border:1px solid #3fd9ff44;border-radius:7px;background:#020b12;color:#e2f7ff;padding:10px;font:13px/1.5 ui-monospace,monospace;min-width:0}
+  #jarvisPlatformOpen{position:fixed;left:18px;bottom:18px;z-index:8998;border:1px solid var(--jarvis-border-strong);border-radius:999px;padding:11px 15px;background:var(--jarvis-surface);color:var(--jarvis-indigo);font:600 11px ui-monospace,monospace;letter-spacing:.08em;box-shadow:0 0 20px #26304420;cursor:pointer}
+  #jarvisPlatformShade{position:fixed;inset:0;z-index:8999;background:#26304499;backdrop-filter:blur(7px);display:none;align-items:center;justify-content:center;padding:16px}
+  #jarvisPlatformShade.open{display:flex} #jarvisPlatform{width:min(850px,100%);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;background:var(--jarvis-surface);border:1px solid var(--jarvis-border);border-radius:14px;color:var(--jarvis-ink);font:14px system-ui,sans-serif;box-shadow:0 20px 80px #000b}
+  #jarvisPlatform *{box-sizing:border-box} .jp-head{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--jarvis-border)}
+  .jp-head h2{font:700 16px ui-monospace,monospace;letter-spacing:.1em;margin:0;color:var(--jarvis-indigo)}.jp-tabs{display:flex;gap:7px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid #26304420}
+  .jp-btn{border:1px solid var(--jarvis-border-strong);border-radius:7px;padding:8px 11px;background:var(--jarvis-paper);color:var(--jarvis-ink);cursor:pointer;font:inherit}.jp-btn[aria-selected=true]{background:var(--jarvis-lilac);border-color:var(--jarvis-indigo)}
+  .jp-content{padding:16px;overflow:auto}.jp-label{display:block;color:var(--jarvis-muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin:10px 0 5px}
+  .jp-field{display:block;width:100%;border:1px solid var(--jarvis-border-strong);border-radius:7px;background:var(--jarvis-paper);color:var(--jarvis-ink);padding:10px;font:13px/1.5 ui-monospace,monospace;min-width:0}
   .jp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.jp-card{border:1px solid #3fd9ff28;border-radius:8px;padding:12px;margin:10px 0;overflow-wrap:anywhere}
-  .jp-muted{color:#8aa9bd;font-size:12px;line-height:1.5}.jp-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.jp-status{min-height:20px;color:#b0f3ff;font-size:12px;margin-top:10px;white-space:pre-wrap}
+  .jp-muted{color:var(--jarvis-muted);font-size:12px;line-height:1.5}.jp-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.jp-status{min-height:20px;color:var(--jarvis-indigo);font-size:12px;margin-top:10px;white-space:pre-wrap}
   @media(max-width:600px){.jp-grid{grid-template-columns:1fr}#jarvisPlatformOpen{bottom:68px}}
   `;
   document.head.appendChild(style);

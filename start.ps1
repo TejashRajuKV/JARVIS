@@ -22,7 +22,7 @@ if (-not $NoBrowser) { Remove-Item -LiteralPath (Join-Path (Join-Path $env:USERP
 function Say($t, $c = 'Cyan') { if (-not $Silent) { Write-Host $t -ForegroundColor $c } }
 # Fire-and-forget popup via wscript (in-process COM Popup can hang in some spawned contexts).
 function Msg($t) { try { Start-Process wscript.exe -ArgumentList ('//B "' + (Join-Path $PSScriptRoot 'jarvis-msg.vbs') + '" "JARVIS" "' + ($t -replace '"', '') + '"') } catch {} } # auto-closes after 30s so nothing waits on a click forever
-function IsJarvis($p) { try { $r = Invoke-RestMethod -Uri "http://localhost:$p/api/health" -TimeoutSec 2; return [bool]$r } catch { return $false } }
+function IsJarvis($p) { try { $r = Invoke-RestMethod -Uri "http://127.0.0.1:$p/api/health" -TimeoutSec 5; return [bool]$r } catch { return $false } }
 # Hard 400ms cap: on some machines a connect to a closed/dropped port hangs for seconds, which used to
 # make the port scan take minutes. Fast when open (<5ms), bounded when closed.
 function IsBusy($p) {

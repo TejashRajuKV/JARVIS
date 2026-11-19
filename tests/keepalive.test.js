@@ -62,6 +62,27 @@ const root = path.join(__dirname, '..');
   fs.writeFileSync(path.join(p, 'jarvis', '.restarted.json'), JSON.stringify({ at: '2020-01-01T00:00:00', acked: false }));
   check('script: an old restart note does not hold a new restart back', await decide(p, NOPORTS) === 'restart');
   fake.close();
+  // Load only the identity function from the real stop script's parsed AST.
+  // No stop command, PID file or actual process is used by these fixture cases.
+  const identityDriver=`$tokens=$null;$errors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile($env:JARVIS_STOP_SOURCE,[ref]$tokens,[ref]$errors)
+if($errors.Count){throw 'Stop script did not parse'}
+$fn=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'IsJarvisNode'},$true)
+. ([scriptblock]::Create($fn.Extent.Text))
+$ServerFile=$env:JARVIS_EXPECTED_SERVER;$AppData=$env:JARVIS_EXPECTED_HOME
+function Get-CimInstance { [pscustomobject]@{CommandLine=$env:JARVIS_FIXTURE_COMMAND} }
+function Invoke-RestMethod { if(!$env:JARVIS_FIXTURE_HEALTH){throw 'No fixture health'};$env:JARVIS_FIXTURE_HEALTH|ConvertFrom-Json }
+IsJarvisNode 42`;
+  const identify=(command,health)=>new Promise((resolve,reject)=>execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command',identityDriver],{
+    windowsHide:true,timeout:10000,env:{...process.env,JARVIS_STOP_SOURCE:path.join(root,'stop.ps1'),JARVIS_EXPECTED_SERVER:path.join(root,'server.js'),JARVIS_EXPECTED_HOME:path.join(home,'jarvis'),JARVIS_FIXTURE_COMMAND:command,JARVIS_FIXTURE_HEALTH:health?JSON.stringify(health):''}
+  },(error,out)=>error?reject(error):resolve(String(out).trim()==='True')));
+  const live={status:'online',pid:42,port:3002,sandbox:path.join(home,'jarvis')};
+  check('stop: exact own server path can identify an unresponsive owned process',await identify('node "'+path.join(root,'server.js')+'"')===true);
+  check('stop: relative launch requires matching live identity',await identify('node server.js',live)===true);
+  check('stop: another server.js PID is never accepted',await identify('node server.js',{...live,pid:99})===false);
+  check('stop: a different private home is never accepted',await identify('node server.js',{...live,sandbox:path.join(home,'other')})===false);
+  check('stop: a different port is never accepted',await identify('node server.js',{...live,port:3001})===false);
+  check('stop: another command is never accepted',await identify('node another.js',live)===false);
   check('script: the files that make it a "silent" task are there, and start.ps1 has a way to start without opening the browser', fs.existsSync(path.join(root, 'keepalive.vbs')) && /NoBrowser/.test(fs.readFileSync(path.join(root, 'start.ps1'), 'utf8')) && /stopped-by-user/.test(fs.readFileSync(path.join(root, 'stop.ps1'), 'utf8')) && /stopped-by-user/.test(fs.readFileSync(path.join(root, 'server.js'), 'utf8')));
   for (const d of [home, p]) try { fs.rmSync(d, { recursive: true, force: true }); } catch {}
 

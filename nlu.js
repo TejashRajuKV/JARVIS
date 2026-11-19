@@ -123,6 +123,9 @@ const NLU = (() => {
     s = s.replace(new RegExp(`\\b(${tensRe})\\b`, 'g'), (_, t) => String(TENS[t]));
     s = s.replace(new RegExp(`\\b(${onesRe})\\b(?!-)`, 'g'), (_, o) => String(NUMW[o]));
     s = s.replace(/\b(\d+) hundred\b/g, (_, n) => String(+n * 100));
+    s = s.replace(/\b(\d+) and (?:a |one |1 )?half\b/g, (_, n) => String(+n + .5))
+      .replace(/\b(\d+) and (?:a |one |1 )?quarter\b/g, (_, n) => String(+n + .25))
+      .replace(/\b(?:a |one |1 )?half (?=(?:gb|mb|kb|kg|liters?|litres?|hours?|minutes?)\b)/g, '0.5 ');
     return s;
   }
 
@@ -384,8 +387,12 @@ const NLU = (() => {
   }
 
   function parseDate(s, now = new Date()) {
+    s = String(s || '').toLowerCase();
     const d = new Date(now); d.setHours(0, 0, 0, 0);
     let m;
+    if (/\b(?:end|last day) of (?:the |this |next )?month\b/.test(s)) {
+      return new Date(d.getFullYear(), d.getMonth() + (/\bnext month\b/.test(s) ? 2 : 1), 0);
+    }
     if (/\bday after tomorrow\b/.test(s)) { d.setDate(d.getDate() + 2); return d; }
     if (/\btomorrow\b/.test(s)) { d.setDate(d.getDate() + 1); return d; }
     if (/\btoday\b|\btonight\b/.test(s)) return d;
@@ -445,6 +452,7 @@ const NLU = (() => {
     return r.getTime();
   }
   const WHEN_PHRASES = [
+    /\b(?:at |by |on )?(?:the )?(?:end|last day) of (?:the |this |next )?month\b/g,
     /\bin \d+(?:\.\d+)? ?(seconds?|minutes?|hours?|days?|weeks?|s|m|h)\b/g,
     /\b(at|by|@|around) \d{1,2}([:.]\d{2})? ?(am|pm|a\.m\.|p\.m\.|o'?clock)?/g,
     /\b\d{1,2}([:.]\d{2})? ?(am|pm)\b/g,
@@ -493,6 +501,8 @@ const NLU = (() => {
   /* ---------- unit conversion ---------- */
   // [aliases, dimension, factor to base unit] — temperature handled specially.
   const UNITS = [
+    [['gb', 'gigabyte', 'gigabytes'], 'data', 1024 ** 3], [['mb', 'megabyte', 'megabytes'], 'data', 1024 ** 2],
+    [['kb', 'kilobyte', 'kilobytes'], 'data', 1024], [['byte', 'bytes'], 'data', 1],
     [['c', '°c', 'celsius', 'degrees celsius', 'centigrade'], 'temp', 'C'], [['f', '°f', 'fahrenheit', 'degrees fahrenheit'], 'temp', 'F'], [['k', 'kelvin'], 'temp', 'K'],
     [['km', 'kms', 'kilometer', 'kilometers', 'kilometre', 'kilometres'], 'len', 1000], [['m', 'meter', 'meters', 'metre', 'metres'], 'len', 1],
     [['cm', 'centimeter', 'centimeters', 'centimetre', 'centimetres'], 'len', .01], [['mm', 'millimeter', 'millimeters'], 'len', .001],
@@ -507,6 +517,7 @@ const NLU = (() => {
   const UNIT_ALIASES = UNITS.flatMap(u => u[0]).sort((a, b) => b.length - a.length);
   const UNIT_RE = UNIT_ALIASES.map(esc).join('|');
   function convertUnits(s) {
+    s = wordsToNumbers(String(s || '').toLowerCase());
     const m = s.match(new RegExp(`(-?\\d+(?:\\.\\d+)?)\\s*(${UNIT_RE})\\s+(?:to|in|into)\\s+(${UNIT_RE})\\b`));
     if (!m) return null;
     const find = a => UNITS.find(u => u[0].includes(a));
@@ -568,6 +579,7 @@ const NLU = (() => {
     ['DARK_MODE', /\b(dark|light|night) (mode|theme)\b|\b(windows|system) (to )?(dark|light)\b/, .95, 'sys'],
     ['RADIO', /\b(bluetooth|wi-?fi|wireless)\b.*\b(on|off|enable|enabled|disable|disabled|status|state)\b|\b(turn|switch|enable|disable|toggle)( on| off)?( the| my)? (bluetooth|wi-?fi|wireless)\b|\bis (my |the )?(bluetooth|wi-?fi) (on|off|enabled)\b/, .95, 'sys'],
     ['POWER_PLAN', /\b(power (plan|mode|scheme|profile)|battery saver|power saver|saver mode|performance mode|high performance|balanced mode|battery optimi[sz]er)\b/, .95, 'sys'],
+    ['VOLUME_SET', s => /\b(volume|sound)\b/.test(s) && /\b(lower|less|decrease|reduce|down|higher|more|increase|raise|up)\b/.test(s) && /\d+(?:\.\d+)?\s*(?:percent(?:age)?(?: points?)?|points?|%)/.test(s), .97, 'sys'],
     ['VOLUME_SET', /\b(set|put|change|make|turn|increase|raise|boost|crank|pump|decrease|lower|reduce|bring)( the)? (volume|sound)( level)? (to|at|up ?to|down ?to)? ?\d{1,3}\b|\b(turn|crank|pump) it (up ?to|down ?to|to)? ?\d{1,3}\b|\bvolume (to|at) \d{1,3}\b|^volume \d{1,3}( ?%| percent)?$|\b(set|put|change|make|turn)( the)? (volume|sound) (to |at )?(max(?:imum)?|full|half|min(?:imum)?|zero)\b|\b(what'?s|what is|current) (the )?volume( level)?\b/, .96, 'sys'],
     ['REGENERATE', /^(?:please\s+)?(?:regenerate|redo)(?:\s+(?:that|it|the (?:answer|response|reply)|your (?:answer|response)))?$|^(?:give (?:me )?|try )?(?:a |an )?(?:different|another|new|better) (?:answer|response|reply)$|^(?:answer|say) (?:that|it) (?:again|differently)$|^try again$/i, .96, 'regenerate'],
     ['DELETE_LAST_MSG', /^(?:please\s+)?(?:delete|remove|undo|unsend|erase|take back|clear|cancel)\s+(?:my\s+|the\s+)?(?:last|previous|that|above)\s+(?:message|msg|question|chat message|text|prompt)\b|^unsend(?:\s+(?:that|it|my last message))?$/i, .97, 'deleteMessage'],
@@ -894,6 +906,10 @@ const NLU = (() => {
       return { intent: 'LOCK_JARVIS', confidence: .97, tool: 'lockJarvis', args: {}, text: 'lock jarvis' };
     let s = norm.text;
     ctx = ctx || {};
+    if (ctx.lastIntent === 'WEATHER' && /^(?:and )?(?:what about |how about )?(today|tomorrow|tonight)[?!.]*$/.test(s)) {
+      const day = s.match(/today|tomorrow|tonight/)[0];
+      return { intent: 'WEATHER', confidence: .94, tool: 'weather', args: ctx.lastWeatherCity ? { city: ctx.lastWeatherCity } : {}, text: 'weather ' + day };
+    }
     // Outbound calls are a consequential external action: only an explicit request to call the user's own phone
     // triggers this intent; "call mom" and ordinary discussion remain in their existing intents.
     if (/^(?:please )?(?:call|phone|ring) (?:me|my phone|my mobile|my cell)(?: now)?$/.test(s)) {
@@ -903,7 +919,7 @@ const NLU = (() => {
     // "don't lock the screen" / "never open chrome" / "no, don't set a timer" must NOT do the thing (and not the opposite either: this used to turn
     // "don't open chrome" into "close chrome"). Only an action verb right after the negation counts, so "don't forget to…", "never mind" and
     // "don't shut down" (cancel the shutdown) keep their own rules. "stop opening X" means the same; "stop the music" is still a command.
-    const NEG_VERB = 'open|launch|start|run|fire up|boot up|boot|pull up|bring up|load|close|quit|exit|kill|lock|mute|unmute|set|play|pause|take|delete|remove|turn|send|call|search|write|create|save|clear|change|increase|decrease|raise|lower|install|uninstall|download|upload|copy|move|rename|empty|format|wipe|reset|post|text|email|message|buy|order|book|pay|transfer|log out|sign out|switch|enable|disable|toggle';
+    const NEG_VERB = 'open|launch|start|run|fire up|boot up|boot|pull up|bring up|load|close|quit|exit|kill|lock|mute|unmute|set|play|pause|take|delete|remove|turn|send|call|search|write|create|save|clear|change|increase|decrease|raise|lower|install|uninstall|download|upload|copy|move|rename|empty|format|wipe|reset|post|text|email|message|buy|order|book|pay|transfer|log out|sign out|switch|enable|disable|toggle|click|fill|inspect';
     const negLead = "(?:(?:no|nope|hey|oh|wait|please|i)[ ,]+)*";
     const negMatch = s.match(new RegExp('^' + negLead + "(?:don['’]?t|do not|never)\\s+(?:please\\s+)?(?:(?:want to|wanna|need to|have to|like to)\\s+)?(" + NEG_VERB + ')\\b\\s*(.*)$', 'i'))
       || s.match(new RegExp('^' + negLead + '(?:stop|quit)\\s+(' + NEG_VERB.split('|').map(v => v.replace(/e$/, '') ).join('|') + ')ing\\b\\s*(.*)$', 'i'));
@@ -925,6 +941,17 @@ const NLU = (() => {
     if (new RegExp(`^(hi|hello|hey|yo|hii+|hola|namaste|sup|good (morning|afternoon|evening))( there)? ${esc(norm.wake || 'jarvis')}$`).test(rawGreet)) return { intent: 'GREETING', confidence: .97, tool: null, args: {}, text: rawGreet };
     const s = norm.text;
     ctx = ctx || {};
+    const loadedModels = /\b(?:running|loaded|in memory|in (?:v?ram)|active)\b/.test(s);
+    const localInventory = loadedModels || /\b(?:installed|downloaded|local(?:ly)?|i have|are there|(?:on|in) (?:my |this |the )?(?:laptop|pc|computer|machine))\b/.test(s);
+    const inventoryRequest = (/^(?:how many|list|show(?: me)?|count)\b/.test(s) ||
+      (localInventory && /^(?:which|what|tell me|check)\b/.test(s))) && /\bollama\b/.test(s) && /\bmodels?\b/.test(s) &&
+      !/\b(?:can|could|should|recommend|best|download|update|installing|support(?:s|ed)?|available online|exist)\b/.test(s);
+    const inventoryFollowup = ctx.lastIntent === 'OLLAMA_MODELS' &&
+      /^(?:(?:and )?(?:which|what|how many)(?: of)? (?:ones?|them|models) (?:are )?(?:currently )?(?:running|loaded|installed)|(?:and |what about )?(?:the )?(?:running|loaded|installed)(?: (?:models|ones))?)$/.test(s);
+    if (inventoryRequest || inventoryFollowup) {
+      const scope = loadedModels ? (/\binstalled\b/.test(s) ? 'both' : 'loaded') : 'installed';
+      return { intent: 'OLLAMA_MODELS', confidence: .99, tool: 'ollamaModels', args: { scope }, text: s };
+    }
     // Explicit commerce requests are routed to a live provider comparison, not a generic search page.
     const busRoute = s.match(/\bfrom\s+(.+?)\s+to\s+(.+?)(?:\s+(?:tomorrow|today|tonight|on\s+\d|next\s+week|this\s+week)\b|$)/i) || s.match(/^(?:find|compare|book|show me|get me)?\s*(?:the )?(?:cheapest )?(?:bus tickets? )?(.+?)\s+to\s+(.+?)(?:\s+(?:tomorrow|today|tonight|on\s+\d|next\s+week|this\s+week)\b|$)/i);
     const busAsk = /\b(bus|buses|bus ticket|bus tickets|bus fare|bus booking|coach)\b/i.test(s) && /\b(compare|cheapest|cheaper|price|fare|book|find|get|show|search|look for|options|ticket|tickets)\b/i.test(s);
@@ -999,6 +1026,10 @@ const NLU = (() => {
       return { intent: 'CONVERSATION', confidence: .5, tool: null, args: {}, text: s };
     // Just the verb ("open", "launch") names nothing to open — ask, instead of searching the web for the word "open".
     if (/^(?:open|launch|start|run|load|close|quit)(?: it up| up)?$/.test(s)) return { intent: 'ASK_WHAT', confidence: .95, tool: null, args: { verb: s.split(' ')[0] }, text: s };
+    // A document name may start with a command noun ("task-results.md", "weather.txt").
+    // Resolve explicit document reads before broader task-list or weather matches.
+    if (/^(?:read|show|display)(?: me)?(?: the| my)?\s+["']?[^"'\r\n]+\.(?:txt|md|pdf)["']?(?:\s+(?:file|note|document))?$/.test(s))
+      return { intent: 'READ_FILE', confidence: .96, tool: 'readFile', args: {}, text: s };
     for (const [intent, test, conf, tool] of R) {
       const ok = typeof test === 'function' ? test(s) : test.test(s);
       if (ok) {
@@ -1229,6 +1260,27 @@ const NLU = (() => {
     return distinct.slice(0, 3).map(n => n + e);
   }
 
+  function tryCalc(text) {
+    let e = text.toLowerCase()
+      .replace(/(\d+(?:\.\d+)?)\s*(?:%|percent) of\s*(\d+(?:\.\d+)?)/g, '($1/100*$2)')
+      .replace(/(?:square root of|sqrt)\s*\(?\s*(\d+(?:\.\d+)?)\s*\)?/g, (_, n) => String(Math.sqrt(+n)))
+      .replace(/(?:cube root of|cbrt)\s*\(?\s*(\d+(?:\.\d+)?)\s*\)?/g, (_, n) => String(Math.cbrt(+n)))
+      .replace(/(\d+(?:\.\d+)?)\s*squared/g, '($1**2)').replace(/(\d+(?:\.\d+)?)\s*cubed/g, '($1**3)')
+      .replace(/(\d+)\s*!/g, (_, n) => { let f = 1; for (let i = 2; i <= Math.min(+n, 170); i++) f *= i; return String(f); })
+      .replace(/what is|what's|calculate|compute|solve|evaluate|equals|equal to|\?|=/g, ' ')
+      .replace(/\bplus\b/g, '+').replace(/\bminus\b/g, '-').replace(/\b(times|multiplied by|into)\b/g, '*')
+      .replace(/\b(divided by|over|by)\b/g, '/').replace(/\b(mod|modulo)\b/g, '%').replace(/to the power of|\bpower\b/g, '**')
+      .replace(/(\d)\s*[x×]\s*(?=[\d(])/g, '$1*').replace(/÷/g, '/').replace(/\^/g, '**').replace(/(\d),(\d{3})/g, '$1$2');
+    e = e.replace(/[^0-9+\-*/().%\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!/\d/.test(e) || !/[+\-*/%]/.test(e.replace(/^-/, ''))) return null;
+    if (!/^[0-9+\-*/().%\s]+$/.test(e)) return null;
+    try {
+      const val = Function('"use strict";return (' + e + ')')();
+      if (typeof val !== 'number' || !isFinite(val)) return null;
+      return { expr: e, val: parseFloat(val.toPrecision(12)) };
+    } catch (err) { return null; }
+  }
+
   const TOOL_COUNT = new Set(R.map(r => r[3]).filter(Boolean)).size;
-  return { inferFileNames, APPS, SITES, TOOL_COUNT, normalize, classify, romanLang, fromRoman, findApp, findSite, bareSiteName, bestResult, editorFolder, setInstalledApps, appByKey, parseWhen, parseDate, parseTimeOfDay, parseRepeat, convertUnits, stripWhen, dayIndex, suggest, lev, DAYS, parseCodeAsk, resolveCodeTool, CODE_ASK_TOOLS };
+  return { tryCalc, inferFileNames, APPS, SITES, TOOL_COUNT, normalize, classify, romanLang, fromRoman, findApp, findSite, bareSiteName, bestResult, editorFolder, setInstalledApps, appByKey, parseWhen, parseDate, parseTimeOfDay, parseRepeat, convertUnits, stripWhen, dayIndex, suggest, lev, DAYS, parseCodeAsk, resolveCodeTool, CODE_ASK_TOOLS };
 })();

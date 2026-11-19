@@ -59,7 +59,7 @@ module.exports = function setupAppLock({ getConfig, saveConfig, getHello, PORT, 
     if (!active() || sessionOf(req)) return next();
     const p = norm(req.path), key = req.method.toUpperCase() + ' ' + p;
     // The app page itself → the standalone lock page.
-    if (/^(GET|HEAD)$/i.test(req.method) && (p === '/' || p === '/index.html'))
+    if (/^(GET|HEAD)$/i.test(req.method) && (p === '/' || p === '/index.html' || p === '/marks.html'))
       return res.set('Cache-Control', 'no-store').sendFile(path.join(rootDir, 'lock.html'));
     if (p !== '/api' && !p.startsWith('/api/')) return next();   // app code & images: not data
     if (OPEN.has(key)) return next();
@@ -116,7 +116,7 @@ module.exports = function setupAppLock({ getConfig, saveConfig, getHello, PORT, 
       res.json({ success: true, locked: active() });
     });
   }
-  return { gate, routes, active, norm };
+  return { gate, routes, active, norm, hasAccess: req => !active() || !!sessionOf(req) };
 };
 module.exports.norm = norm;
 module.exports.IDLE_CHOICES = IDLE_CHOICES;

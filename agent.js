@@ -24,8 +24,9 @@ const Agent = (() => {
   const QUESTION = /^(what|what's|whats|why|how|who|whom|whose|when|where|which|can|could|should|would|is|are|am|was|were|do|does|did|will|have|has|tell me (about|why|how|what|who)|explain|define|describe|compare)\b/;
   const THING = '(?:a |an |the |new |my )*(?:\\w+ )?(?:folder|directory|file|note|routine|timer|reminder|to-?do|task|deadline|class|snippet)';
   const ACTION = new RegExp('^(?:open|close|launch|quit|exit|start|stop|set|turn|switch|add|remind|play|pause|resume|mute|unmute|lock|search|google|run|save|copy|paste|block|maximi[sz]e|minimi[sz]e|snap|put|cancel|increase|decrease|raise|lower|dim|brighten|enable|disable|prepare|get (?:me )?ready|install|uninstall|download|format|send|email|delete|erase|wipe|change|update|upgrade|show desktop|take (?:a )?screenshot|read my screen|git (?:status|pull|commit)|(?:create|make|new) ' + THING + ')\\b');
-  const isAction = t => ACTION.test(t) && !/\?$/.test(t);
-  const isQuestion = t => (QUESTION.test(t) || /\?$/.test(t)) && !ACTION.test(t);
+  const DESKTOP_ACTION = /^(inspect|click|fill)\b/;
+  const isAction = t => (ACTION.test(t) || DESKTOP_ACTION.test(t)) && !/\?$/.test(t);
+  const isQuestion = t => (QUESTION.test(t) || /\?$/.test(t)) && !ACTION.test(t) && !DESKTOP_ACTION.test(t);
   // Wider than isAction, only for handing a phrase the rules didn't understand to the AI planner (which returns
   // "not an action" → normal chat when it isn't one): requests with no command verb that still name something
   // JARVIS controls ("volume a bit lower", "i want the brightness higher"), or a schedule ("pay fees every year in
@@ -91,6 +92,24 @@ const Agent = (() => {
   }
 
   /* ---------- run records ---------- */
+  const ANSWER_INTENTS = new Set([
+    'ACCOUNT_READ',
+    'DESKTOP_WINDOWS', 'DESKTOP_INSPECT',
+    'READ_FILE', 'LIST_FILES', 'COUNT_FOLDERS', 'LIST_TODOS', 'LIST_DEADLINES', 'NEXT_CLASS',
+    'WEATHER', 'SYS_BATTERY', 'SYS_ALL', 'SYS_PROCESSES', 'SYS_NETWORK', 'GIT_STATUS', 'OLLAMA_MODELS',
+    'RESEARCH', 'ASK_FILES', 'SUMMARISE_FILE', 'BRIEFING', 'PLAN_DAY', 'PRODUCTIVITY_REPORT',
+    'ATTENDANCE_REPORT', 'BUNK_CHECK', 'CGPA_REPORT', 'DISTANCE', 'DIRECTIONS', 'CONTESTS',
+  ]);
+  // Requested answers stay in the task reply. Checkpoints store status and arguments separately.
+  function keepAnswer(step, reply) {
+    if (!ANSWER_INTENTS.has(step.intent) || !reply || reply.error || reply.askLLM) return;
+    const card = Array.isArray(reply.card) ? reply.card
+      .filter(row => Array.isArray(row) && row.length >= 2)
+      .map(([label, value]) => String(label) + ' — ' + String(value)).join('\n') : '';
+    const answer = [reply.text, card].filter(value => typeof value === 'string' && value.trim()).join('\n\n');
+    if (!answer) return;
+    step.output = answer.length > 6000 ? answer.slice(0, 6000) + '\n\n_Result shortened for this task reply._' : answer;
+  }
   const RUNS_KEY = 'jarvis.agentRuns';
   function newId() {
     const d = new Date(), day = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
@@ -104,6 +123,7 @@ const Agent = (() => {
     const runs = store.get(RUNS_KEY, []);
     const checkpoint = {
       ...rec,
+      ...(typeof AgentContext !== 'undefined' ? { summary: AgentContext.compact(rec.steps) } : {}),
       checkpointVersion: 1,
       updated: Date.now(),
       steps: (Array.isArray(rec.steps) ? rec.steps : []).slice(0, 64).map((step, index) => ({
@@ -222,6 +242,9 @@ const Agent = (() => {
     const op = one && one.op;
     const nameOf = k => (NLU.appByKey(k) || { n: k }).n;
     try {
+      if (op?.kind === 'ollama_inventory') return { status: op.complete ? 'verified' : 'unverified',
+        note: op.complete ? 'Read the requested lists directly from Ollama.' : 'Ollama returned only part of the requested inventory.' };
+      if (op && op.kind === 'desktop') return {status:op.verified ? 'verified' : 'unverified',note:op.note || 'Inspect the application to check the result.'};
       if (op && op.kind === 'todo') return todos.some(t => t.id === op.id) ? { status: 'verified', note: 'to-do saved' } : { status: 'failed', note: 'the to-do is not in the list' };
       if (op && op.kind === 'timer') return timers.some(t => t.id === op.id) ? { status: 'verified', note: 'timer running' } : { status: 'failed', note: 'the timer is not running' };
       if (op && op.kind === 'reminder') return reminders.some(r => r.id === op.id) ? { status: 'verified', note: 'reminder saved' } : { status: 'failed', note: 'the reminder was not saved' };
@@ -288,7 +311,7 @@ const Agent = (() => {
   function fromTool(v) {
     const m = LLM_TOOLS[v.tool] ? LLM_TOOLS[v.tool](v.args) : {};
     return { id: v.id, tool: v.tool, intent: v.intent, args: Object.assign({}, m.args || {}, v.args), text: (m.text || v.tool.replace(/_/g, ' ') + ' ' + Object.values(v.args).join(' ')).toLowerCase(),
-      tier: v.tier, reason: v.reason, check: v.check, label: labelOf(v.tool, v.args) };
+      tier: v.tier, reason: v.reason, check: v.check, serverApproval: v.serverApproval === true, label: labelOf(v.tool, v.args) };
   }
   function fromRule(p, i) {
     const [tier, reason] = tierFor(p.intent, p.text);
@@ -382,7 +405,19 @@ const Agent = (() => {
   function render(run) {
     const head = (run.goal ? '**' + run.goal + '**' : '**Plan**') + ' · `' + run.id + '`';
     const rows = run.steps.map((s, i) => (i + 1) + '. ' + ICON[s.status || 'pending'] + ' ' + s.label + (s.note ? ' — ' + s.note : '') + (s.status === 'notrun' ? ' *(not run)*' : ''));
-    return head + '\n' + rows.join('\n') + (run.notes && run.notes.length ? '\n\n*Plan: ' + run.notes.join('; ') + '.*' : '');
+    let remaining = 18000;
+    const answers = [];
+    for (const [index, step] of run.steps.entries()) {
+      if (!step.output || !['verified', 'unverified'].includes(step.status)) continue;
+      if (step.output.length > remaining) {
+        answers.push('*Additional results exceed this reply’s display limit. Ask for that step on its own to see its answer.*');
+        break;
+      }
+      remaining -= step.output.length;
+      answers.push('### Step ' + (index + 1) + ' · ' + step.label + '\n\n' + step.output);
+    }
+    return head + '\n' + rows.join('\n') + (run.notes && run.notes.length ? '\n\n*Plan: ' + run.notes.join('; ') + '.*' : '') +
+      (answers.length ? '\n\n' + answers.join('\n\n') : '');
   }
   function logTree(run) {
     log('agent', run.id + ' · ' + run.source + (run.ms_plan ? ' · plan ' + (run.ms_plan / 1000).toFixed(1) + 's' : '') + ' · route ' + run.ms_route + 'ms');
@@ -407,10 +442,15 @@ const Agent = (() => {
     return run.steps.filter(s => s.status === 'failed' || (s.status === 'notrun' && !blocked.has(s.id)));
   }
   async function retryRun(run) {
-    const steps = retryableSteps(run);
+    const steps = freshRecoverySteps(retryableSteps(run));
     if (!steps.length) return { text: 'Nothing to retry.', intent: 'AGENT_RUN', noPersona: true };
-    steps.forEach(s => { s.status = undefined; s.note = ''; s.ms_execute = undefined; s.ms_verify = undefined; });
     return execute({ goal: run.goal, steps }, { source: run.source, stopOnFail: true });
+  }
+  function freshRecoverySteps(steps) {
+    return structuredClone(steps).map(step => {
+      for (const key of ['status', 'note', 'ms_execute', 'ms_verify', 'asked', 'undoable', 'state', 'output']) delete step[key];
+      return step;
+    });
   }
   // Steps a failure stopped that never needed the failed step, directly or through another stopped step — safe to
   // run on their own ("continue anyway"). The failed step itself is left as it is.
@@ -424,9 +464,8 @@ const Agent = (() => {
     return run.steps.filter(s => s.status === 'notrun' && !bad.has(s.id));
   }
   async function continueRun(run) {
-    const steps = continuableSteps(run);
+    const steps = freshRecoverySteps(continuableSteps(run));
     if (!steps.length) return { text: 'Nothing left to continue with.', intent: 'AGENT_RUN', noPersona: true };
-    steps.forEach(s => { s.status = undefined; s.note = ''; s.ms_execute = undefined; s.ms_verify = undefined; });
     return execute({ goal: run.goal, steps }, { source: run.source, stopOnFail: false });
   }
   function recOf(run, running) {
@@ -452,12 +491,31 @@ const Agent = (() => {
     const options = [retryable.length && 'retry what didn’t complete', continuable.length && 'continue with the ' + plural(continuable.length, 'step') + ' that don’t depend on it', reversible && 'roll back ' + (reversible === 1 ? 'the 1 reversible change' : 'the ' + reversible + ' reversible changes')].filter(Boolean);
     const tail = (run.cancelled ? '\n\n*Task cancelled.*' : summary) + (options.length > 1 ? '\n*You can ' + options.slice(0, -1).join(', ') + ' or ' + options[options.length - 1] + '.*' : '');
     const actions = [];
-    if (retryable.length) actions.push({ label: run.cancelled ? 'RESUME' : 'RETRY', fn: () => retryRun(run).then(res => deliver(res, { intent: 'AGENT_RUN', confidence: 1 })) });
-    if (continuable.length) actions.push({ label: 'CONTINUE', fn: () => continueRun(run).then(res => deliver(res, { intent: 'AGENT_RUN', confidence: 1 })) });
-    if (reversible && typeof runUndoTask === 'function') actions.push({ label: 'ROLLBACK (' + reversible + ')', fn: () => runUndoTask(run.id) });
+    let recovering = false, recovered = false, rolledBack = false;
+    const recoveryAction = (label, action, rollback = false) => ({
+      label,
+      fn: async () => {
+        if (recovering || rolledBack || (!rollback && recovered)) return;
+        recovering = true;
+        // Consume before awaiting so repeated clicks cannot replay side effects, even if a callback fails.
+        if (rollback) rolledBack = true;
+        else recovered = true;
+        try { return await action(); }
+        finally { recovering = false; }
+      },
+    });
+    if (retryable.length) actions.push(recoveryAction(run.cancelled ? 'RESUME' : 'RETRY',
+      () => retryRun(run).then(res => deliver(res, { intent: 'AGENT_RUN', confidence: 1 }))));
+    if (continuable.length) actions.push(recoveryAction('CONTINUE',
+      () => continueRun(run).then(res => deliver(res, { intent: 'AGENT_RUN', confidence: 1 }))));
+    if (reversible && typeof runUndoTask === 'function') actions.push(recoveryAction('ROLLBACK (' + reversible + ')', () => runUndoTask(run.id), true));
     if (run.steps.length > 1) actions.push({ label: 'INSPECT', fn: () => deliver(inspect(run.id), { intent: 'AGENT_INSPECT', confidence: 1 }) });
     const runStatus = run.cancelled ? 'cancelled' : failed ? (ok ? 'partial' : 'failed') : nSkip ? 'partial' : 'completed';
-    return { runStatus, text: render(run) + tail, speak: run.cancelled ? 'Task cancelled, ' + Persona.sir() + '.' : (failed ? 'Done, with ' + plural(failed, 'problem') + '. ' : 'All done, ' + Persona.sir() + '. ') + plural(ok, 'step') + ' completed.',
+    const spokenStatus = runStatus === 'cancelled' ? 'Task cancelled, ' + Persona.sir() + '.'
+      : failed ? 'The task has ' + plural(failed, 'problem') + '. ' + plural(ok, 'step') + ' completed.'
+      : runStatus === 'partial' ? 'The task is incomplete. ' + plural(nSkip, 'step') + ' did not run.'
+      : 'All done, ' + Persona.sir() + '. ' + plural(ok, 'step') + ' completed.';
+    return { runStatus, text: render(run) + tail, speak: spokenStatus,
       intent: 'AGENT_RUN', tool: 'agent', meta: 'AGENT · ' + run.id + ' · ' + (run.ms_plan ? 'plan ' + (run.ms_plan / 1000).toFixed(1) + 's · ' : '') + 'total ' + (run.total / 1000).toFixed(1) + 's', noPersona: true, actions: actions.length ? actions : undefined };
   }
   // A card asking to allow one step (confirm / explicit tier). Resolves true / false.
@@ -604,6 +662,18 @@ const Agent = (() => {
   }
   // Runs one step (after its permission gate). Nested handler confirmations count as approved, since the user just allowed it.
   async function runStep(run, s, approved) {
+    const previous = typeof AgentContext !== 'undefined' && AgentContext.priorFailure(s, store.get(RUNS_KEY, []));
+    if (previous) {
+      if (run.unattended) { s.status = 'blocked'; s.note = 'This exact step failed before; review it at the laptop before retrying.'; return; }
+      busy = false; idleState();
+      const retry = await new Promise(resolve => jarvisSay({
+        text: '**This step failed before:** ' + s.label + '\n\n' + previous.note + '\n\nRetry this step once? Its normal permissions still apply.',
+        intent: 'AGENT_FAILURE_REVIEW', noPersona: true,
+        confirm: { yes: 'RETRY ONCE', no: 'CANCEL', onConfirm: () => resolve(true), onCancel: () => resolve(false) }
+      }));
+      busy = true;
+      if (!retry) { s.status = 'declined'; s.note = 'Previous failure reviewed; retry cancelled.'; return; }
+    }
     // State first: closing an app that isn't running is already done — no permission prompt, no "failed".
     const pre = s.tier === 'nested' || s.tier === 'unknown' ? null : await before(s);
     if (s.intent === 'CLOSE_APPLICATION' && pre && pre.running === false) { s.status = 'verified'; s.note = (NLU.appByKey(pre.app) || { n: pre.app }).n + ' was already closed — nothing to do'; return; }
@@ -617,7 +687,7 @@ const Agent = (() => {
     }
     if (run.unattended && s.tier !== 'safe') { s.status = 'skipped'; s.note = s.tier === 'nested' ? 'routines can’t run inside a routine' : 'needs your permission — run it by itself'; return; }
     if (s.tier === 'nested' || s.tier === 'unknown') { s.status = 'blocked'; s.note = s.reason; return; }
-    if (s.tier === 'explicit' || (s.tier === 'confirm' && !run.previewAccepted)) {
+    if (!s.serverApproval && (s.tier === 'explicit' || (s.tier === 'confirm' && !run.previewAccepted))) {
       if (!approved) {
         busy = false; idleState();
         s.asked = true;
@@ -626,6 +696,11 @@ const Agent = (() => {
         busy = true;
         if (!ok) { s.status = 'declined'; s.note = 'you cancelled it'; return; }
       }
+    }
+    // A stop can happen while a confirmation card is awaiting input. Even if
+    // its old Allow button is clicked after resume, this run stays cancelled.
+    if (run.cancelled || store.get('jarvis.emergencyStopped', false)) {
+      s.status = 'notrun'; s.note = 'Cancelled before execution; the old approval cannot resume this step.'; return;
     }
     setState('EXECUTING', run.id + ' → ' + s.label);
     const t0 = performance.now();
@@ -682,12 +757,14 @@ const Agent = (() => {
     const t1 = performance.now();
     const v = await verify(s, res, pre);
     s.ms_verify = Math.round(performance.now() - t1);
+    if (v.status !== 'failed') keepAnswer(s, one);
     s.status = v.status; s.note = v.note || String((one && one.text) || '').split('\n')[0].replace(/\*\*|`/g, '').slice(0, 80);
     // Say so when the result couldn't be checked, instead of a plain ✓ that looks verified.
     if (v.status === 'unverified') s.note = (s.note ? s.note + ' · ' : '') + 'not checked';
   }
   // plan: { goal, steps:[step] } · opts: { source:'split'|'planner'|'chat'|'routine', unattended, stopOnFail, ms_route, ms_plan }
   async function execute(plan, opts) {
+    if (store.get('jarvis.emergencyStopped', false)) return { text: 'Emergency stop is active. Resume explicitly before starting a task.', runStatus: 'cancelled', intent: 'AGENT_RUN', noPersona: true };
     opts = opts || {};
     try { await registry(); } catch (error) {
       const why = String(error && error.message || error || 'unknown error').split('\n')[0].slice(0, 140);
@@ -696,6 +773,7 @@ const Agent = (() => {
     }
     const run = { id: newId(), goal: plan.goal || '', source: opts.source || 'split', steps: plan.steps, unattended: !!opts.unattended, t0: performance.now(),
       ms_route: Math.round(opts.ms_route || 0), ms_plan: Math.round(opts.ms_plan || 0), previewAccepted: false, cancelled: false, notes: opts.notes || [] };
+    active.add(run); // pending previews are cancellable too
     // Preview (dry run): any plan the model helped build with 2+ steps, or one that needs permission — so a
     // misunderstood step is visible before anything runs. Plain rule-engine splits of safe commands run straight away.
     const risky = run.steps.some(s => s.tier === 'confirm' || s.tier === 'explicit');
@@ -709,7 +787,7 @@ const Agent = (() => {
         intent: 'AGENT_PREVIEW', noPersona: true, confirm: { yes: 'EXECUTE', no: 'CANCEL', onConfirm: () => resolve(true), onCancel: () => resolve(false) } }));
       if (busy) await new Promise(r => { const t = setInterval(() => { if (!busy) { clearInterval(t); r(); } }, 50); });
       busy = true;
-      if (!go) { run.steps.forEach(s => { s.status = 'notrun'; }); finish(run); return { text: 'Cancelled — nothing was changed. (`' + run.id + '`)', intent: 'AGENT_RUN', noPersona: true }; }
+      if (!go || run.cancelled || store.get('jarvis.emergencyStopped', false)) { run.steps.forEach(s => { s.status = 'notrun'; }); finish(run); return { text: 'Cancelled — nothing was changed. (`' + run.id + '`)', intent: 'AGENT_RUN', noPersona: true }; }
       run.previewAccepted = true;
       // The preview itself was "is this what you meant?" — reuse its EXECUTE click as the teach-me confirmation.
       if (opts.learn) learnSave(opts.learn.text, { goal: run.goal, steps: run.steps });
@@ -724,7 +802,7 @@ const Agent = (() => {
     active.add(run); saveRun(recOf(run, true));
     run.beat = setInterval(() => saveRun(recOf(run, true)), 60e3);
     for (let i = 0; i < run.steps.length; i++) {
-      if (run.cancelled) { for (let j = i; j < run.steps.length; j++) run.steps[j].status = 'notrun'; break; }
+      if (run.cancelled || store.get('jarvis.emergencyStopped', false)) { run.cancelled = true; for (let j = i; j < run.steps.length; j++) run.steps[j].status = 'notrun'; break; }
       const s = run.steps[i];
       const unmet = (s.needs || []).map(id => run.steps.find(x => x.id === id)).filter(d => d && ['failed', 'declined', 'blocked', 'notrun'].includes(d.status));
       if (unmet.length) { s.status = 'notrun'; s.note = 'skipped — step ' + (run.steps.indexOf(unmet[0]) + 1) + ' (' + unmet[0].label + ') didn’t complete'; continue; }
@@ -741,7 +819,7 @@ const Agent = (() => {
       }
       saveRun(recOf(run, true));
       if (!run.unattended && run.steps.length > 1) setState('EXECUTING', run.id + ' · ' + (i + 1) + '/' + run.steps.length);
-      if (s.status === 'declined' || (s.status === 'failed' && opts.stopOnFail)) {
+      if (s.status === 'declined' || (['failed', 'blocked'].includes(s.status) && opts.stopOnFail)) {
         for (let j = i + 1; j < run.steps.length; j++) run.steps[j].status = 'notrun';
         break;
       }
@@ -1140,7 +1218,9 @@ const Agent = (() => {
   async function plan(text, tRoute) {
     setState('PROCESSING', 'Planning…');
     const t0 = performance.now();
-    const j = await callTool('/agent/plan', { text, model: llm.model || undefined, context: typeof focusSummary === 'function' ? focusSummary() : '' });
+    const j = await callTool('/agent/plan', { text, model: llm.model || undefined, context: typeof focusSummary === 'function' ? focusSummary() : '',
+      failures: typeof AgentContext !== 'undefined' ? AgentContext.failureAdvice(store.get(RUNS_KEY, [])) : '',
+      taskMemory: store.get(RUNS_KEY, []).slice(-2).map(r => r.summary || '').filter(Boolean).join('\n').slice(0, 2400) });
     const ms = performance.now() - t0;
     if (j.empty) return null;                                // the planner says it isn't an action → normal chat path
     if (!j.ok) {
@@ -1194,7 +1274,8 @@ const Agent = (() => {
     if (!p || !p.intent || /^(CONVERSATION|CANCELLED|CONFIRM|UNKNOWN|SYSTEM|AGENT_RUN)$/.test(p.intent)) return null;
     const s = { intent: p.intent, args: p.args || {}, text: p.text || p.original || '' };
     const one = Array.isArray(result) ? result[0] : result;
-    const id = typeof ActionReceipts !== 'undefined' ? ActionReceipts.begin(s.text, s.intent, one && one.text) : null;
+    const id = typeof ActionReceipts !== 'undefined' ? ActionReceipts.begin(s.text, s.intent, one && one.text,
+      { repeatable: s.intent !== 'OLLAMA_MODELS' }) : null;
     const undoCountAfter = typeof Undo !== 'undefined' ? Undo.size() : 0;
     const undoLabelAtStart = typeof Undo !== 'undefined' ? Undo.peek() : '';
     if (one && id) one.receiptId = id;
@@ -1202,7 +1283,7 @@ const Agent = (() => {
     const undoable = !irreversible && Number.isFinite(undoCountBefore) && undoCountAfter > undoCountBefore && !!undoLabelAtStart;
     (async () => {
       let v;
-      if (one && (one.error || /^(?:I couldn’t|I could not|I can't|Failed to|Error:)/i.test(String(one.text || '')))) v = { status: 'failed', note: String(one.error || one.text).slice(0, 220) };
+      if (one && (one.error || (one.op?.kind !== 'ollama_inventory' && /^(?:I couldn’t|I could not|I can't|Failed to|Error:)/i.test(String(one.text || ''))))) v = { status: 'failed', note: String(one.error || one.text).slice(0, 220) };
       else {
         const pre = prePromise ? await prePromise : null;
         v = await verify(s, one, pre);
@@ -1212,7 +1293,7 @@ const Agent = (() => {
       v.undoLabel = undoable ? undoLabelAtStart : '';
       if (id && typeof ActionReceipts !== 'undefined') ActionReceipts.update(id, v);
       log(v.status === 'failed' ? 'warn' : 'agent', 'receipt: ' + (v.note || v.status));
-      if (v.status === 'failed') jarvisSay({ text: '⚠ I tried to ' + s.text + ', but the check failed: ' + v.note + '.', intent: 'AGENT_CHECK', noPersona: true, noTTS: true });
+      if (v.status === 'failed' && s.intent !== 'OLLAMA_MODELS') jarvisSay({ text: '⚠ I tried to ' + s.text + ', but the check failed: ' + v.note + '.', intent: 'AGENT_CHECK', noPersona: true, noTTS: true });
     })();
     return id;
   }

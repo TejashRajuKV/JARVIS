@@ -79,6 +79,9 @@ const safePath = n => (/\.\./.test(n) || /^[a-z]:/i.test(n) || /^[\\/]/.test(n) 
 const T = require(path.join(root, 'agent-tools.js'))({ APPS, safePath, OLLAMA: '', DEFAULT_MODEL: '' });
 const step = (tool, args) => T.validateStep({ tool, args }, 0);
 const SAFETY = [
+  ['desktop actions keep server-owned, exact-target approval', step('desktop_fill',{control:'Message',value:'Meet at 5 PM.'}),
+    x=>x.ok&&x.step.tier==='confirm'&&x.step.serverApproval===true&&x.step.args.value==='Meet at 5 PM.'],
+  ['desktop actions reject text beyond their schema',step('desktop_fill',{control:'Message',value:'x'.repeat(2001)}),x=>!x.ok],
   // [description, result, expectation]
   ['safe tool runs', step('set_volume', { level: 40 }), r => r.ok && r.step.tier === 'safe'],
   ['safe tool with app alias', step('open_app', { app: 'VS Code' }), r => r.ok && r.step.args.app === 'vscode'],
@@ -332,9 +335,13 @@ for (const t of ['create a project', 'create a new folder called notes', 'what i
     if (retryAction) {
       let delivered = null;
       global.deliver = r => { delivered = r; };
+      const snapshot = JSON.stringify(steps);
+      await Promise.all([retryAction.fn(), retryAction.fn()]);
       await retryAction.fn();
       SAFETY.push(['RETRY only re-runs the failed step, not the one that already succeeded', { stepCount: (delivered.text.match(/^\d+\./gm) || []).length }, x => x.stepCount === 1]);
       SAFETY.push(['RETRY succeeding reports the step as done', delivered, r => /✓ Run x\.py/.test(r.text)]);
+      SAFETY.push(['repeated and concurrent recovery clicks execute the failed step once', { calls: runFileCalls }, x => x.calls === 2]);
+      SAFETY.push(['retry retains the original step results for execution history', { before: snapshot, after: JSON.stringify(steps) }, x => x.before === x.after]);
       global.deliver = () => {};
     }
   }
@@ -392,6 +399,11 @@ for (const t of ['create a project', 'create a new folder called notes', 'what i
     global.executeTool = async () => ({ op: { kind: 'todo', id: 'x' } });
     const okRes = await Agent.execute({ goal: 'routine ok', steps: mk(1) }, { source: 'routine', unattended: true });
     SAFETY.push(['a run where every step worked reports runStatus "completed"', { st: okRes.runStatus }, x => x.st === 'completed']);
+    const blocked = await Agent.execute({ goal: 'unknown fixture step', steps: [
+      { id:'blocked', intent:'UNSUPPORTED_FIXTURE', tier:'unknown', label:'Unsupported step', reason:'No registered tool', args:{} },
+    ] }, { unattended:true, source:'routine' });
+    SAFETY.push(['an incomplete task is announced as incomplete in its spoken reply',
+      blocked, x => x.runStatus === 'partial' && /incomplete/.test(x.speak) && !/all done/i.test(x.speak)]);
   }
   // A run left "running" by a page that closed or restarted: after 3 minutes without a heartbeat it is marked interrupted.
   {

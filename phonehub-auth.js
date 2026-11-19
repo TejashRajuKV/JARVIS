@@ -9,7 +9,7 @@ const path = require('node:path');
 
 const DEFAULT_CAPABILITIES = Object.freeze([
   'status', 'notifications', 'voice', 'sms.read', 'sms.send', 'contacts.read',
-  'calls', 'photos.read', 'clipboard.read', 'app.launch'
+  'calls', 'photos.read', 'clipboard.read', 'app.launch', 'marks.read'
 ]);
 const PAIRING_CAPABILITIES = Object.freeze(['status', 'notifications']);
 const DEFAULT_PAIRING_TTL_MS = 5 * 60 * 1000;

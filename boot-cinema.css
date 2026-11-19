@@ -34,7 +34,7 @@
   content: "";
   position: absolute;
   inset: -20px -40px;
-  background: radial-gradient(closest-side, rgba(2,7,12,0.92) 60%, rgba(2,7,12,0) 100%);
+  background: radial-gradient(closest-side, var(--jarvis-paper) 60%, transparent 100%);
   z-index: -1;
   border-radius: 24px;
   pointer-events: none;

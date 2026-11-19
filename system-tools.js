@@ -5,7 +5,6 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 
 module.exports = function setupSystemTools(app, { IS_WIN, APPS }) {
@@ -86,11 +85,8 @@ $small.Save($env:JARVIS_IMG_OUT, [System.Drawing.Imaging.ImageFormat]::Jpeg); $s
 
   // Screenshots for the vision model stay in memory only, under a single-use token that expires in 2 minutes;
   // /api/chat attaches the image itself, so it never passes through the browser or the JSON body limit.
-  const visionCache = new Map();
-  app.locals.takeVisionImage = token => {
-    const v = visionCache.get(token); visionCache.delete(token);
-    return v && v.expires > Date.now() ? v.b64 : null;
-  };
+  const visionCache = require('./transient-images').createCache();
+  app.locals.takeVisionImage = token => visionCache.take(token);
 
   /* ---------- folder picker (JARVIS Code "＋") ---------- */
   // The Windows "Select Folder" dialog (the Explorer-style one), shown over the window in front (your browser).
@@ -165,13 +161,17 @@ elseif ($p) { [Console]::Out.WriteLine((@{ path = $p } | ConvertTo-Json -Compres
     } finally { picking = false; }
   });
 
-  app.post('/api/sys/screenRead', winOnly, async (req, res) => {
-    const source = ['screen', 'window', 'clipboard'].includes(req.body.source) ? req.body.source : 'window';
-    const delay = source === 'clipboard' ? 0 : Math.max(0, Math.min(10, parseInt(req.body.delay) || 0));
-    const stem = path.join(os.tmpdir(), `jarvis_ocr_${process.pid}_${Date.now()}`);
-    const png = stem + '.png', jpg = req.body.vision ? stem + '.jpg' : '';
-    if (delay) await new Promise(r => setTimeout(r, delay * 1000));
+  async function readScreen(body, signal) {
+    const source = ['screen', 'window', 'clipboard'].includes(body.source) ? body.source : 'window';
+    const delay = source === 'clipboard' ? 0 : Math.max(0, Math.min(10, parseInt(body.delay) || 0));
+    const stem = path.join(os.tmpdir(), `jarvis_ocr_${require('node:crypto').randomUUID()}`);
+    const png = stem + '.png', jpg = body.vision ? stem + '.jpg' : '';
+    if (delay) await require('node:timers/promises').setTimeout(delay * 1000, undefined, { signal });
+    signal?.throwIfAborted();
     const t0 = Date.now();
+    const accessible = await require('./screen-perception').readAccessible({ source, vision: body.visualOnly === true });
+    signal?.throwIfAborted();
+    if (accessible) return { status: 200, body: { ...accessible, ms: Date.now() - t0 } };
     const r = await ps(OCR, { JARVIS_OCR_PNG: png, JARVIS_OCR_SRC: source }, 30000);
     let imageToken;
     if (jpg && !r.error) {
@@ -181,15 +181,24 @@ elseif ($p) { [Console]::Out.WriteLine((@{ path = $p } | ConvertTo-Json -Compres
         const file = !shrunk.error && fs.existsSync(jpg) ? jpg : (fs.statSync(png).size < 6e6 ? png : null);
         if (!file) throw new Error('capture too large');
         const b64 = fs.readFileSync(file).toString('base64');
-        for (const [k, v] of visionCache) if (v.expires <= Date.now()) visionCache.delete(k);
-        imageToken = crypto.randomBytes(16).toString('hex');
-        visionCache.set(imageToken, { b64, expires: Date.now() + 120000 });
+        imageToken = visionCache.put(b64);
       } catch {}
     }
     fs.unlink(png, () => {}); if (jpg) fs.unlink(jpg, () => {}); // the capture never stays on disk
-    if (r.error === 'noimage') return res.status(404).json({ error: 'There is no image on the clipboard — snip one with Win+Shift+S first' });
-    if (r.error) return res.status(500).json({ error: 'Screen reading failed: ' + r.error });
-    res.json({ success: true, source, text: String(r.text || '').slice(0, 20000), lines: r.lines, title: String(r.title || '').slice(0, 300), width: r.width, height: r.height, ms: Date.now() - t0, imageToken });
+    signal?.throwIfAborted();
+    if (r.error === 'noimage') return { status: 404, body: { error: 'There is no image on the clipboard — snip one with Win+Shift+S first' } };
+    if (r.error) return { status: 500, body: { error: 'Screen reading failed: ' + r.error } };
+    return { status: 200, body: { success: true, source, method: 'ocr', text: String(r.text || '').slice(0, 20000), lines: r.lines, title: String(r.title || '').slice(0, 300), width: r.width, height: r.height, ms: Date.now() - t0, imageToken } };
+  }
+  app.locals.readMarksScreen = async signal => {
+    if (!IS_WIN || process.env.JARVIS_TEST) throw new Error('Windows screen reading is unavailable in this session.');
+    const result = await readScreen({ source: 'screen', delay: 2 }, signal);
+    if (result.body.error) throw new Error(result.body.error);
+    return result.body;
+  };
+  app.post('/api/sys/screenRead', winOnly, async (req, res) => {
+    const result = await readScreen(req.body || {});
+    res.status(result.status).json(result.body);
   });
 
   /* ---------- browser tab switch (for "analyse my second tab") ---------- */

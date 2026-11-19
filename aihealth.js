@@ -83,7 +83,8 @@ function verdicts(summary, ctx = {}) {
         const share = m.size ? Math.round(100 * (m.sizeVram || 0) / m.size) : 0;
         add(share >= 95 ? 'ok' : 'warn', m.name + ' is loaded (' + gb(m.size) + ', ' + share + '% on the GPU).', share >= 95 ? undefined : 'Part of it runs on the CPU, so replies are slower. Close other GPU programs or use a smaller model.');
       }
-      if (!(o.loaded || []).length) add('info', 'No model is loaded in memory right now, so the next reply will be slow while it loads.');
+      if (o.loadedKnown === false) add('info', 'Ollama did not return its loaded-model list.');
+      else if (!(o.loaded || []).length) add('info', 'No model is loaded in memory right now, so the next reply will be slow while it loads.');
     }
   }
   for (const m of summary.models) {
@@ -139,13 +140,20 @@ function formatReport(r) {
 
 /* ---------- live probes (fetch / statfs injectable for tests) ---------- */
 async function probeOllama(base, f = fetch) {
-  const get = async p => { const r = await f(base + p, { signal: AbortSignal.timeout(2500) }); return r.json(); };
-  try {
-    const tags = await get('/api/tags');
-    let loaded = [];
-    try { loaded = ((await get('/api/ps')).models || []).map(m => ({ name: m.name, size: m.size || 0, sizeVram: m.size_vram || 0 })); } catch {}
-    return { reachable: true, models: (tags.models || []).map(m => m.name), loaded };
-  } catch { return { reachable: false, models: [], loaded: [] }; }
+  const get = async p => {
+    const r = await f(base.replace(/\/+$/, '') + p, { signal: AbortSignal.timeout(2500) });
+    if (r.ok === false) throw new Error('Ollama responded with an error.');
+    const data = await r.json();
+    if (!Array.isArray(data?.models) || data.models.some(m => typeof (m?.name || m?.model) !== 'string' || !(m.name || m.model).trim())) {
+      throw new Error('Ollama returned an invalid model list.');
+    }
+    return data.models;
+  };
+  const [tags, ps] = await Promise.allSettled([get('/api/tags'), get('/api/ps')]);
+  const installedKnown = tags.status === 'fulfilled', loadedKnown = ps.status === 'fulfilled';
+  return { reachable: installedKnown, installedKnown, loadedKnown,
+    models: installedKnown ? [...new Set(tags.value.map(m => m.name || m.model))] : [],
+    loaded: loadedKnown ? [...new Map(ps.value.map(m => [m.name || m.model, { name: m.name || m.model, size: m.size || 0, sizeVram: m.size_vram || 0 }])).values()] : [] };
 }
 const withTimeout = (p, ms) => { let t; return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(new Error('timeout')), ms); })]).finally(() => clearTimeout(t)); };
 async function diskInfo(paths, statfs = fs.promises.statfs) {

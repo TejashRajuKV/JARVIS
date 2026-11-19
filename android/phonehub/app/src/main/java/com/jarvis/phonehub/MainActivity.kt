@@ -42,6 +42,9 @@ class MainActivity : ComponentActivity() {
     private var status by mutableStateOf("Not connected")
     private var statusJson by mutableStateOf("")
     private var notificationText by mutableStateOf("No notifications loaded")
+    private var marksTasks by mutableStateOf<List<JSONObject>>(emptyList())
+    private var marksReportText by mutableStateOf("")
+    private var marksAvailable by mutableStateOf(false)
     private var busy by mutableStateOf(false)
     private var callMessage by mutableStateOf("JARVIS is calling to remind you to check in.")
     private var voiceReply by mutableStateOf("")
@@ -96,6 +99,17 @@ class MainActivity : ComponentActivity() {
                                 Text(notificationText)
                             }
                         }
+                        if (marksAvailable) {
+                            Button(onClick = { refreshMarks() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Marks tasks") }
+                        }
+                        for (task in marksTasks) {
+                            val id = task.optString("id")
+                            Text(task.optString("status") + " · " + id.take(8))
+                            if (task.optBoolean("shared")) {
+                                Button(onClick = { readMarksReport(id) }, enabled = !busy) { Text("View shared report") }
+                            }
+                        }
+                        if (marksReportText.isNotBlank()) Card(modifier = Modifier.fillMaxWidth()) { Text(marksReportText, modifier = Modifier.padding(14.dp)) }
                         Spacer(Modifier.height(12.dp))
                         Text("Security: HTTPS only. Install/trust your laptop gateway certificate on Android if it is issued by your own local CA. The app does not disable TLS certificate validation.")
                     }
@@ -230,7 +244,27 @@ class MainActivity : ComponentActivity() {
             status = "Phone token removed from this device. Revoke the paired device on the laptop too if needed."
             statusJson = ""
             notificationText = "No notifications loaded"
+            marksTasks = emptyList()
+            marksReportText = ""
+            marksAvailable = false
         }
+    }
+
+    private fun refreshMarks() = runWithToken { client, token ->
+        setUi { marksTasks = emptyList(); marksReportText = "" }
+        val data = client.marks(token)
+        val rows = data.optJSONArray("tasks") ?: JSONArray()
+        val items = (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
+        setUi {
+            marksTasks = items
+            status = if (data.optBoolean("available")) "Marks task status loaded." else "Marks is unavailable on the laptop."
+        }
+    }
+
+    private fun readMarksReport(id: String) = runWithToken { client, token ->
+        setUi { marksReportText = "" }
+        val report = client.marksReport(token, id)
+        setUi { marksReportText = report.optString("title") + "\n\n" + report.optString("report") }
     }
 
     private fun refreshStatus() = runWithToken { client, token ->
@@ -238,6 +272,11 @@ class MainActivity : ComponentActivity() {
         setUi {
             status = if (response.optBoolean("ok")) "Connected to JARVIS" else "Gateway did not confirm connection"
             statusJson = response.optJSONObject("data")?.toString(2) ?: response.toString(2)
+            marksAvailable = response.optJSONObject("data")?.optBoolean("marksAvailable") == true
+            if (!marksAvailable) {
+                marksTasks = emptyList()
+                marksReportText = ""
+            }
         }
     }
 

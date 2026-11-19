@@ -26,7 +26,7 @@
   border: 1px solid var(--line);
   border-radius: 20px;
   padding: 5px 12px 5px 10px;
-  background: rgba(9, 26, 40, 0.55);
+  background: var(--jarvis-surface);
   transition: color 0.2s, border-color 0.2s, background 0.2s;
   display: inline-flex;
   align-items: center;
@@ -62,7 +62,7 @@ body.hud-on #hudHudToggle::before {
   min-width: 200px;
   max-width: 280px;
   padding: 12px 14px 14px;
-  background: linear-gradient(180deg, rgba(6, 18, 30, 0.78), rgba(2, 8, 14, 0.85));
+  background: color-mix(in srgb, var(--jarvis-surface) 94%, transparent);
   border: 1px solid var(--line-hi);
   border-radius: 10px;
   box-shadow:
@@ -218,7 +218,7 @@ body.hud-on .hud-panel { opacity: 1; transform: none; }
 .hud-chip:hover {
   background: rgba(var(--rgb), 0.18);
   border-color: var(--cyan);
-  color: #fff;
+  color: var(--ink);
   box-shadow: 0 0 12px rgba(var(--rgb), 0.4);
 }
 
@@ -262,7 +262,7 @@ body:not(.hud-on) .hud-reticle { display: none; }
   font-size: 10px;
   letter-spacing: 0.2em;
   color: var(--faint);
-  background: rgba(6, 18, 30, 0.7);
+  background: var(--jarvis-lilac);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 4px 12px;
