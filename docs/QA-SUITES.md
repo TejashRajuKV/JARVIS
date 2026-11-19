@@ -1,5 +1,16 @@
 # Test suite evidence
 
+This table is the historical QA audit snapshot. The later 115-capability implementation
+is tracked separately in [IMPLEMENTATION-PROGRESS.md](IMPLEMENTATION-PROGRESS.md);
+current suite and route inventories are in the README. Historical assertion totals
+below must not be read as results for the current working tree.
+
+The 2026-11-19 capability work adds account/vault, managed-browser, understanding,
+Office/content/media, reviewed-execution, job-budget and exact-owner-approval
+checks. The live full-run result belongs in IMPLEMENTATION-PROGRESS.md. Per user
+instruction, concurrent development continues, so these runs verify a changing
+working tree rather than a frozen clean checkout.
+
 Normal and strict baseline runs used Node 24 and strict unhandled rejection handling. The after column uses final strict npm test where complete and the successful strict npm run test:report otherwise. Individual skipped assertions are listed separately.
 
 | Suite | Baseline | Baseline strict | After | Actual final output |

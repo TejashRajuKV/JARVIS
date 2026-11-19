@@ -1,5 +1,10 @@
 # Registered API routes
 
+This is the historical audit inventory. The latest isolated snapshot has 350 API routes,
+including background jobs, MCP and emergency controls. `tests/api.test.js` discovers
+mounted routes at runtime and fails on undocumented coverage gaps; the table below
+is preserved as historical evidence rather than a current route inventory.
+
 Observed on the isolated app via its mounted Express stack. Static files and the separate Phone Hub HTTPS gateway are not in this inventory. A call may exercise validation or refusal. Rows marked Fixture success also have a positive-path check in tests/positive-routes.test.js.
 
 | Method and path | Baseline | Final API gate |

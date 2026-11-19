@@ -55,3 +55,7 @@ Each experiment used a temporary source copy. The original passed, one code chan
 The manual items from Round 1 still apply, including microphone and wake word, Windows Hello and ACLs, physical laptop controls, Android and Tailscale, live Twilio and ntfy, real Home Assistant and calendars, model behavior and checkout prices. Certificate wiring was tested with a fake OpenSSL process. The GitHub Actions workflow has local test evidence only. [Manual verification checklist](QA-AUDIT.md#manual-verification-checklist)
 
 `npm audit` reported two high-severity dependency findings involving the installed `body-parser` and `systeminformation` versions. Dependency upgrades were outside Round 2. No product decision was needed for the commerce contract or the read-only Home Assistant status probe.
+
+Later capability work on 2026-11-19 updated the affected dependency lock entries
+and added compatible `uuid`/`image-size` overrides. The subsequent full `npm audit`
+reported zero vulnerabilities. This does not change the historical Round 2 result.

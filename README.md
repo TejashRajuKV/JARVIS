@@ -2,9 +2,9 @@
 
 # J.A.R.V.I.S. — your own AI assistant, on your laptop
 
-**Talk or type. JARVIS opens your apps, plans your study, reads your notes and PDFs, fixes your code and automates your day — running on your own computer, privately, for free.**
+**Talk or type. JARVIS opens your apps, plans your study, reads your notes and PDFs, fixes your code and automates your day — with a local server, local AI options and optional online services.**
 
-Voice & chat · English / తెలుగు / ಕನ್ನಡ · Local AI (Ollama) or your own API key · Windows
+Voice & chat · English / తెలుగు / ಕನ್ನಡ + limited Hindi/Hinglish commands · Local AI (Ollama) or your own API key · Windows
 
 </div>
 
@@ -29,6 +29,8 @@ Voice & chat · English / తెలుగు / ಕನ್ನಡ · Local AI (Olla
 15. [Known limitations](#15-known-limitations)
 16. [License](#16-license)
 
+Recent additions — [current availability](#implemented-features-and-current-availability) · [immersive mode](#immersive-mode) · [notes and captures](#notes-and-capture-inbox) · [workspace checkpoints](#workspace-checkpoints) · [media and podcasts](#media-player) · [reviewed workflows](#reviewed-workflow-additions) · [account setup](#google-and-microsoft-account-setup) · [Marks preview](#marks-specialist-workspaces-developer-preview) · [background tasks, emergency stop and MCP](#background-tasks-and-mcp).
+
 ---
 
 ## 1. What is JARVIS?
@@ -36,12 +38,12 @@ Voice & chat · English / తెలుగు / ಕನ್ನಡ · Local AI (Olla
 JARVIS is a **voice and text AI assistant that runs on your own Windows laptop**, inspired by Tony Stark's J.A.R.V.I.S. It is a small Node.js server plus a web page you open in Chrome or Edge.
 
 - A **fast rule engine** understands clear commands instantly ("open chrome", "set a timer for 10 minutes") — no AI needed, works offline.
-- Anything casual, misspelled or open-ended goes to an **AI brain**: a free local model through **[Ollama](https://ollama.com)** (nothing leaves your laptop), or a cloud model with **your own API key** (OpenAI, Claude, Gemini, Groq, …).
+- Anything casual, misspelled or open-ended goes to an **AI brain**: a local model through **[Ollama](https://ollama.com)**, or a cloud model with **your own API key** (OpenAI, Claude, Gemini, Groq, …). Local inference keeps that model request on your machine; enabled web, voice and connected services have separate network behavior.
 - It can **act on your computer**: open any installed app, control volume/brightness/Wi-Fi/windows, read your screen, open and read files anywhere on the laptop (it asks before changing anything outside ~/jarvis), run code, start your dev servers, and hand tasks to coding AIs like Copilot or Claude Code.
 - It **understands what you mean**, not just exact commands: misheard speech is repaired ("front and" → frontend), "there" / "that folder" / "open it" / "the second one" refer to what you just saw, and a name you half-remember gets **"Did you mean…?"** with the closest real folders.
 - **JARVIS Code** — its own coding chat: describe an app, pick a folder, and JARVIS's AI **writes the files itself** (no copy-pasting).
 - It is built for **students and developers**: study planner, flashcards, viva practice, DSA coach, answers from your own notes and PDFs, and a one-click "explain & fix" for crashing programs.
-- **Safety first:** a server-side permission list decides what's allowed (never the AI), risky actions ask first, the most dangerous ones can require **Windows Hello**, and **"undo"** reverses almost everything.
+- **Reviewed actions:** a server-side permission list decides what's allowed, risky actions ask first, and selected actions can additionally require **Windows Hello**. Undo covers supported recorded changes; it cannot reverse every OS or provider action.
 
 👉 **The complete list of what JARVIS can do** is in [Highlights](#what-jarvis-can-do--the-full-list); **how it works inside** (and how to debug it) is in [How it works](#11-how-it-works-architecture).
 
@@ -54,8 +56,15 @@ There is also a **cinematic landing page** that introduces JARVIS: open `http://
 | | |
 |---|---|
 | 🎙 **Voice & chat** | Hold the mic or say the wake word. English, Telugu, Kannada — even typed in English letters ("volume penchu"). Natural neural voices. Two personalities: **JARVIS** and **FRIDAY**. |
-| 🧠 **Context & control** | A rolling summary carries the conversation forward — "what were we talking about?" picks the thread back up. JARVIS remembers the folder/file it just showed, so **"create a folder there"**, **"open it"**, **"open the second one"** just work. **"Did you mean…?"** for half-remembered names. **Ctrl+K** or **/** puts every command and skill one keystroke away. Say **"panic"** to pause all automation, **"resume"** to continue. |
+| 🧠 **Context & control** | A rolling summary carries the conversation forward — "what were we talking about?" picks the thread back up. JARVIS remembers the folder/file it just showed, so **"create a folder there"**, **"open it"**, **"open the second one"** just work. **"Did you mean…?"** for half-remembered names. **Ctrl+K** or **/** puts every command and skill one keystroke away. Say **"panic"** to pause all automation, **"resume"** to permit new work. |
 | 💻 **Controls your laptop** | Opens **any Start-menu app**, volume, brightness, dark mode, Bluetooth/Wi-Fi, power plans, window layouts, screenshots, clipboard tools, screen reading & vision. |
+| ◉ **Immersive mode** | Select **Hide controls** for the reactor and conversation. Ask for a calendar, task, note, workspace, app-control or media panel. One panel opens on demand, and the compact player stays available. |
+| 🗂 **Capture and resume** | A searchable inbox combines voice notes and Quick Capture. Review entries before creating tasks or reminders. Named workspace checkpoints save your current task, files, links and next step. |
+| 🎵 **Music, FM and podcasts** | Queue local audio, tune official city-specific FM streams, subscribe to podcast RSS feeds and resume episodes. Study sessions can play locally generated rain or white noise. |
+| 🪟 **App and website actions** | Inspect a Windows application or browser window, then review a click or field fill against its named accessible controls. Each action requires one-time approval for its exact target and text. |
+| 🧾 **Documents, data and media** | Create editable DOCX/PPTX/XLSX files, calculate grouped spreadsheet summaries and charts, extract quoted document facts, and resize/crop local images. Optional FFmpeg audio extraction can feed local Whisper. |
+| 🔗 **Read-only accounts** | Opt-in Google/Microsoft mail, calendar and file reads with PKCE sign-in, Windows-user encrypted tokens and approval for each request. No email sending or provider writes. |
+| 🦾 **Marks preview** | A separate workspace with 23 specialist profiles for desktop actions, read-and-draft jobs, batch files, reusable text tools, memory and watches. Developer preview only; hidden and disabled in a normal launch. |
 | 📚 **Study** | Tasks, deadlines, timetable, reminders, focus sessions, **multi-day study planner**, progress dashboard, flashcards with spaced repetition, **viva practice** by voice, contests and web research. **Attendance with a 75% bunk-o-meter** (asks “did you attend?” after each class), marks → SGPA/CGPA, **assignments from a photo**, a study plan fitted to your timetable, an end-sem marks calculator, **lecture mode** with optional **offline Whisper** transcription. |
 | 🧰 **Everyday life** | Expenses with a chart, habit streaks, quick-capture inbox, **keep JARVIS running** after a crash, a plain **backup to another drive**, **screenshot search** by the text inside them, **WhatsApp drafts, movie/bus ticket hand-offs and shopping searches**, and developer helpers (git summary, standup, commit message, “why did my build fail”). |
 | 📄 **Your files & notes** | Drop in PDFs, notes, **.docx / .pptx / .xlsx** and ask questions — **hybrid keyword + semantic search**, answers with **page numbers**. Summaries and flashcards from any file. |
@@ -63,16 +72,40 @@ There is also a **cinematic landing page** that introduces JARVIS: open `http://
 | 🛠 **Coding** | Write → save → run code, **EXPLAIN & FIX** crashes in one click, **DSA coach** (hints before solutions), **website generator**, "open VS Code in *folder* and tell Copilot to…", and **dev environments that recover from failures** (missing dependencies → install → restart → verify). |
 | ⚡ **Automation** | Multi-step commands, **routines**, **triggers** ("when I plug in my charger…"), a **global hotkey** for any selected text, reminders that fire even with the tab closed. |
 | 📱 **Phone & calling** | Pair the Android companion through the separate HTTPS Phone Hub gateway. View device pairing and permissions at `/phonehub.html`; receive reminder/deadline notifications, use the Android speech → JARVIS reply → speech flow, and explicitly request a real outbound phone announcement call. The gateway is off by default and exposes only allowlisted routes. Remote Phone Hub access can use an explicitly configured Tailscale interface; see [Phone Hub setup](docs/PHONE-HUB.md) and [Calling setup](docs/CALLING.md). Android background notifications currently use WorkManager polling; physical-device end-to-end testing is still required. |
-| 🔐 **Safe & private** | Local-only server, permission tiers, Windows Hello approvals, **undo**, encrypted backups, keys that never leave the laptop. |
+| 🔐 **Permissions & privacy** | Loopback server, exact action approvals, optional Windows Hello, supported undo and encrypted backup exports. DPAPI credential storage is opt-in for existing model keys; cloud requests authenticate to their selected providers. |
 
+
+### Implemented features and current availability
+
+This README describes the repository and the existing app at **http://localhost:3002**.
+Implemented features can still need opt-in settings, installed software or account
+setup. The following read-only status snapshot was checked on **2026-11-19**;
+it is not a permanent statement about your settings.
+
+| Feature | Observed on this running copy | Where to use or enable it |
+|---|---|---|
+| Main JARVIS | Online on port 3002 | Dashboard and desktop JARVIS shortcut |
+| Standard desktop inspection/click/fill | Windows adapter supported; individual apps must expose controls | **Apps**; review each action |
+| Extended native actions | Supported, disabled | **Apps → Enable selection, toggles, scrolling and expansion** |
+| Isolated browser | Supported, disabled, no session running | **Apps → Background tasks and MCP tools → Isolated browser controls** |
+| Reviewed Node/Python scripts | Disabled | **Apps → Background tasks and MCP tools → Documents, data, images and reviewed code → Reviewed standalone code** |
+| Google/Microsoft accounts | Neither configured nor connected | Account panel in **Apps**; see setup below |
+| Encrypted credential vault | Windows DPAPI supported; migration not yet performed | Account panel → reviewed credential migration |
+| Local media workflows | Image processing available; Whisper installed; FFmpeg unavailable | Install/configure optional dependencies before audio extraction |
+| Emergency stop | Ready; global shortcut disabled | **Apps → Background tasks and MCP tools** |
+| Marks | Disabled, no profiles exposed in the normal UI | Explicit developer-preview configuration; see Marks below |
+
+Installed software and status checks do not prove microphone quality, real account
+access, physical hotkeys or every application workflow. The [capability report](docs/IMPLEMENTATION-PROGRESS.md)
+records implementation gaps and live verification requirements.
 
 ### What JARVIS can do — the full list
 
-Everything below works today. The phrases are examples you can type or say; the details, options and edge cases are in [Features](#7-features), and how each part works inside is in [How it works](#11-how-it-works-architecture).
+The capabilities below are implemented in this repository. Availability depends on your operating system, connected services, installed models and application support. The phrases are examples you can type or say; the details and setup are in [Features](#7-features), and the implementation is described in [How it works](#11-how-it-works-architecture).
 
 **🗣 Talk to it**
 - **Type or speak.** Hold the mic or `Space`, or say the wake word ("Jarvis") hands-free — even while you're in another tab or app. Replies are shown, streamed and spoken (browser voices or neural voices).
-- **Three languages.** English, Telugu and Kannada — in their own script or typed in English letters ("volume penchu", "timer pettu"). Replies come back in your language.
+- **Languages.** English, Telugu and Kannada, including existing Romanized command handling. Limited Hindi/Hinglish command mappings also recognize phrases such as `Chrome kholo`, `वॉल्यूम ३० करो` and `5 minute ka timer lagao`; this is narrower than full Hindi conversation or microphone support.
 - **Two personalities.** JARVIS (calm, dry British wit) and FRIDAY (brisk, warm). It calls you sir / ma'am / boss / your name. Greetings answer in kind — "good evening" gets an evening reply, plain "hi" follows the clock — and, if you switch it on, it can greet you by name when the camera sees you ([Looks, camera & extras](#looks-camera--extras-optional)).
 - **It copes with messy input.** Typos ("opn crome"), filler ("umm can you please… for me"), number words ("brightness to fifty"), mixed languages, and **misheard speech** ("front and" → frontend; "ugly loop folder" → your `AGRILOOP` folder; "b drive" → D drive).
 - **It asks instead of guessing.** A half-heard command gets **"Did you mean…?"**; a half-remembered folder name gets the closest real folders to choose from.
@@ -120,25 +153,25 @@ Everything below works today. The phrases are examples you can type or say; the 
 - **Git & tooling:** status, log, diff, commit message, clone; check a compiler or VS Code extension is installed; "I want to learn Python" creates and runs a real Hello-World.
 
 **⚡ Automate**
-- **Multi-step commands:** "open VS Code, create a folder DSA and start a 25 minute focus" — previewed, validated by the server, executed with **RETRY / CONTINUE / ROLLBACK**, each step verified for real, and inspectable afterwards.
+- **Multi-step commands:** "open VS Code, create a folder DSA and start a 25 minute focus" — previewed, validated by the server and inspectable afterwards, with **RETRY / CONTINUE / ROLLBACK** where supported. Steps distinguish verified results from accepted-but-unverified actions.
 - **Routines:** built-in (study mode, morning, bedtime, leaving), your own, and scheduled ("run my morning routine every day at 7am").
 - **Routine builder** — Tasks tab → ROUTINES → **＋ NEW ROUTINE** (or **EDIT** on any routine): a name, one step per line the way you would say it, and an optional schedule (“every day at 9am”). As you type, each step shows what JARVIS will do with it (✓ open application, ✓ focus start…) and a step it does not know by itself is marked **?** before you save. SAVE makes or changes the routine and its schedule with one “undo”; a name that is already taken or a schedule it cannot read is refused with the reason.
 - **Triggers:** "when I plug in my charger, start study mode", "when the battery drops below 20%…".
 - **Global hotkey:** select text in any app → explain / summarise / rewrite / translate / fix code.
 - **Smart alerts & panic mode:** low battery, high RAM, deadlines; say "panic" to pause all automation, "resume" to continue.
-- **Undo:** "undo" reverses almost anything (last 40 actions within 30 minutes), including a whole multi-step plan.
+- **Undo:** "undo" reverses supported recorded changes (last 40 actions within 30 minutes), including reversible steps from a multi-step plan. Sent notifications, app launches and arbitrary code side effects are not universally reversible.
 
 **📱 Phone**
 - Reminders and alerts on your phone (**ntfy**), and phone commands that unlock with a 6-digit **authenticator code**; the full page over **Tailscale**.
 
 **🔐 Safe, private, yours**
-- A **server-side permission list** (never the AI) decides what runs; risky things ask first; the most dangerous can require **Windows Hello**; Windows, Program Files and AppData are never touched.
+- A **server-side permission list** decides which registered tools run; risky actions ask first and selected actions can require **Windows Hello**. File tools refuse protected system-directory paths. This does not turn separately approved native scripts into an OS sandbox.
 - **App lock:** switch on *Lock JARVIS* and it opens only after **Windows Hello** (fingerprint, face or your Windows Hello PIN); it re-locks when idle, on "lock jarvis", and at every restart.
-- Runs on `127.0.0.1` only. With a local model and English replies nothing leaves the laptop. Web tools and cloud models are opt-in. **Online translation and the neural voices are ON by default but only used for Telugu / Kannada replies and for FRIDAY** — they send the reply text (not your questions) to Google / Microsoft; switch them off in Settings and JARVIS uses the local model and your browser's voices instead.
+- The main listener uses `127.0.0.1:3002`. Local model inference does not itself send the prompt to a cloud model. Browser speech recognition, online translation, neural voices, research, media and connected services have separate network behavior. Translation/neural-voice defaults are enabled; review the language and voice settings for offline use. Optional Phone Hub/Tailscale access is configured separately.
 - Encrypted backups, daily snapshots, a restorable trash, and one shared copy of your data in `~/jarvis`.
 
 **🚫 What JARVIS will not do** (on purpose)
-- Install, update or uninstall software (it explains the steps instead) · download files on its own · run shell commands · send emails or messages for you · change passwords, accounts, firewall, registry or environment settings · delete "everything" in one go · change anything outside `~/jarvis` without your ALLOW · touch Windows / Program Files / AppData · claim it did something it didn't.
+- Open-ended system software installation/removal, arbitrary shell commands and provider email sending are not general assistant tools. Built-in setup/model downloads, approved project dependency recovery, web/media retrieval and reviewed standalone Node/Python scripts have their own explicit paths. File tools enforce protected-directory and approved-folder checks; native scripts run with your Windows user's access. Destructive actions still require their applicable review, and JARVIS should report unverified outcomes honestly.
 
 ---
 
@@ -153,7 +186,21 @@ Everything below works today. The phrases are examples you can type or say; the 
 
 Optional extras: **Python / Node / gcc & g++** (to run your code), **VS Code** and other editors or coding agents, **Windows Terminal**, the **ntfy** and **Google Authenticator** phone apps, **Tailscale** (full JARVIS page on your phone), **Windows Hello** (fingerprint/face/PIN approvals).
 
-A laptop GPU helps the local model (e.g. an RTX 3050 6 GB runs `qwen3.5:4b` comfortably; bigger local models get slow — use a cloud key for those).
+A compatible GPU can help local inference. Speed and memory use depend on the
+model, quantization, context and hardware; the default model name is not a
+performance guarantee. **Check my AI** reports installed versus loaded models and
+available runtime information.
+
+| Feature | Additional setup |
+|---|---|
+| Local voice-note or lecture transcription | Run `install-whisper.ps1` or configure `JARVIS_WHISPER_DIR`. |
+| Scanned PDF search | Windows PDF rendering and OCR; select and index the PDF in Notes. |
+| App and website controls | An accessible Windows application or browser window and approval for each action. |
+| Podcast feeds and regional headlines | Internet access and **Online tools** enabled. |
+| Live FM | Internet access and a supported broadcaster stream or official player. |
+| Calendar availability | Local timetable data, with an optional public HTTPS iCalendar feed. |
+| Home Assistant | Reachable server URL and a long-lived token configured under Connected Services. |
+| Phone Hub and calling | The separate gateway/provider configuration in the linked setup guides. |
 
 ---
 
@@ -192,7 +239,7 @@ npm start
 
 Then open **http://localhost:3002**. If JARVIS is already running, `npm start` just tells you where. The test harness chooses its own isolated ports and profiles.
 
-> Open JARVIS through `http://localhost:PORT` — **not** by double-clicking `index.html`. The server only accepts requests from its own page.
+> Open JARVIS at `http://localhost:3002/` through its launcher or browser. The page needs the local server for commands and saved state.
 >
 > Running `npm start` in a terminal keeps the server tied to that window; close it and JARVIS stops. The desktop icon instead runs it in the background — that's what "Stop JARVIS" is for.
 
@@ -202,23 +249,50 @@ Then open **http://localhost:3002**. If JARVIS is already running, `npm start` j
 ollama pull qwen3.5:4b
 ```
 
-Any Ollama chat model works — pick it in **Settings → Model**. The first reply after starting is slow (~1 minute) while Ollama loads the model; JARVIS warms it up in the background. `qwen3.5:4b` also understands images, which powers screen vision.
+Select an installed Ollama chat model in **Settings → Model**. The first reply can
+take longer while the model loads; JARVIS attempts background warm-up. Screen
+vision additionally requires an image-capable model/provider. A model appearing
+in the installed list does not mean it is currently loaded or ready for every tool.
 
 | Environment variable | Purpose | Default |
 |---|---|---|
 | `OLLAMA_URL` | Base URL for the Ollama server | `http://127.0.0.1:11434` |
 | `JARVIS_MODEL` | Default model ID | `qwen3.5:4b` |
 | `JARVIS_WHISPER_DIR` | Directory containing the offline Whisper executable and model | Searches `.whisper` next to JARVIS and in `~/jarvis` |
+| `JARVIS_FFMPEG_PATH` | Existing FFmpeg executable for extracting WAV audio from local media | `ffmpeg` on PATH; extraction unavailable if missing |
 | `NTFY_URL` | Base URL for the ntfy publish and subscription endpoints | `https://ntfy.sh` |
 | `NTFY_TOKEN` | Bearer token for an ntfy server that requires authentication | Unset |
+| `JARVIS_CALLING_ENABLED` | Enables the configured outbound announcement provider | Unset, calling disabled |
+| `JARVIS_CALL_ON_REMINDERS` | Allows reminder/deadline calls after calling is configured | Unset, reminder calls disabled |
+| `JARVIS_CALL_QUIET_HOURS` | Local-time quiet interval for reminder calls | `22:00-07:00` |
+| `JARVIS_PHONEHUB_HOST` | Explicit private-interface address for the optional HTTPS Phone Hub gateway | Unset, gateway disabled |
+| `JARVIS_MARKS` | Specialist workspace release mode | Unset, disabled; `preview` explicitly enables developer preview; `enabled` requires every profile to be verified |
+| `JARVIS_MARKS_OLLAMA_URL` | Loopback Ollama endpoint for Marks local-only profiles | Falls back to `OLLAMA_URL`; use a numeric loopback address |
+| `JARVIS_MARKS_LOCAL_MODEL` | Installed Ollama model for Marks local chat | Falls back to `JARVIS_MODEL` |
+| `JARVIS_MARKS_PORTABLE_MODEL` | Installed local model of at most 2 GiB for Mark 5 | Unset; configure before using that model path |
+| `JARVIS_MARKS_GOOGLE_CLIENT_ID`, `JARVIS_MARKS_GOOGLE_CLIENT_SECRET` | Google OAuth app credentials for the separate Marks preview connection | Unset; no account connected |
+| `JARVIS_MARKS_MICROSOFT_CLIENT_ID`, `JARVIS_MARKS_MICROSOFT_CLIENT_SECRET` | Microsoft app ID and secret, if the app registration requires one, for Marks preview | Unset; no account connected |
+| `JARVIS_REQUIRE_ALL` | Test-runner switch: `1` makes skipped suites fail | Unset; use for strict local verification, not as an app feature |
+
+Set environment variables before starting the server. When JARVIS is already running, use **Stop JARVIS** and start it again to load new values. Calling credentials, destination numbers, gateway certificates and additional Phone Hub settings are described in the linked setup guides. [Calling setup](docs/CALLING.md), [Phone Hub setup](docs/PHONE-HUB.md)
+
+These are process environment variables; JARVIS does not automatically load a
+project `.env` file. For example, in PowerShell, set `$env:JARVIS_FFMPEG_PATH` to
+your executable's full path before launching. Keep the main app on port **3002**.
+Use the official stop/start launchers after server or environment changes; do not
+start a second development copy on another port or kill Node processes by name.
 
 ### Useful addresses
 
 | Address | What |
 |---|---|
-| `http://localhost:PORT/` | The JARVIS app |
-| `http://localhost:PORT/welcome` | The cinematic landing page |
-| `http://localhost:PORT/?skipboot` | The app without the boot animation |
+| `http://localhost:3002/` | The JARVIS app |
+| `http://localhost:3002/welcome` | The landing page |
+| `http://localhost:3002/?skipboot` | The app without the boot animation |
+| `http://localhost:3002/phonehub.html` | Phone Hub pairing, device grants and gateway status |
+| `http://localhost:3002/calling.html` | Configured outbound announcement calls |
+| `http://localhost:3002/marks.html` | Specialist workspace, available only when Marks is explicitly enabled |
+| `http://localhost:3002/marks-oauth.html` | Marks-only OAuth return page; not the main account panel's callback |
 
 ---
 
@@ -236,6 +310,28 @@ On first run, JARVIS shows a **guided setup** (re-open it any time: **Settings �
 
 ## 6. Using JARVIS — the interface
 
+| View | What you can do |
+|---|---|
+| **Today** | Review your agenda, attendance, focus time, calendar, local FM, Home Assistant and system status. |
+| **Chat** | Type or speak commands, read answers, and review action previews and approvals. |
+| **Tasks** | Manage tasks, reminders, deadlines, timetable and routines. |
+| **Memory** | Review remembered facts and notes. |
+| **Notes** | Search voice notes and captures, review task/reminder conversions, and index a scanned PDF. |
+| **Workspaces** | Save project locations, notes, links, current tasks and handoff checkpoints. |
+| **Apps** | Native app controls; background queue, budgets, emergency stop and MCP; Office/media workflows; isolated browser; reviewed scripts; Google/Microsoft connections and credential migration. |
+| **Media** | Queue local audio, subscribe to podcasts, resume episodes, and open provider links. |
+| **JARVIS Code** | Use the separate Build, Plan and Ask coding conversation. |
+| **Images** | Browse saved screenshots and captures. |
+| **History** | Review attempted actions, their verification status, and available recovery actions. |
+
+### Immersive mode
+
+Select **Hide controls** in the header to use the reactor, live transcript and conversation with a bottom composer. The compact audio player stays available while something is loaded. **Show controls** returns to the dashboard.
+
+Say “Show my calendar,” “Show my tasks,” “Show my notes,” “Show my workspaces,” or “Show my media.” A requested view opens in one side panel. A new request replaces the previous panel. “Show app controls” opens the Apps view. On narrow screens the panel sits above the player and composer and scrolls independently.
+
+Use the panel’s **Close** button, say “Close panel,” or press **Esc** to dismiss it and return keyboard focus to the composer. With a panel closed, **Esc** retains its usual stop-speaking/generation behavior. Action previews and approvals remain accessible in the conversation. The layout honors the browser’s reduced-motion preference.
+
 ### Today, images and command history
 
 The right panel opens on **TODAY**, which summarizes open tasks, deadlines due today, upcoming reminders/classes, focus time, attendance and laptop status. Use **BRIEF ME** to hear a short summary, including today’s connected calendar events and weather when Online tools are enabled. For an automatic spoken briefing, open **Settings → Connected Services**, enable **Morning daily briefing**, and choose a time. It is off by default, runs once per day while JARVIS is open, and requires speech output to be enabled. It does not replay a missed briefing if JARVIS starts more than ten minutes after the selected time.
@@ -244,13 +340,109 @@ The right panel opens on **TODAY**, which summarizes open tasks, deadlines due t
 
 Action receipts distinguish **verified**, **failed** and **not checked**. Some effects have no reliable observer, so a successful response alone is not shown as proof. Receipts are shared through JARVIS's local state across its tabs and capped at 120 entries.
 
+### City-aware FM radio
+
+Open **Today → FM Radio**. The list follows the **Home City** in Settings until you choose a different default radio city. The starter catalogue covers Bengaluru, Chennai, Delhi, Hyderabad, Vijayawada, and Visakhapatnam. A frequency is resolved against the selected city. The catalogue and favourites are available offline.
+
+**Play here** uses the compact player for supported official streams. **Open player** opens the broadcaster’s player, which is also available when an in-app stream cannot be played. Listening requires internet access, and stream availability and codec support depend on the station and browser. [Official Akashvani player](https://akashvani.gov.in/radio/live.php)
+
+- “Show FM stations in Hyderabad” switches the list for the current session.
+- “Set my radio city to Hyderabad” saves the radio city independently of your Home City.
+- “Play 101.9” resolves that frequency in the current radio city.
+- “Save this station” saves the last station opened from JARVIS. “Play local radio” prefers a favourite in the current city.
+
+| City | Catalogue stations and local frequencies |
+|---|---|
+| Bengaluru | FM Rainbow Kannada — 101.3 FM |
+| Chennai | FM Rainbow — 101.4 FM, FM Gold — 100.1 FM |
+| Delhi | FM Rainbow — 102.6 FM, FM Gold — 100.1 FM |
+| Hyderabad | FM Rainbow — 101.9 FM, Vividh Bharati Telugu — 102.8 FM |
+| Vijayawada | FM Rainbow — 102.2 FM, Vividh Bharati Telugu — 101.3 FM |
+| Visakhapatnam | FM Rainbow — 102.0 FM |
+
 ### Safer routines
 
 The routine editor previews how each step parses and explains that unattended test runs execute only steps allowed by JARVIS's safety rules. Test runs can perform real actions, so review the preview and confirm before running. Scheduled/automatic routines can be paused or resumed from the Tasks panel; manual runs remain available.
 
+### Notes and capture inbox
+
+**Notes** combines notes saved with “remember that…” or “save a voice note…” and dated Quick Capture entries saved with “jot down…”. Entries show their source and time. Search by words or filter by date. “Show what I captured today” and “Show what I captured yesterday” open the corresponding view and a numbered preview.
+
+Dictate a draft in Notes and review it before saving. **Use local Whisper** records and transcribes through the existing offline Whisper installation. Install it with `install-whisper.ps1` or select a custom installation through `JARVIS_WHISPER_DIR`.
+
+Use **Create task** or select a future time and **Review reminder** on an entry. JARVIS shows the proposed task or reminder in chat for confirmation. After opening the inbox, you can also say “Make a task from the first one” or “Remind me about the second one tomorrow.” Numbered references use the recent inbox view and expire after five minutes. Repeating the same conversion reuses the existing task or matching reminder.
+
+### Workspace checkpoints
+
+Open **Workspaces** and save a name with at least one project folder, note file or HTTP(S) link. Enter full local paths and one note or link per line. A workspace can hold eight configured note files and eight links.
+
+“Resume my DBMS workspace” reopens the saved project in VS Code, the note files in their usual viewers, and the links in the browser. The reply reports any items that could not open. VS Code must be installed for the project-editor step.
+
+While using the workspace, save a checkpoint with its **Current task** and **Next step** fields, or say “Jarvis, pause DBMS here. Next, test the joins.” To include both by voice, say “Pause DBMS here. Current task: Review queries. Next, test the joins.”
+
+The checkpoint includes the workspace’s saved locations and successfully opened notes and links used through JARVIS during that workspace session. Resuming reads back the task and handoff. Tracking follows JARVIS actions within the resumed workspace session.
+
+### Quiet hours and missed alerts
+
+In **Settings → Connected Services**, enable **Daily quiet hours** and choose a start and end time. The interval can span midnight. During a focus session, “Keep it quiet until my break” holds routine laptop alerts until the focus period ends. Cancelling that session clears its temporary quiet interval.
+
+Held alerts are collected in a local recap. Say “What did I miss?” to review it; JARVIS also offers a recap when quiet time ends. The recap can retain up to 100 alerts and shows the latest ten in its reply.
+
+Timers and critical battery warnings pass through. **Let deadline warnings through quiet hours** controls deadline exceptions. Phone notifications retain their existing settings. Reminder calls use the separate `JARVIS_CALL_QUIET_HOURS` configuration.
+
+### Correct a pending voice action
+
+A spoken file-open request has a short preview before execution. Say “Open my OS notes,” then “Wait, I meant DBMS” during the three-second preview. You can also correct the target of a pending approval. JARVIS reads back the corrected request and asks again for any required permission.
+
+“Cancel,” “Never mind,” or **Esc** cancels a pending voice-open preview. Corrections apply while a request is waiting. After an action has run, use a new command or an available undo action.
+
+### Find a free study slot
+
+Ask “Where can I fit 45 minutes of DBMS before Friday?” JARVIS combines the local timetable with the connected read-only calendar, checks matching upcoming deadlines, and suggests up to three blocks within your study hours.
+
+Set **Study hours start/end** in **Settings → Connected Services**; the defaults are 08:00–22:00. Searches accept durations of 5–360 minutes and look ahead up to 14 days. A class without a duration occupies one hour. A day-only cutoff such as “before Friday” ends at the start of that day.
+
+Calendar availability accounts for recurring events, recurrence exceptions and all-day events. Unsupported time-zone definitions or unavailable calendar data produce an incomplete-coverage notice. Suggested slots should be read with that notice and the timetable assumptions in mind.
+
+### Regional headlines and focus audio
+
+Enable **Regional headlines in briefings** under **Settings → Connected Services**, enable **Online tools**, and set a supported Home City. You can also ask “Brief me on Bengaluru in Kannada.” The starter feeds cover Bengaluru in Kannada and Chennai, Delhi, and Hyderabad in English. Headlines carry a publisher link and publication time in IST. Feed availability and freshness depend on the publisher.
+
+Say “Start a 45-minute study session with rain sounds” or request white noise. Both sounds are generated locally. Audio stops at the break or when the session is cancelled. **Play focus audio** starts it again after a reload or when the browser requires a click. Starting other audio pauses the focus sound, and assistant speech/listening reduces playback volume.
+
+### Search scanned PDFs
+
+In **Notes**, enter the PDF’s name or full path, choose **Index with local OCR**, and wait for the progress indicator. Search the indexed PDF there, or say “Find the deadlock diagram in this scanned PDF.”
+
+JARVIS reuses an existing text layer and renders pages with little text through Windows PDF rendering and local OCR. Matches include the original filename, page number and an excerpt. Search uses the recognized words, so recognition quality affects diagram labels, handwriting and small text.
+
+Indexing supports one job at a time, with cancellation, up to 400 pages and the existing 40 MB PDF limit. Unreadable pages are counted. The index is held in server memory; a changed file or server restart requires indexing again. Password-protected PDFs require an accessible, unlocked copy.
+
+### Media player
+
+Open **Media** to select local audio files or add a public HTTPS podcast RSS feed. The compact player supports Play/Pause, Previous/Next, seeking for finite tracks, and volume. It remains available in immersive mode and reduces volume while JARVIS speaks or listens.
+
+Local audio uses the browser’s file selection and playback support. Reselect local files after a page reload. **Open a local video** creates a link that plays the chosen file in a browser tab.
+
+For podcasts, enable **Online tools**, paste the feed URL, and choose an episode. Subscriptions and episode positions are saved locally. Playback supports 1×, 1.25×, 1.5× and 2× speeds. Use **Resume podcast**, say “Resume my podcast,” or say “Continue yesterday’s episode from where I stopped.” Resuming requires the saved episode to remain available in its feed.
+
+Choose a sleep timer in Media or say “Stop my audio in 30 minutes.” Voice timers accept up to 180 minutes. Live radio uses the same compact player, with station selection under **Today → FM Radio**.
+
+The provider form accepts a title or a supported link. “Play lo-fi study music on Spotify” and “Play Believer on YouTube” open the provider’s official search page. Supported Spotify and YouTube links open their official players. Provider login, playback rights and availability are handled by those services.
+
+### Windows app and website controls
+
+Open **Apps**, refresh the window list, and inspect an application or browser window. JARVIS shows the accessible controls and offers **Review click** and **Review fill** where the application supports those actions. Each click or fill requires one-time approval for the selected window, control, and text. Inspect again after an action to check what changed and choose the next control. Fields are checked by reading back their value.
+
+Say “Inspect Notepad,” “Fill field Message with Meet at 5 PM,” or “Click control 7.” Use a control’s exact displayed name or its number. Duplicate names prompt you to use the number. Controls depend on the application’s Windows accessibility support. Password fields are omitted. Inspections expire after two minutes and actions use the control’s current identity.
+
+JARVIS binds approval to the inspection, control, action and exact field text. An inspection is consumed after one action, including a failed or timed-out action. Refresh and inspect again to continue. A changed or closed window, missing control or expired inspection produces an error.
+
+A successful fill is verified by reading back the field’s value. A click is reported as accepted by the application; inspect the resulting view to verify its effect. Apps and websites expose different accessibility patterns, so the available controls can differ from their visual appearance.
+
 ### Optional calendar and Home Assistant
 
-In **Settings → Connected Services**, you can connect a read-only HTTPS iCalendar feed and/or a Home Assistant server. Calendar events appear on Today for the next 14 days; basic ICS events are supported, but recurring-event expansion is not. The calendar feed URL and Home Assistant access token are kept in `~/jarvis/.config.json` and are never returned to the page after saving. Home Assistant exposes supported lights, switches, scenes, fans and covers on Today; each control asks before sending a change and checks the reported state afterward where possible. Natural commands such as “turn on desk lamp” are also supported when the device name matches uniquely. Sensors are shown as read-only. Disconnect either service from Settings to remove its saved credentials. These integrations remain unavailable until you connect and configure them.
+In **Settings → Connected Services**, you can connect a read-only HTTPS iCalendar feed and/or a Home Assistant server. Calendar events appear on Today for the next 14 days. Free-slot searches also take recurring and all-day events into account and flag incomplete calendar coverage. The calendar feed URL and Home Assistant access token are kept in `~/jarvis/.config.json` and are never returned to the page after saving. Home Assistant exposes supported lights, switches, scenes, fans and covers on Today; each control asks before sending a change and checks the reported state afterward where possible. Natural commands such as “turn on desk lamp” are also supported when the device name matches uniquely. Sensors are shown as read-only. Disconnect either service from Settings to remove its saved credentials. These integrations remain unavailable until you connect and configure them.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -308,6 +500,7 @@ In **Settings → Connected Services**, you can connect a read-only HTTPS iCalen
 - **JARVIS lets you finish.** It keeps listening through pauses mid-sentence and answers once you've been quiet for a moment — "Jarvis, open VS Code … and start a focus session" runs both. Say just "Jarvis" and it waits for your command (and says "Yes, sir?" if you pause). Tap the mic again to send straight away. **Settings → Pause before I answer**: Short (1 s), Normal (1.6 s) or Long (2.5 s — handy if you think mid-sentence). Works the same in Telugu and Kannada, including the recogniser's different spellings of "జార్విస్ / ಜಾರ್ವಿಸ್".
 - **One breath, like "Hey Siri".** Say the wake word and the command together — "Hey Jarvis, open Chrome", even while you're in another app — and JARVIS takes the command straight away: no "Yes, Sir?", no repeating yourself, and the answer comes after a short pause (~0.9 s) rather than your full pause setting (which still applies when you say just the wake word and then think). The command travels with the wake event from the Windows listener; if it only catches the wake phrase, JARVIS asks as before.
 - **Telugu & Kannada:** speak or type in తెలుగు / ಕನ್ನಡ, or say "switch to Telugu". Typing in English letters works too — "volume penchu", "5 nimishalu timer pettu", "timer cancel maadu", "recursion ante enti". Replies come back in your language.
+- **Limited Hindi/Hinglish commands:** `Chrome kholo`, `वॉल्यूम ३० करो`, `5 minute ka timer lagao`, `music chalao` and supported schedule phrases have local mappings. An ambiguous `kal` asks whether you mean tomorrow or yesterday. This does not add a Hindi choice to the existing English/Telugu/Kannada microphone selector. Broader Hindi input and reply translation can still depend on the configured AI/translation service.
 - **Typos are fixed**: "set timr 5 min", "clse chrome", "cancle the timer" (real words are never "corrected" into commands).
 - **Misheard words are repaired** (spoken input only): "front and" / "front end" → frontend, "v s code" → vs code, "java script" → javascript, "fold her" → folder, "calculate her" → calculator… — always checked against the words around them, so "front and back of the page" stays as it is. JARVIS also waits for the recogniser's *final* words before acting (it no longer sends an unfinished "front"), and picks the best of its three guesses.
 - **Settings → Test my mic** — say 14 command words ("frontend", "create a folder", "VS Code"…) and see what the mic heard and what JARVIS repaired, as a score.
@@ -327,6 +520,183 @@ Open **✦ SKILL HUB** from the lower-right corner of the JARVIS page.
 - **Quick actions:** the Hub can prepare a WhatsApp click-to-chat draft and open movie-ticket, bus-ticket, Amazon India, or Flipkart searches. You review the recipient/message and complete booking, payment, and checkout yourself; JARVIS does not auto-send messages or buy tickets/items.
 
 The original **“open the recently closed app”** command still reopens the most recent app closed through JARVIS. Apps closed manually outside JARVIS are not automatically tracked.
+
+### Agent Platform research notebook and workflow planner
+
+Open **AGENT PLATFORM** from the JARVIS interface to save local research questions, findings and sanitized source links; validate a workflow's dependencies and permission tiers; and review the metadata-only audit trail. Workflow validation never executes commands. Research sessions and audit metadata are stored locally under `~/jarvis`.
+
+The corresponding APIs are documented in [the Phase 3–8 implementation status](docs/PHASES-3-8-IMPLEMENTATION.md). Existing skill packs, reminders, browser recovery and Phone Hub remain the source of truth for those capabilities.
+
+### Reviewed workflow additions
+
+The **Apps** workspace includes panels for account connections, an isolated browser,
+document/data/media workflows and reviewed script execution. They use the existing
+dark cyan theme and approval cards. New control permissions start disabled.
+
+- **Language and dialogue:** constrained Hindi/Hinglish commands, Devanagari digits,
+  typed entities, clarification of ambiguous “kal”, safe reminder/timer slot recovery
+  and returning to an interrupted question. File-changing commands containing
+  exclusions stop for explicit selection rather than losing the exclusion. This is
+  not unrestricted multilingual understanding or a complete bulk-file selector.
+- **Desktop and browser:** Windows accessibility exposes supported selection,
+  toggle, expand/collapse and scroll patterns after opt-in. Each action needs an
+  exact one-time approval. The isolated Edge/Chrome profile reads DOM controls,
+  rechecks observations before acting and denies downloads. Login, CAPTCHA,
+  payment and sending screens require manual takeover. General keyboard shortcuts,
+  drag/drop and cross-frame automation remain incomplete.
+- **Background tasks:** supported read-only jobs have durable checkpoints, a start
+  time within 31 days, a runtime budget and a model-call budget. Cancelled or
+  interrupted work is not silently replayed. This is not an OS sandbox or a monetary
+  spending cap; recurring task execution and general automatic replanning remain
+  incomplete.
+- **Office and content:** create editable DOCX, PPTX and XLSX downloads in
+  `~/jarvis/Exports`. Workbooks support bounded formulas, grouped summaries and
+  charts. Grouped summaries are not native Excel pivot-table objects. Approved
+  documents can yield quoted amount, due-date and sender matches with page numbers,
+  keyword counts and suggested classifications; no messages are automatically filed.
+- **Media:** resize/crop/convert local raster images. Audio extraction and optional
+  local transcription require FFmpeg and Whisper. Set `JARVIS_FFMPEG_PATH` to an
+  existing FFmpeg executable if it is not on PATH. JARVIS does not install it.
+- **Google/Microsoft:** configure your own OAuth client, register the displayed
+  localhost callback, review configuration and sign in through the provider.
+  PKCE connections request read-only mail/calendar/file scopes. Every data call
+  needs one-time approval. No provider writes or sending scopes are implemented.
+  Disconnect removes local tokens; revoke remote consent in the provider settings.
+- **Secrets:** account tokens use Windows CurrentUser DPAPI. Existing model keys
+  migrate only through the reviewed migration button, with decryption verification
+  before plaintext configuration is removed. Backups made before migration may
+  still contain old keys. Recognizable secrets are blocked before cloud chat and
+  embedding calls; this is not comprehensive personal-data detection.
+- **Reviewed scripts:** opt-in Node/Python execution previews exact code, arguments,
+  working directory and timeout. It runs as your Windows user, with no VM isolation.
+  Output and exit status do not prove every intended task effect succeeded.
+
+Windows Hello, when enrolled and required, additionally binds approvals for these
+actions to the exact request body. Browser observations and account responses are
+evidence, never authorization for follow-up actions. See the
+[capability evidence and remaining work](docs/IMPLEMENTATION-PROGRESS.md).
+
+### Office, document and media workbench
+
+Open **Apps → Background tasks and MCP tools → Documents, data, images and reviewed code**.
+These are form-based workflows; a feature being present here does not mean every
+open-ended spoken request for that feature has a command mapping.
+
+| Workflow | Input and result | Limits and requirements |
+|---|---|---|
+| Word document | Title and text → editable `.docx` | API also supports bounded tables and source lists |
+| Presentation | Title/text or structured slide sections → editable `.pptx` | Bounded slide content; not a general PowerPoint design or animation engine |
+| Spreadsheet | CSV → `.xlsx`, optional group/value summary and chart | API accepts restricted formulas; grouped summaries are not native Excel pivot tables |
+| Document evidence | Approved local text, PDF or Office file → quoted amounts, due dates, sender labels, page references and keywords | Rule-based extraction and category suggestions; scanned PDFs need OCR first |
+| Image workflow | Approved local raster image → resized/cropped PNG, JPEG or WebP | Source stays unchanged; no remote image URL or SVG input; cropping is exposed by the API |
+| Audio workflow | Approved local media → mono 16 kHz WAV, optional Whisper text | FFmpeg required; transcription additionally needs local Whisper; clips are limited to 12 minutes |
+| Reviewed standalone code | Exact Node/Python source, arguments, approved working folder and timeout → captured output/exit status | Disabled until enabled and reviewed; runs with your Windows account's access, without a VM sandbox |
+
+Outputs use unique names under **`~/jarvis/Exports`** and offer download links.
+Review generated content and spreadsheet calculations before relying on them.
+Stopping work before the final export write prevents that output from being
+written; emergency stop does not undo an already completed export or side effect.
+
+### Google and Microsoft account setup
+
+For the main JARVIS connection, open **Apps → Background tasks and MCP tools →
+Google, Microsoft and encrypted credentials**.
+
+1. Create your own provider OAuth application with loopback/localhost redirect
+   support. Use the callback displayed by JARVIS:
+   **`http://localhost:3002/api/accounts/callback`**.
+2. Enter its client ID and any client secret required by that registration. Review
+   the provider, client ID, redirect and read-only scopes before saving.
+3. Select sign-in, approve creation of the sign-in request, and follow the provider
+   link. You complete sign-in and consent in the provider's page.
+4. Return to JARVIS and refresh connection status. Choose mail, calendar or files,
+   optionally supply a query/item ID, then review the exact read request.
+5. Disconnect when finished. This removes the local account token; remote consent
+   can also be revoked in the provider account's settings.
+
+You can also say `read google mail`, `check microsoft calendar` or
+`search google files for DBMS`. These commands still require connection and
+one-time approval. Responses are bounded provider data, not an instruction to
+perform follow-up actions. Listings generally return up to 20 items. Microsoft
+calendar queries cover the next seven days, and Microsoft file queries filter
+the first 20 drive items; they are not exhaustive account searches. File reads
+in this adapter return metadata, not arbitrary document downloads or edits.
+
+**Two account systems currently coexist.** Their configuration and tokens are
+separate; connecting one does not connect the other.
+
+| | Main Apps account panel | Marks developer preview |
+|---|---|---|
+| Setup | Client credentials through reviewed Apps configuration | `JARVIS_MARKS_*` OAuth environment variables and explicit connect in Mark 40 |
+| Redirect | `/api/accounts/callback` on localhost:3002 | `/marks-oauth.html` on localhost:3002; page completes its own callback flow |
+| Data access | Google/Microsoft mail, calendar and file metadata | Read-only mailbox metadata/calendar tools and Sentry watches |
+| Token storage | Windows CurrentUser DPAPI vault | Server memory, cleared on restart/disconnect |
+| Sending or editing provider data | Not implemented | Local drafts for review; no automatic sending |
+
+Existing model API keys are a third, separate configuration. The migration button
+encrypts eligible model keys for this Windows user and verifies them before
+removing their plaintext configuration fields. It does not connect an account or
+encrypt every other secret and historical backup. Copying the DPAPI vault to a
+different Windows user is not a portable credential backup.
+
+### Marks specialist workspaces (developer preview)
+
+**Marks is not enabled in a normal launch.** All 23 catalog entries currently have
+preview status; `JARVIS_MARKS=enabled` keeps the release gate closed until every
+profile is verified. To explicitly try the developer preview, set
+`JARVIS_MARKS=preview` in the launch environment, restart the same JARVIS instance,
+and open **Marks** or `http://localhost:3002/marks.html`. Each tab starts with Standard.
+Remove the environment setting and restart to return to ordinary startup.
+
+Within an enabled preview, `open mark controls` opens the workspace and
+`enable Mark 1` selects a profile there; it does not switch the main chat's mode or
+override the global release gate. Names such as Gemini, Friday or Iron Legion are
+profile names, not proof of a particular external model or unrestricted autonomy.
+
+| Profile | Implemented purpose / example |
+|---|---|
+| Standard / Mark 1 · Basic | Typed questions, clock/calculator, app launches and web search |
+| Mark 2 · Voice | Explicitly arm voice using the existing Windows wake listener; leaving the active tab/profile disarms it |
+| Mark 3 · Desktop | `windows`, `inspect "Exact Window Title"`, or a reviewed desktop plan |
+| Mark 5 · Offline Tray | Existing server from the tray, with a configured installed local model up to 2 GiB |
+| Mark 6 · Power Saving | `on`, `off`, `status`; waits before new heavy steps when battery/charger policy requires it |
+| Mark 7 · Instant Deploy | Compact command workspace through an opt-in Windows shortcut |
+| Mark 17 · Heartbreaker | Exact file lookup or `click "Save" in "Exact Title" expect "Saved"` |
+| Mark 22 · Hotrod | Direct time, date and arithmetic without a model |
+| Mark 33 · Silver Centurion | Loopback Ollama text chat; conversation remains in memory with no saved history |
+| Mark 38 · Igor | Review filename prefixes, Office-to-text conversion or CSV cleanup into new files |
+| Mark 39 · Gemini | Web evidence and a cited research report, subject to Online tools/model availability |
+| Mark 40 · Shotgun | Review web/code/Office/terminal-information/read-only account steps and local drafts |
+| Mark 42 · Iron Legion | Up to two independent read-and-draft workers; one supported task per line |
+| Mark 44 · Veronica | Reviewed extension-based quarantine in JARVIS folders, with content-checked recovery |
+| Mark 46 · Mission | Reviewed read-and-draft plan with checkpoints, up to four hours |
+| Mark 47 · Tutor | Explanations, quizzes and study notes |
+| Mark 50 · Nanotech | Review reusable text tools; supported line transforms run a fixture in a bounded worker before registration |
+| Mark 85 · Endgame | Approved memory, forgetting, or routing to another profile using `use mark-22 …` |
+| House Party Protocol | Up to ten queued read-and-draft tasks, using the bounded worker lanes |
+| Friday | Casual, concise typed replies |
+| Sentry | Session-only watches for a specific sender, named local download or deadline |
+| Damage Report | Connectivity, microphone-permission and local-model diagnostics |
+
+**Start Marks Tray.bat** attaches to the existing server. **Start Marks Hotkey.bat**
+opts into **Ctrl+Alt+J** for compact commands; its tray menu exits the helper. This
+differs from the main selected-text shortcut **Ctrl+Shift+J** and the emergency
+stop shortcut **Ctrl+Alt+Pause**. None starts another JARVIS server.
+
+Marks has its own background checkpoints, batches, text-tool library, approved
+memory and optional saved results. A profile's “no history” setting concerns its
+conversation history; enabling other storage/features should be reviewed separately.
+Sentry watches and Marks OAuth tokens are session-only. Mark 33 requires a local
+Ollama service you control; it has no fallback to the normal cloud provider.
+
+For phones, grant **Marks task status and shared reports** to the paired Android
+device in Phone Hub. A completed task's **Review for Phone Hub** action shares
+only the text you review. The device also needs the existing HTTPS gateway;
+reviewed reports and device grants can be revoked independently.
+
+See [Marks setup, commands and release checks](docs/MARKS.md). Physical tray/hotkey,
+microphone, battery, provider sign-in/watches and Android grant/revocation flows
+still need live acceptance evidence before promoting the preview profiles.
 
 ### Laptop control
 
@@ -356,7 +726,7 @@ The original **“open the recently closed app”** command still reopens the mo
 
 ### Your notes, files & PDFs
 
-- **Files.** JARVIS's own workspace is `~/jarvis` (Notes, Code, Documents, Projects). It can **open and read files and folders anywhere on the laptop** — "open the agriloop folder in vs code", "read notes.txt" — searching Desktop, Documents, Downloads, your home folder and your other drives by name. If a name matches several places it lists them (**OPEN 1 / OPEN 2**). **Changing** anything outside `~/jarvis` (write, rename, move, copy into, delete) shows an **ALLOW / CANCEL** card first; from the phone or a routine it is refused. Windows, Program Files, AppData and key folders are never touched. Examples: "take a note: revise recursion", "read my notes", "list my files", "create a folder called DSA", "rename a.md to b.md", "copy notes.md to Projects", "delete old.txt" (goes to `~/jarvis/.trash`).
+- **Files.** JARVIS's own workspace is `~/jarvis` (Notes, Code, Documents, Projects). It can **open and read files and folders anywhere on the laptop** — "open the agriloop folder in vs code", "read notes.txt" — searching Desktop, Documents, Downloads, your home folder and your other drives by name. If a name matches several places it lists them (**OPEN 1 / OPEN 2**). **Changing** anything outside `~/jarvis` (write, rename, move, copy into, delete) shows an **ALLOW / CANCEL** card first; from the phone or a routine it is refused. The file tools refuse protected Windows, Program Files, AppData and key-folder paths. Examples: "take a note: revise recursion", "read my notes", "list my files", "create a folder called DSA", "rename a.md to b.md", "copy notes.md to Projects", "delete old.txt" (goes to `~/jarvis/.trash`).
 - **Finds anything on the laptop:** a background list of every file and folder name on every drive (names only — never contents; system, hidden and build folders skipped; rebuilt every 30 minutes) — "where is pythonProject", "find conifer", "locate Forest-Competition-Simulator", "check whether the calculator folder exists".
 - **"Did you mean…?"** — a name that isn't found exactly gets the closest real ones (typos, short forms, version endings like `AGRILOOP-1`, extra words): "open agri look folder" → *Did you mean AGRILOOP-1 or AGRILOOP61?* Answer **yes**, a number or **no**. It never acts on a guess.
 - **Count & list folders anywhere:** "list number of folders in my laptop" (per drive), "how many folders are in D drive", "list folders in D drive", "show folders on my desktop", "list files in C:\Users\me\Projects".
@@ -390,7 +760,7 @@ The original **“open the recently closed app”** command still reopens the mo
 
   | Say | What happens |
   |---|---|
-  | **"check my AI"**, "any AI errors today?", `/health` | Is Ollama up, which model is loaded and how much of it is on the GPU, a report of the last day's AI calls (success rate, typical and slowest time, rate limits, bad keys, timeouts — outcomes only, never your questions or keys), free disk space and memory, with the fix next to each problem. "Check my AI properly" also asks the model one tiny question and times it. |
+  | **"check my AI"**, "any AI errors today?", `/health` | Is Ollama up, which models are installed versus loaded and how much loaded model data is on the GPU, a report of the last day's AI calls (success rate, typical and slowest time, rate limits, bad keys, timeouts — outcomes only, never your questions or keys), free disk space and memory, with the fix next to each problem. "Check my AI properly" also asks the model one tiny question and times it. |
   | **"watch localhost:5000"**, "what is down?", "stop watching …", "stop the watchdog" | Checks Ollama and anything you add (a web address or `host:port`) every 2 minutes while it is on, and tells you **once** when it goes down (after 2 failed checks in a row, so one blip is ignored) and once when it is back, with how long it was down. Nothing is scanned: it only talks to what you named. |
   | **"list cafés near Majestic"**, "show pharmacies near me within 2 km", "what's near Indiranagar", `/nearby` | Real places from OpenStreetMap with distance, address, hours and phone when the map has them. "Near me" uses the city in Settings (JARVIS can't see your location and says so). The Google Maps reply for "nearest X to Y" gets a **LIST THEM HERE** button. Needs Online tools. |
   | **"analyze marks.csv"**, "average marks by dept in marks.csv", "show rows in marks.csv where marks > 60 and dept = CSE", "how many rows are in marks.csv", "chart attendance in marks.csv", `/csv` | Reads a CSV (comma, semicolon, tab or pipe; up to 10 MB / 100,000 rows) and describes each column, finds what moves together, answers questions with a small safe filter language (no code is ever run from your words), and draws bar charts or histograms as SVG files in `~/jarvis/Charts`. The AI gets only **statistics** (column names and summary numbers), never your rows. |
@@ -441,11 +811,20 @@ A coding mode with **its own conversation**, separate from the normal chat. Clic
 - **Distance & directions:** "distance from Hyderabad to Bangalore", "directions from X to Y" (turn-by-turn in the chat), "open directions to X in maps". Uses OpenStreetMap services; needs **Online tools**.
 - **Drafts:** "write a leave email to my professor and copy it".
 
+### Public product and bus comparisons
+
+JARVIS routes explicit product and bus fare comparison requests through `/api/commerce/compare`. It searches provider-specific public results, fetches readable public listing pages when available, extracts price candidates, and shows source links. A candidate price is not a checkout-verified total; JARVIS must not claim a guaranteed cheapest purchase until exact variant, route/date, availability, delivery/booking fees and offers are confirmed. Search failures or inaccessible pages are reported as missing data, not fabricated prices.
+
+Natural-language intent rules handle clear buying/comparison requests and preserve the active commerce task for short provider follow-ups. For unclear or ambiguous requests, JARVIS should ask a focused clarification rather than guessing an external action. The local rule engine remains the fast first pass; the optional local Qwen NLU assist can interpret low-confidence commands when enabled.
+
 ### Multi-step commands (the agent)
 
 "open VS Code, create a folder DSA and start a 25 minute focus", "set volume to 30 and tell me a joke".
 
 - Commands JARVIS already knows run in order instantly; unknown parts are planned by the AI, **validated by the server**, and shown as a preview ("No changes have been made yet — EXECUTE / CANCEL").
+- Requested read results are carried into the final reply. For example, “Read task-result.md and show my to-do list” returns the file contents and the task list. Long results show a shortening notice.
+- Recovery choices use fresh step snapshots and preserve the original run record. Repeated clicks on a consumed Retry/Continue choice cannot start another recovery. Incomplete tasks are announced as incomplete.
+- Desktop click/fill tools retain their exact-target server approval for each action. A plan preview is followed by those individual application approvals.
 - Each step is **checked for real** (the to-do exists, the app started, the volume reads back) — steps that can't be checked show ○ *not checked* rather than a fake ✓.
 - **Say the goal, not just the commands:** "I'm going to study. Set the volume to 30, enable focus mode, close distracting apps, open my DBMS notes and start a 45-minute session." JARVIS takes "study" as the plan's goal, merges overlapping steps (one 45-minute session, not two), closes distractions *before* the session starts, and shows the whole plan once — with ⚠ on anything that needs permission — so **one EXECUTE** approves it.
 - Steps that depend on an earlier one ("create a folder DSA and open it in VS Code") are skipped if that earlier step fails, instead of running on a broken result. The run ends with a tally: "4 of 4 verified".
@@ -474,7 +853,7 @@ Added in later versions; each has its own switch in **Settings → Behaviour** (
 - **Cinematic boot** *(on by default)* — an arc-reactor animation behind the boot screen. **Transitions** add small one-shot effects when JARVIS wakes, works or hits an error (all respect your "reduce motion" setting).
 - **Holographic HUD** *(off)* — floating translucent panels (clock, system stats…); the **HUD** button in the header toggles it. **Esc** closes the overlay.
 - **DIAG dashboard** — the **DIAG** header button opens an animated diagnostics overlay with live sparklines: CPU, RAM, network, top processes, and (with the optional `systeminformation` package: `npm install`) CPU temperature, GPU and battery details.
-- **Qwen NLU assist** *(off)* — when the rules aren't sure what you meant, ask the local Qwen model to read the command. It may only choose from a fixed list of 26 commands that JARVIS really runs (apps, web, volume, mute, brightness, dark mode, battery, time, date, timer, to-dos, music keys, weather, files, calculator, screenshot) — never power off, restart, sleep, lock, delete, reminders or creating files. If it fails or is less sure than the rules, the rules' answer stands. (`POST /api/nlu/parse`.)
+- **Qwen NLU assist** *(enabled by default for new installs)* — when the rules aren't sure what you meant, ask the local Qwen model to read the command. It may only choose from a fixed list of 26 commands that JARVIS really runs (apps, web, volume, mute, brightness, dark mode, battery, time, date, timer, to-dos, music keys, weather, files, calculator, screenshot) — never power off, restart, sleep, lock, delete, reminders or creating files. If it fails or is less sure than the rules, the rules' answer stands. (`POST /api/nlu/parse`.)
 - **Face recognition greeting** *(off)* — one webcam snapshot when JARVIS goes idle; if it's you, "Welcome back, sir. Good evening." (at most every 5 minutes). Switch it on in Settings and look at the camera for the 3-sample enrollment. Only a 128-number face fingerprint is kept (in `~/jarvis/.config.json`, never an image), and the **comparison is done by the server**, so the stored fingerprint never leaves it. *The face model (`face-api.js`) is downloaded from a public CDN the first time you switch it on — so it needs the internet once.*
 - **Hand gestures** *(off)* — UI-only, never commands: open palm toggles listening, pinch dismisses a card, swipes scroll the chat, thumbs-up answers *yes* to an approval card, a fist stops speech. *Loads MediaPipe from a public CDN on first use.*
 - **Pattern learning** — notices habits locally ("you open VS Code every morning — run it automatically?") from app-open and command frequency per hour and battery / RAM baselines; no chat text, file contents or window titles.
@@ -547,6 +926,17 @@ All explicit wording; anything that changes the system asks first, and the page�
 - **Bus tickets** — “book bus tickets from Bengaluru to Mysuru on 25 October” opens the redBus route. Verify date, boarding point, operator and cancellation policy before booking.
 - **Shopping** — “shop for wireless mouse” or “buy wireless mouse” opens an Amazon India search. JARVIS does not place orders, save payment details or pay; you review the seller and checkout yourself.
 
+### Calling and Android voice
+
+JARVIS now includes an **opt-in outbound phone announcement** flow and an initial Android in-app voice flow:
+
+- **Outbound phone call:** configure Twilio credentials on the JARVIS server, then open `/calling.html` or issue the explicit desktop command “JARVIS, call me.” The call speaks a short message to your configured number; it is **not yet a two-way conversational cellular call**.
+- **Android voice:** the companion app captures one utterance, sends it through the capability-protected Phone Hub gateway, then speaks JARVIS's text reply. This is turn-based speech, not continuous full-duplex audio.
+- **Reminder calls:** off by default. Enable only if wanted with `JARVIS_CALL_ON_REMINDERS=true`; reminder calls also respect the JARVIS Alerts and panic switches and the configured quiet hours.
+- **Security:** calling credentials stay server-side. The Phone Hub gateway is separately configured, HTTPS-only, disabled unless explicitly enabled, and grants `voice` and `calls` capabilities separately. For away-from-home in-app voice, connect both devices to Tailscale and bind the gateway to the laptop's Tailscale IP; do not expose the general JARVIS server or forward gateway ports publicly.
+
+Start with [Calling setup](docs/CALLING.md), [Phone Hub setup and security](docs/PHONE-HUB.md), and the [Android companion guide](android/phonehub/README.md). This is an initial implementation: Twilio credentials, provider account restrictions, Android certificate trust, physical-device pairing, and real call delivery must be configured and verified by the operator. CI/build checks do not prove a real call or phone-network setup works.
+
 ### Phone — alerts and commands
 
 - **Phone alerts:** Settings → **Phone alerts** pushes reminders and deadline alerts to the free **ntfy** app on your phone. Messages to ntfy go out one at a time, an identical reply is sent only once within 30 seconds, and after a "too many requests" answer from ntfy.sh JARVIS pauses instead of retrying, so the phone app stays responsive.
@@ -567,6 +957,26 @@ All explicit wording; anything that changes the system asks first, and the page�
 
 | I want to… | Say / type |
 |---|---|
+| Show a panel in immersive mode | Select **Hide controls**, then say `show my notes` · `show my calendar` · `close panel` |
+| Inspect an application or website | `show app controls` · `inspect Notepad` · select a browser window in **Apps** |
+| Review a control action | `click control 7` · `fill field Message with Meet at 5 PM` → review the exact window, control and text |
+| Hindi/Hinglish direct commands | `Chrome kholo` · `वॉल्यूम ३० करो` · `5 minute ka timer lagao` |
+| Main account reads | `read google mail` · `check microsoft calendar` · `search google files for DBMS` → connect and approve first |
+| Office/media outputs | Open **Apps → Background tasks and MCP tools → Documents, data, images and reviewed code** and use its forms |
+| Specialist workspace | `open mark controls` · `enable Mark 1` — only within explicitly enabled Marks preview |
+| Emergency stop | `emergency stop` · `stop everything` · Apps stop button · opt-in **Ctrl+Alt+Pause**; explicit `resume` permits new work |
+| Capture and review notes | `save a voice note: DBMS demo moved to Friday` · `show what I captured today` · `make a task from the first one` |
+| Turn a capture into a reminder | Open the inbox, then `remind me about the second one tomorrow` → review |
+| Save or resume a checkpoint | `pause DBMS here. Next, test the joins.` · `resume my DBMS workspace` |
+| Hold routine alerts | `keep it quiet until my break` · `what did I miss?` |
+| Correct a pending voice request | `open my OS notes` → `wait, I meant DBMS` |
+| Find study time | `where can I fit 45 minutes of DBMS before Friday?` |
+| Search a scanned PDF | Select and index the PDF in **Notes**, then `find the deadlock diagram in this scanned PDF` |
+| Listen to local FM | `show FM stations in Hyderabad` · `set my radio city to Hyderabad` · `play 101.9` |
+| Study with sound | `start a 45-minute study session with rain sounds` |
+| Play and resume audio | `open media` · `pause my audio` · `resume my podcast` · `stop my audio in 30 minutes` |
+| Open provider music | `play lo-fi study music on Spotify` · `play Believer on YouTube` |
+| Hear regional news | `brief me on Bengaluru in Kannada` |
 | Open or close an app | `open spotify` · `close chrome` · `open canva` |
 | Control the laptop | `volume 40` · `mute` · `brightness 60` · `dark mode` · `lock the screen` |
 | Reminders & tasks | `remind me to call mom at 6pm` · `add revise graphs to my list` · `what's due this week?` |
@@ -605,6 +1015,13 @@ Open **SETTINGS** (top right).
 
 | Section | Setting | What it does |
 |---|---|---|
+| **Connected services** | Calendar feed · Connect/Disconnect | Read-only public HTTPS iCalendar feed for Today and availability searches. |
+| | Morning daily briefing · Briefing time | Opt-in daily spoken summary while JARVIS is open, with a ten-minute late-start window. |
+| | Regional headlines in briefings | Uses your Home City and Online tools for supported regional feeds. |
+| | Daily quiet hours · Quiet start/end | Holds routine laptop alerts during the selected local-time interval. |
+| | Let deadline warnings through quiet hours | Allows deadline warnings during quiet time. |
+| | Study hours start/end | Bounds suggested study slots; defaults to 08:00–22:00. |
+| | Home Assistant URL/token · Connect/Disconnect | Connects supported devices, reports actual connection state, and requires one-time approval for control actions. |
 | **AI brain** | Use AI brain · Model | Turn the AI on/off; pick a local (Ollama) or cloud model. |
 | | Guided setup (AI / PHONE) | Step-by-step setup for non-technical users. |
 | | AI providers | Add an API key (auto-detected provider), TEST it, or remove it. **Custom** accepts any OpenAI-compatible URL (LM Studio, vLLM, llama.cpp). |
@@ -620,26 +1037,39 @@ Open **SETTINGS** (top right).
 | | Focus / break (min) | Pomodoro lengths. |
 | | **Ask about attendance after class** | A few minutes after each class in your timetable ends, JARVIS asks *I attended / I missed it / skip* (on by default; only while JARVIS is open). |
 | | **Offline lecture transcription** | Lecture mode uses Whisper on this laptop instead of the browser’s recogniser (audio never leaves the computer). Off by default; needs `install-whisper.ps1`. |
+| | Speak while writing | Speaks the first sentence of supported English chat answers while generation continues; Stop/Esc interrupts it. |
+| | Suggest skills | Shows an optional matching skill under an answer. Research mode and emotional-intelligence preferences also have their own chat commands. |
 | | **Keep JARVIS running** | Adds / removes the Windows scheduled task *JARVIS Keepalive* (checks every 2 minutes; never restarts JARVIS after you stopped it). |
 | | Semantic search · Embedding model | Meaning-based file search ("wifi problem" finds "no internet"); needs an Ollama embed model such as `nomic-embed-text`. |
 | **Backup & restore** | Export · Import · Include my API keys · snapshots | See [Undo, backup & your data](#undo-backup--your-data). |
 | **Project folders** | Add/remove folders | Used for preparing environments, starting backends and frontends, git, and searching your notes. JARVIS can open files anywhere without adding them here. |
 | **Data** | Require Windows Hello | Fingerprint/face/PIN for shutdown, restart, sleep, deleting files, clearing the sandbox, erasing data and importing backups. |
 | | **Lock JARVIS** · Auto-lock · LOCK NOW | Opens JARVIS only after Windows Hello (needs *Require Windows Hello* first). Auto-lock after Never / 5 / 15 / 30 / 60 min idle. Turning it on/off needs a Windows Hello approval. Say "lock jarvis" to lock now. |
-| | Erase all local data | Clears the shared data (a snapshot is taken first). |
+| | Erase all local data | Clears shared application state after a snapshot; it does not recursively erase exports, provider configuration, browser profiles or separate Marks/runtime files. |
 | | Start with Windows · Stop JARVIS | Run JARVIS in the background at every sign-in; end the background server. |
 | | Updates · Check | Compares your version with the latest GitHub release — only when you click, and only if Online tools is on. |
+
+Several controls live in **Apps**, outside the Settings drawer: background start
+time/runtime/model-call budgets, emergency stop and **Ctrl+Alt+Pause**, MCP
+connections, extended native actions, isolated browser, reviewed scripts and the
+main account/vault panel. Marks preview settings use their own workspace and
+environment variables. Enabling one of these does not automatically enable the others.
 
 ---
 
 ## 10. Privacy & security
 
-- **Local only.** The server listens on `127.0.0.1` and refuses requests from other websites (Host/Origin checks, and `Sec-Fetch-Site` for sensitive reads). Nothing on your network can reach it.
-- **Offline option.** With a local Ollama model, your chats, files, screenshots and clipboard never leave the laptop. With a **cloud model**, what you ask (and any screenshot, clipboard text or file excerpt you ask about) goes to that provider — Settings says so while one is selected.
-- **Online extras:** web tools are opt-in (the Online switch). Translation and neural voices are on by default but only act for Telugu / Kannada replies and FRIDAY; each says what it sends and can be switched off.
+- **Local listener.** The main server binds to `127.0.0.1:3002` and checks Host, Origin and sensitive read requests. Optional Tailscale access and the separate HTTPS Phone Hub gateway require their own setup.
+- **AI and online services.** Local Ollama inference runs on the laptop. A selected cloud model receives the request and any file excerpt, clipboard text or screenshot used for that request. Web research, feeds, streaming, phone notifications, translation and neural voices use their configured online services.
+- **Application actions.** Window inspection runs on demand through Windows accessibility. Password controls are omitted. Click/fill and enabled extended native actions require exact one-time server approvals, and an action consumes its inspection. The separate browser adapter rechecks page content, labels and form values before acting.
+- **Connected-service credentials.** Calendar feed URLs and Home Assistant tokens are stored in the server configuration. Settings returns connection status while keeping saved credentials server-side.
+- **Recent local features.** Workspace checkpoints, podcast subscriptions/positions and held-alert recaps use the shared local state. Selected local audio plays from a browser file URL, and PDF OCR uses local Windows rendering and recognition.
+- **Online extras:** the Online tools switch controls its associated tools, not every possible network call. Cloud model selection, browser speech recognition, connected accounts, translation and neural voices have their own settings and consent paths. Translation and neural voices default to enabled and can be switched off.
 - **The update check is click-to-run** (Settings → Data → Updates): GitHub is asked only then, and only while Online tools is on.
 - **The server decides what's allowed, never the AI.** Every tool has an argument schema and a permission tier: *safe* (runs), *confirm* (asks first with the reason), *explicit* (its own confirmation every time, never in routines), or refused. Invented tools, `../` paths, "volume 999", shell commands — rejected before anything runs.
-- **Windows Hello approvals** (optional): the server itself verifies a fresh signed challenge from your fingerprint/face/PIN before shutdown, restart, sleep, deleting files, clearing the sandbox, erasing data or importing a backup.
+- **Windows Hello approvals** (optional): the server verifies a fresh signed challenge for guarded power/file/data actions. When enrolled and required, reviewed desktop/browser/execution/account/vault/MCP requests additionally bind the proof to the exact approved request body; it cannot authorize a different target or be replayed.
+- **Credential storage:** the main account panel uses Windows-user DPAPI. Model keys migrate only after review; Home Assistant credentials and legacy/unmigrated secrets still have separate configuration storage. Marks preview account tokens stay in server memory. Authentication keys/tokens are sent to their intended providers when making authorized requests.
+- **Cloud privacy filter:** recognizable private keys, labeled credentials and selected financial identifiers are blocked before cloud chat and embedding requests. It is a bounded pattern filter, not a guarantee that every piece of personal data is detected.
 - **A reload no longer loses things.** What **“it” / “there”** refer to (the folder or file JARVIS last showed, found or made, and the numbered results) is kept too, for 15 minutes. A **focus session** (and its break) is saved as it runs and picked up again when the page reopens, if its time has not run out (a session that ended while the page was closed is not revived); running **timers** already came back the same way. **Two routines due at the same moment** used to lose the second one — now it waits in line (once, however many times it is due) and runs after the first. And with **two tabs open, an alert is said once**: the first tab to ask the server for it wins (`POST /api/claim`), the other stays quiet — class-starts-soon, battery and the other smart alerts alike; if the server cannot be reached a tab just says it.
 - **“Ask my files” got three upgrades.** (1) **Telugu, Kannada and other scripts are searchable** — the word splitter used to see only a–z, so notes written in Telugu or Kannada could never be found. (2) **The index survives a restart** (`~/jarvis/.rag-cache.json`, a hidden file that is not backed up or shown to other tools): a restart no longer re-reads every note and re-extracts every PDF/Word/PowerPoint file; a file is reused only while its size and modified time are unchanged, a damaged cache is ignored. (3) **Every folder you share gets its own share of the 3,000-file limit**, so a big project folder can no longer use it all up and leave your notes un-indexed.
 - **If Ollama is not running, JARVIS says so at once.** The first refused connection fails every AI call that is waiting, and for the next 3 seconds new ones fail straight away with “is Ollama running?” — instead of each one retrying in turn and piling up behind a server that is not there.
@@ -661,21 +1091,28 @@ Open **SETTINGS** (top right).
 - **The AI is asked again, politely, when its provider hiccups.** A busy or briefly-down model (HTTP 429/500/502/503/504, or a dropped connection) is retried up to twice with a short, slightly random pause (and the provider’s “Retry-After”); a bad key, a bad request or a Stop is never retried. Calls the page makes to the laptop stop waiting after 3 minutes (15 for AI, folder-walking, installs), instead of hanging JARVIS for ever.
 - **Saying “don’t …” does nothing.** “Don’t lock the screen”, “never open chrome”, “no, don’t set a timer” are understood as a refusal: JARVIS answers “Okay — I won’t …” and runs nothing (before, “don’t open chrome” closed it and “don’t lock the screen” locked it). “Don’t shut down” still cancels a pending shutdown, “stop the music” is still a command, and “don’t forget to …” is still a reminder-style sentence.
 - **“Yes, make it a routine” makes one.** When JARVIS notices you open the same app (or start the same focus session) around the same hour and you accept its offer, it creates a routine with that one step and schedules it every day at that hour (it runs while JARVIS is open; “undo” removes it). A learned command that is only an intent name is not turned into a routine — JARVIS tells you how to make one by hand.
-- **Timers survive a reload.** Each timer is also written down as a hidden safety-net reminder 20 seconds after it should ring: if the page is open it rings on time and removes the reminder first; if the page was closed or reloaded, the laptop’s scheduler rings it (and your phone, if phone alerts are on) and a reloaded page brings the countdown back. Not yet covered: a running focus session.
+- **Timers survive a reload.** Each timer is also written down as a hidden safety-net reminder 20 seconds after it should ring: if the page is open it rings on time and removes the reminder first; if the page was closed or reloaded, the laptop’s scheduler rings it (and your phone, if phone alerts are on) and a reloaded page brings the countdown back. Focus sessions and breaks also restore their remaining time after a reload; audio may require a click to restart.
 - **Undo survives a reload** for file actions (delete, rename, move, copy, create, overwrite): the server keeps how to reverse each for 30 minutes (`~/jarvis/.undo-log.json`, a private file) and the page restores them when it starts.
 - **The local AI’s memory is sized to each request** (it never exceeds what a feature asked for, never goes below 4,096, and counts Telugu/Kannada text in full), so a short question no longer makes the model reserve room for a long page. Research answers no longer carry the earlier chat (the fetched pages hold everything needed).
 - **Lecture notes** now cover a lecture of up to about three hours in full (36 pieces) and say plainly when the merged notes were too long to arrange; exam questions look at more of a long note when more questions are asked for.
 - **Screen readers:** the conversation is a log region, every settings switch and dropdown is named from its row label, and each finished reply is announced once in a polite live region (streamed words are not read one by one).
 - **Phone commands** need a fresh one-time authenticator code; dangerous and data-leaking commands are refused from the phone.
-- **Private data stays on the laptop page.** Expenses, the screenshot text index, the drive backup, keep-alive and the developer helpers (your commits, diffs and error traces) answer only requests from the JARVIS page on this laptop (`Sec-Fetch-Site: same-origin` on localhost); another site or the phone gets a refusal. Nothing is downloaded by JARVIS itself — `install-whisper.ps1` is run by you.
+- **Sensitive laptop-only APIs.** Expenses, the screenshot text index, drive backup, keep-alive and developer-helper data require the laptop page's origin/access checks. Separately configured phone APIs expose only granted capabilities. JARVIS does fetch approved web/feed/media/model resources; optional Whisper installation remains a user-run setup step.
 - **Code and errors go to an online AI only after you say yes.** If your model is online, “write a commit message” and “why did my build fail” ask first; the commit-message diff leaves out `.env`, keys and certificates.
 
 **Where your data lives** (all in your user folder):
 
 | Path | Contents |
 |---|---|
-| `~/jarvis/.jarvis-state.json` | Chat, memory, tasks, reminders, flashcards, routines, triggers, settings |
-| `~/jarvis/.config.json` | Project folders, API keys, phone key, Windows Hello public key |
+| `~/jarvis/.jarvis-state.json` | Chat, memory, tasks, reminders, flashcards, routines, triggers, settings, workspaces/checkpoints, podcast subscriptions/positions and quiet-hour recaps |
+| `~/jarvis/.config.json` | Project folders, provider settings, unmigrated API keys or vault references, Home Assistant/feed settings, phone key and Windows Hello public key |
+| `~/jarvis/.secret-vault.json` | Windows CurrentUser DPAPI-encrypted main account tokens and migrated model/client secrets; not portable across Windows users |
+| `~/jarvis/.agent-jobs.json`, `.mcp-connections.json` | Main read-only job checkpoints/results and saved MCP connections; external tools reconnect explicitly after restart |
+| `~/jarvis/.managed-browser/session-*` | Separate browser profiles; may retain site data independently of chat history |
+| `~/jarvis/.execution/` | Temporary reviewed script sources, removed after execution; not a VM |
+| `~/jarvis/Exports/` | Generated Office files and converted image/audio outputs |
+| `~/jarvis/.marks-history.json`, `.marks-jobs-*.json` | Profile-dependent preview results, separate background checkpoints and reviewed phone-report sharing state |
+| `~/jarvis/.marks-library.json`, `.marks-batches/` | Approved text tools/memories and retained batch recovery data |
 | `~/jarvis/.jarvis.lock`, `.jarvis.pid`, `.jarvis-port` | Which JARVIS is running (pid and port); keeps it to one copy and lets Stop JARVIS find it |
 | `~/jarvis/.backups/` | Automatic snapshots |
 | `~/jarvis/.shotindex.json` | Words read from your screenshots (never copied by the drive backup; “forget my screenshot index” deletes it) |
@@ -684,6 +1121,11 @@ Open **SETTINGS** (top right).
 | `~/jarvis/Notes/inbox-<date>.md`, `expenses-<date>.csv` | Quick-capture inbox · expense exports |
 | `~/jarvis/.trash/` | Deleted files (restorable) |
 | `~/jarvis/Notes`, `Code`, `Documents`, `Projects` | Your files |
+
+**Erase all local data** resets shared state and takes a snapshot. It is not a
+whole-folder secure wipe: configuration, credentials, exports, backups, browser
+profiles and the separate runtime/Marks stores require their own review and
+cleanup. Disconnect providers and revoke remote consent separately where needed.
 
 ---
 
@@ -798,7 +1240,7 @@ A few properties worth knowing when debugging:
 - **What it does:** a name that isn't found exactly gets the closest real ones, ranked.
 - **How names are compared:** `squashName` ignores case, spaces, `_` and `-`; version endings (`-1`, `61`, `(2)`, `copy`) are ignored; Jaro-Winkler plus edit distance catches typos; "contains" and "starts with" catch short forms; a two-typo match is capped below a name that clearly contains what you said; matches inside library / icon folders (`site-packages`, `venv`…) rank lower. Over the **laptop file index**, via `POST /api/tool/similar`.
 - **The question:** `didYouMeanReply` stores `ctx.pending = { intent: 'DID_YOU_MEAN', paths, then }`; your *yes / 2 / the second one / no* is resolved in `resolvePending`. It never acts on a guess.
-- **Debug:** `curl -X POST localhost:PORT/api/tool/similar -H "Content-Type: application/json" -d '{"name":"calculater","kind":"folder"}'`; `tests/reliability.test.js` ("Did you mean").
+- **Debug:** `curl -X POST localhost:3002/api/tool/similar -H "Content-Type: application/json" -d '{"name":"calculater","kind":"folder"}'`; `tests/reliability.test.js` ("Did you mean").
 
 #### Skills & routines — `skills-page.js`, `skills.js`, `routines.js`
 - **What they do:** multi-turn features that own the conversation until they finish: website generator (asks what / where), UI-design prompt (TCREI), DSA coach, viva practice.
@@ -810,6 +1252,38 @@ A few properties worth knowing when debugging:
 - **What it does:** several actions in one sentence, planned, validated, previewed and verified.
 - **Flow:** `Agent.route` splits the sentence (`parts`, `splitAnd`, goal sentences like "I'm going to study…") → known parts are classified by the rules, unknown parts go to the **AI planner** (`POST /api/agent/plan`: JSON, ≤ 5 steps, temperature 0, pre-filtered by `refuse()` for things no tool can do) → the server **validates every step** (`validatePlan`: tool exists, arguments fit the schema, tier) → the page shows a **preview** ("No changes have been made yet — EXECUTE / CANCEL") → `Agent.execute` runs the steps in order, **verifying each for real** (`check:` kinds such as `app_started`, `todo`, `volume`, `file`) → a tally ("4 of 4 verified"). Failures offer **RETRY / CONTINUE / ROLLBACK**; every run gets an id (`AGT-…`) and an **execution inspector** card.
 - **Debug:** `Agent.lastRuns()`, "inspect the last run", `GET /api/agent/tools` (every tool, its tier and check), `tests/agent.test.js`, `plan.test.js`.
+
+### Background tasks and MCP
+
+The separate [Marks developer preview](docs/MARKS.md) is gated off in standard JARVIS and uses the same `localhost:3002` instance.
+
+**Emergency stop:** say `emergency stop` or `stop everything`, or use the button under **Apps → Background tasks and MCP tools**. It bypasses busy chat and pending approval cards, blocks new server action requests, cancels background jobs, invalidates native desktop approvals, and disconnects MCP tools. It requests termination of registered JARVIS code/build and project-server children by their specific process IDs, never by process name. Stop state persists across a restart and cannot be cleared by a stale tab's state write. Say `resume` explicitly to allow new requests; cancelled tasks and old approvals do not resume. Already accepted OS/provider operations may still finish; subprocesses launched through other adapters are not all covered yet. This is tracked as incomplete in the [implementation progress](docs/IMPLEMENTATION-PROGRESS.md).
+
+The same panel offers an **off-by-default global Ctrl+Alt+Pause shortcut** on Windows, using [RegisterHotKey](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerhotkey). It receives only shortcut notifications and does not log ordinary keyboard input. The panel reports listener availability and registration conflicts. The helper shuts down with JARVIS. A laptop without a Pause key can use the button or voice/text command.
+
+**Command fixes:** `set brightness to half` means 50%; `make volume 20 percent lower` reduces the current value proportionally (80 → 64); `20 points lower` subtracts points (80 → 60). Fractional units such as `two and a half GB to MB` are supported (binary 1024-based storage units), as are `end of the month` and `end of next month`. With a pending reminder, `I meant Wednesday` or `actually, make it 6` replaces an existing day/time slot and keeps the confirmation flow.
+
+**Background tasks:** say `in background summarize dbms.md`, `in background list my tasks`, or `show background tasks`. JARVIS previews the plan before queueing it. Supported background tools are `read_file`, `summarise_file`, `list_todos`, and `list_deadlines`. File access stays within approved folders, excludes private JARVIS state, and currently supports text files up to 200KB. Summaries use the configured default AI model; with a cloud model, the selected text goes to that provider.
+
+The server saves the queue before accepting a task and checkpoints every step. You can close the page and keep working while the JARVIS server runs. Completion uses the existing page, Windows toast and configured phone-alert delivery. Inspect results or cancel work under **Apps → Background tasks and MCP tools**. Cancellation prevents later steps and discards a cancelled step's result; an AI request already in flight may finish on its provider. After a server restart, queued jobs are revalidated and resumed; in-flight jobs become **interrupted** and are never automatically replayed. The queue holds up to 10 pending tasks and 50 records, with up to 32 steps per submitted job. The natural-language planner retains its five-step limit.
+
+The plan preview includes its start time and budgets. Main-queue starts can be
+scheduled within 31 days; the default runtime budget is 120 seconds and the default
+model-call budget is five. Configured limits are 100 ms–one hour and 0–32 model
+calls. Exhaustion stops later steps and retains the checkpoint for review. These
+are execution limits, not a provider token/dollar cap or a recurring-job scheduler.
+Marks has separate bounded lanes and profile limits, including selected four-hour
+read-and-draft profiles.
+
+**Failure memory and task context:** exact failed tool/argument combinations are checked against saved run history. The interactive executor asks before retrying; unattended jobs block a repeated failure. A later verified success clears that failure. Previous failures and compact recent-task summaries inform the planner, without granting permission or choosing a different target. Compact checkpoint summaries retain step outcomes without screenshots or approval tokens. Pending vision captures are limited to two, single-use, with two-minute validity and active expiry cleanup. These records are bounded; this is failure avoidance within retained history, not model training.
+
+**Screen understanding:** normal foreground-window reading tries Windows accessibility first, without a screenshot. Unsupported or empty accessibility results fall back to local OCR and optional vision. Explicit image/chart/layout requests, clipboard images and whole-desktop reads use the capture path. OCR text never supplies coordinates or authorizes a click. Native app actions still recheck the exact window and control before every click/fill and retain their one-time approvals.
+
+**MCP:** open **Apps → Background tasks and MCP tools** or say `show MCP tools`. Enter a server name and explicit loopback endpoint such as `http://127.0.0.1:8080/mcp`, then review the connection. JARVIS connects to an existing server; it does not launch another JARVIS copy or start external processes. This client supports the [MCP Streamable HTTP 2025-11-25 protocol family](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports), including JSON/SSE responses, initialization, sessions, tool discovery and calls. It does not support remote HTTPS/OAuth servers, stdio subprocesses, server-requested sampling, or automatic AI selection of external tools yet.
+
+Choose a discovered tool, inspect its JSON input schema, enter its arguments as JSON, and select **Review external call**. Every call—including tools claiming to be read-only—requires a one-time server approval bound to the exact connection, session, tool definition and arguments. Changed definitions require another review. Failures/timeouts consume approval and never retry automatically. External results are displayed as unverified. Connections persist locally but stay disconnected after restarting JARVIS; reconnect explicitly. No MCP server is configured by default.
+
+The job API is `GET/POST /api/agent/jobs`, `GET /api/agent/jobs/:id`, and `POST /api/agent/jobs/:id/cancel`. MCP uses `GET /api/mcp/servers` and `POST /api/mcp/connect`, `/api/mcp/call`, `/api/mcp/disconnect`, `/api/mcp/remove`. These routes use the same origin, host and app-lock checks as the other JARVIS APIs. Private runtime files live at `~/jarvis/.agent-jobs.json` and `~/jarvis/.mcp-connections.json`.
 
 ### 11.4 Decision engine — `decider.js`, `places.js`
 
@@ -915,7 +1389,7 @@ Every request goes through a small **decision engine** — plain rules, no AI ca
 - **Server-side jobs** (`scheduler.js`, run by the server, **work with no tab open**): reminders and deadline alerts (`fireDue`, `nextOccurrence` for repeats), the **triggers watcher** (samples sensors — power / battery, Wi-Fi, running apps — and fires on *changes*, at most once per 10 minutes), built-in **charger plugged / unplugged** announcements, the weekly digest, ntfy phone alerts and phone-command intake.
 - **Live events:** the server pushes events to every open tab over **Server-Sent Events** (`GET /api/events`: reminder fired, trigger fired, charger event…, with a heartbeat every 25 s); triggers that fired while no tab was open (less than 10 minutes ago) run as soon as a tab connects.
 - **Page-side:** routines and phone *commands* are executed by the page (they use the same `executeTool` pipeline), which is why they need a tab open. Routines and triggers run **unattended**, so only steps that need no permission run.
-- **Panic mode:** pauses deadline alerts, the digest, reminder alerts and triggers; alerts that fire while paused are remembered.
+- **Panic / emergency stop:** pauses automation and alerts, blocks new action requests, revokes pending approvals and cancels supported running jobs. Explicit resume permits new requests; cancelled work and consumed approvals are not replayed.
 - **Debug:** ☰ log; the Tasks tab (reminders, triggers); `tests/scheduler.test.js`, `triggers.test.js`.
 
 ### 11.11 State, sync and the offline shell
@@ -1004,7 +1478,7 @@ When **Settings → Show how I understood you** is on (or you ask "how did you u
 | `rag.js`, `pdftext.js`, `doctext.js` | Local hybrid search over your notes/code/PDFs/Office files; PDF & Office text extraction |
 | `update.js` | Update check against GitHub Releases (click-to-run) |
 | `skills.js`, `skills-page.js` | Website generator (any folder, or a project's frontend), UI design prompt (TCREI), DSA coach, viva practice, code fixer (server + chat side) |
-| \`skillpack.js\`, \`skills-bundled/\`, \`skill-hub.js\` | Skill packs: bundled and personal \`SKILL.md\` folders, persistent enable/disable, search and run controls in the Skill Hub; bundled skills include research, quick, code-review, plan-then-act, debugging-coach, study-sprint, meeting-notes, and career-helper (plus two internal skills) |
+| `skillpack.js`, `skills-bundled/`, `skill-hub.js` | Skill packs: bundled and personal `SKILL.md` folders, persistent enable/disable, search and run controls in the Skill Hub; bundled skills include research, quick, code-review, plan-then-act, debugging-coach, study-sprint, meeting-notes, and career-helper (plus two internal skills) |
 | `extras-page.js` | Chat side of the extra tools below: recognises the explicit wording, calls the route, words the answer |
 | `aihealth.js` | AI call history (one hook in `llm.js`), the "check my AI" report, disk and memory checks |
 | `watchdog.js` | Service watchdog: Ollama and the pages / ports you add, uptime, one alert per change |
@@ -1054,6 +1528,26 @@ When **Settings → Show how I understood you** is on (or you ask "how did you u
 | `landing.html` | Cinematic landing page (`/welcome`) |
 | `vendor/qrcode.js` | QR codes for the phone setup (MIT) |
 | `workspace.js`, `action-receipts.js`, `statemerge.js` | Today, Images and History; receipt presentation and state merging across tabs |
+| `daily-features.js`, `assistant-tools.js`, `assistant-features-page.js` | Named workspace checkpoints, merged note/capture inbox, quiet-hour helpers, pending voice corrections and study-slot suggestions |
+| `fm-radio.js`, `media-center.js`, `media-server.js`, `focus-audio.js` | City/station catalogue, local playback, official HLS streams, podcast RSS/audio, position tracking and synthesized focus sound |
+| `regional-news.js` | Supported city/language feeds, headline sources, publication times and short-lived caching |
+| `pdf-ocr-index.js`, `pdf-ocr-page.ps1` | Bounded PDF indexing jobs, Windows page rendering, OCR search and page citations |
+| `desktop-control.js`, `desktop-automation.js`, `desktop-automation.ps1` | Apps UI and commands, one-time approvals, temporary window/control references, Windows accessibility inspection and actions |
+| `screen-perception.js`, `agent-context.js` | Accessibility-first text reading, retained failure checks and bounded task summaries |
+| `agent-jobs.js`, `agent-background-tools.js`, `agent-runtime-page.js` | Durable supported background jobs, cancellation, results and task/MCP UI |
+| `mcp-client.js` | Opt-in local MCP Streamable HTTP connections and exact one-time approvals for external calls |
+| `understanding.js` | Typed entities, conservative exclusions, constrained Hindi/Hinglish commands and expiring safe dialogue state |
+| `task-control.js`, `owned-processes.js`, `emergency-hotkey.js`, `emergency-hotkey.ps1` | Server stop latch, revocation/cancellation, owned-child termination and opt-in global emergency shortcut |
+| `managed-browser.js`, `managed-browser-page.js` | Separate browser profile, bounded DOM observations, page-staleness checks, approved actions and handoff UI |
+| `account-connections.js`, `account-page.js`, `secret-vault.js` | Main Google/Microsoft PKCE reads, reviewed setup, Windows-user DPAPI storage and model-key migration |
+| `office-exports.js`, `content-workflows.js`, `media-workflows.js`, `workbench-page.js` | Editable Office downloads, quoted source facts, raster/audio processing and Apps workflow forms |
+| `reviewed-execution.js`, `privacy-filter.js` | Approved standalone Node/Python execution and recognizable-secret checks before cloud chat/embeddings |
+| `marks.js`, `marks-profiles.json`, `marks.html`, `marks-page.js`, `marks.css` | Gated specialist catalog, isolated workspace, approvals, profile routing and results |
+| `marks-jobs.js`, `marks-precision.js`, `marks-batch.js`, `marks-power.js` | Separate bounded workers, reviewed desktop plans, recoverable local batches and power policy |
+| `marks-library.js`, `marks-text-worker.js` | Approved text-tool/memory library and bounded worker transforms |
+| `marks-accounts.js`, `marks-account-readers.js`, `marks-oauth.html`, `marks-oauth.js`, `marks-toolbox.js`, `marks-sentry.js` | Separate in-memory preview OAuth, read-only provider tools, reviewed toolbox and session watches |
+| `marks-tray.ps1`, `Start Marks Tray.bat`, `Start Marks Hotkey.bat` | Optional tray/compact-shortcut helpers attached to the existing server |
+| `site-theme.css` | Shared site colors used by the landing page and JARVIS pages |
 | `calendar.js`, `homeassistant.js`, `approvals.js` | Read-only calendar connection, Home Assistant device controls, and one-time approvals |
 | `skill-hub.js`, `browser-recovery.js`, `workflow-memory.js`, `diagnostics.js` | Skill Hub UI, safe browser recovery, saved workflows and read-only diagnostics |
 | `agent-platform.js`, `platform-ui.js` | Research notebook, workflow validation and audit metadata |
@@ -1069,7 +1563,7 @@ When **Settings → Show how I understood you** is on (or you ask "how did you u
 
 ## 13. Testing
 
-Run everything (never touches your laptop or your data — the server-backed suites run an isolated copy of JARVIS in a temp folder):
+Run the automated suites with disposable JARVIS homes. The desktop-control suite opens dedicated native-app and private-browser fixtures and acts on those test windows. Browser command suites use fake laptop actions.
 
 ```bash
 npm test
@@ -1089,93 +1583,120 @@ Opt-in checks on the real laptop — sets volume and brightness and opens/closes
 npm run test:live
 ```
 
-The automated runner discovers 123 suites on this revision. The opt-in live laptop checks add one suite. Windows CI runs `npm ci` and `npm test` on Node 22 and 24. Set `JARVIS_REQUIRE_ALL=1` locally to require browser suites as well. [QA audit and manual checks](docs/QA-AUDIT.md)
+The source/isolated-runtime inventory checked on **2026-11-19** contains **139 automated suites**, plus the opt-in live suite, **350 distinct mounted API routes**, **186 rule intents**, **81 registered agent tools**, and **23 Marks profiles**. These are snapshot counts: concurrent development can change them during a run. External MCP tools are separate from the internal registry; Marks profile names are not additional NLU intents. The earlier strict full-run log records all 139 suites passing for that changing-tree revision; this documentation comparison did not rerun the full suite or certify subsequent edits. Current implementation evidence and remaining live prerequisites are tracked in [IMPLEMENTATION-PROGRESS.md](docs/IMPLEMENTATION-PROGRESS.md).
 
-| Suite | Checks | What it covers |
-|---|---|---|
-| `coverage.test.js` | 395 | Phrase checks for all 186 rule intents, plus special handling such as negation; fails if a new rule intent has no phrase |
-| `api.test.js` | 427 on audit Windows host | On a real, isolated server, the coverage gate accounts for 274 distinct mounted API routes: 232 receive a request and the other 42 have documented reasons. Some checks verify refusal paths; this is not 232 positive end-to-end flows. |
-| `e2e.test.js` | 452 | Runs browser flows, then samples the command catalogue in chat. It fakes laptop actions. Without Edge/Chrome or on Node < 22 it is shown as **NOT RUN**. |
-| `browser-scenarios.test.js` | 15 | Two Edge/Chrome tabs, Today and History, checkpoint interruption and actual rollback in the isolated home |
-| `connected-services.test.js` | 14 | Fake Home Assistant status, outages, recovery, approval and readback, plus ICS parsing and URL guards |
-| `positive-routes.test.js` | 18 | Success paths for the 14 previously unexplained routes, using fake calling, shopping, image and phone fixtures |
-| `live.test.js` | 11 | Opt-in (`npm run test:live`) reversible checks on the real laptop |
-| `nlu.test.js` | 344 | Understanding commands (intents, typos, dates, languages), including six checks of the dispatched app or URL |
-| `agent.test.js` | 74 + 132 | Multi-step routing and safety (validator, refusals), the execution inspector card, undo tagging of plan runs |
-| `llm.test.js` | 66 | AI providers, streaming, retries, key handling (with a fake server) |
-| `student.test.js` | 60 | Attendance & bunk maths, marks → SGPA/CGPA, monthly/yearly repeats |
-| `codeask.test.js` | 58 | Coding-AI phrases, safe command building |
-| `skills-page.test.js` | 79 | Website / coach / viva conversations, and skill packs on the page (`/name`, "use the X skill", trigger phrases not hijacking commands, research / files / plan skills, list / reload) |
-| `skillpack.test.js` | — | `SKILL.md` parsing and loading, symlink rejection, bundled vs personal skills, enable/disable persistence, disabled-run rejection, and routes exercised with a fake model |
-| `skillrouter.test.js` | — | Context-aware skill ranking, exact triggers, ambiguous requests, cooldowns, and ordinary conversation that must not trigger a skill |
-| `skill-hub-quality.test.js` | — | All newly bundled skills are discoverable, metadata is valid, intended requests select the right skill, and ordinary messages are not routed |
-| `skill-hub-ui.test.js` | — | Main-page and PWA wiring, management endpoints, safe manual browser restore, and workflow prompts not auto-submitted |
-| `workflow-memory.test.js` | — | Explicit local workflow save/update/reload/delete, validation, and bounded prompt size |
-| `browser-recovery.test.js` | — | URL validation, sensitive query redaction, persistent history, explicit reopen, and clearing |
-| `diagnostics.test.js` | — | Read-only checks, missing-provider reporting, recommendations, and no repair execution |
-| `extras-page.test.js` | 603 | The eight tools in chat: every phrase that is taken, and a long list of ordinary sentences that must not be ("watch youtube", "open marks.csv", "draw a graph", "split the bill"…) |
-| `aihealth.test.js` | 68 | Error classes from the real `llm.js` messages, the history (ring buffer, saving, hand-edited files), the report and its fixes, the hook with a faked network (nothing secret recorded, cancelled calls not counted) |
-| `watchdog.test.js` | 82 | What may be watched (no `file:`, no passwords), when an alert is worth sending, the probes against real local servers, saving and loading, laptop-only changes |
-| `nearby.test.js` | 73 | Words → kinds of place (and that everything in `places.js` is covered), the Overpass query (nothing but table text and numbers), reading answers, mirrors, caching |
-| `csvtools.test.js` | 107 | Parsing edge cases, statistics, relationships, the filter language including hostile input that must never run, charts with escaped text, the digest that must contain no row |
-| `projectwiki.test.js` | 82 | Reading JS / Python / Java / C, the import graph, the pages; **everything the wiki names exists in the project**; Mermaid safety; limits, symlinks, git |
-| `imagegen.test.js` | 64 | What counts as a picture (by its bytes), each service's request, failures in plain words, saving with a note, the key never shown back |
-| `pdftools.test.js` | 77 | Page selections, merging, taking pages, rotation, text-to-PDF layout, the watermark, password-protected and damaged files, the original untouched |
-| `scanmath.test.js` | 55 | Page corners and flattened size, the cleaner (shadows go, ink stays, marker colours kept), picture fingerprints, motion detector (warm-up, exposure compensation, subtle movement, cooldown), presence tracker (“could not tell” never locks), QR contents (Wi-Fi escapes, link warnings) |
-| `scan.test.js` | 43 | A real picture drawn here → Windows OCR word boxes → one searchable PDF (the hidden text is read back), scan pages, limits, snapshots, vision refusals, phone alert |
-| `camera-page.test.js` | 193 | Camera / QR / photo wording (and sentences that must not match), phone refusals, QR maker and descriptions, presence lock and room watch driven by a fake camera, detector and clock |
-| `photocare.test.js` | 48 | Similar photos (cache, project protection, plan → apply → undo) and JPEG shrink (original always kept, refusals, undo) with fakes, then **real Windows image tools** on drawn pictures including EXIF rotation |
-| `skillrouter.test.js` · `speechstream.test.js` | 48 · 174 | Which messages suggest which skill (and 22 that must not) · sentence splitting however the text arrives, the 320-character rule, code blocks, the queue and Stop, the stop words |
-| `chatarchive.test.js` | 70 | ~35 date phrases, search, monthly files and the size cap, forgetting, laptop-only routes |
-| `ttparse.test.js` · `studyserver.test.js` · `student-page.test.js` | 43 · 28 · 292 | Timetable text / `.ics` / OCR grids · lecture notes in pieces and exam questions with a fake AI · import, bunking, lecture and exam flows with a fake recogniser and clock |
-| `lifeparse.test.js` · `life-page.test.js` | 166 · 149 | Expense, habit, streak and capture sentences (and ordinary sentences that must not be taken) · keep-alive, drive backup, expenses, habits, capture and screenshot-search flows with fake servers: confirmations, undo, phone refusal |
-| `keepalive.test.js` · `mirror.test.js` · `regen.test.js` | 21 · 36 · 23 | The scheduled-task checker and its states · the drive backup on temp folders (changed files, kept versions, never deleting, markers, full drive) · regenerable-folder cleanup |
-| `shotindex.test.js` | 38 | Screenshot text index on temp folders with a fake reader: depth, changes, deletions, budgets, forgetting, `open` only for indexed files |
-| `commerce.test.js` | — | WhatsApp draft links, phone validation, movie/bus ticket hand-offs, shopping searches and manual-purchase safeguards |
-| `services-page.test.js` | — | Explicit command parsing for WhatsApp, movies, buses and shopping; ordinary conversation must not match |
-| `saved-vision.test.js` | — | Saved-image analysis refuses cross-site requests and paths outside approved screenshot folders before calling the model |
-| `assigntrace.test.js` · `studyplus.test.js` | 52 · 43 | Assignment sheets (day-first dates, times, questions) and stack traces (Node, Python, Java, gcc, TypeScript) · classes that just ended, free gaps, plan fitting, end-sem marks |
-| `devtools.test.js` · `dev-page.test.js` | 42 · 96 | Real temp git repositories: summary windows, my commits only, secret files kept out of the diff, error frames read only inside project folders · the chat side with a fake AI |
-| `whisper.test.js` · `stt-page.test.js` | 36 · 16 | WAV conversion and checks, finding the program and model, silence skipping, one-at-a-time, with a fake program · the page recorder with a fake microphone: cuts at pauses, ordered pieces, error reporting, release |
-| `diskcare.test.js` | 97 | Real folder trees in a temp folder: classifying and tidying (name clashes, in-progress downloads, links), large files, duplicates (identical edges but different middle is *not* a duplicate), the temp cleaner and its escape attempts, JARVIS's trash, journals and undo, plans that expire, the routes |
-| `reliability.test.js` | 84 | The presentation review: many wordings → one intent (create/count/list folders, frontends, saving code), misheard speech repaired (and ordinary sentences left alone), "did you mean" ranking, the frontend-for-a-project flow |
-| `decider.test.js` | 141 | The decision engine: ~45 requests → each route, ~30 **conflicts** (action + place, local + fresh, this-laptop + version, show vs explain, statements), place reading (category / location / sort), Online-tools-off offers, payloads, confidence, a reason for every decision |
-| `jarviscode.test.js` | 20 | JARVIS Code: the AI's answer → files, the plain-code-block fallback, paths that must never leave the project |
-| `backup.test.js` | 44 | Export/import, encryption, hostile files, snapshots |
-| `gitsafe.test.js` · `nodecheck.test.js` · `sw.test.js` · `chatprompt.test.js` | 46 · 23 · 9 · 7 | What “commit all changes” would stage and what looks like a secret (real temp repository) · the Node version check and that package.json, the README and the check agree · the service worker lists only real files and never caches /api/ · what the AI is really sent, against a fake Ollama (the tools section is left out when the page will not run a tool) |
-| `phonecmd.test.js` | 19 | Commands from the phone against a fake ntfy server that streams messages to the real server: locked / unlock / 10-minute window / replay refused, **strict mode** (a code with every command, bare code or wrong code runs nothing), the access-token header |
-| `csp.test.js` · `trashkeep.test.js` · `undolog.test.js` | 17 · 19 · 15 | The page policy (no inline scripts, connections only back here) and that every CDN script has a fingerprint · the trash on the item's own drive, finding items again, the 30-day clean-up · the undo log that survives a reload (30 minutes, 40 records, laptop page only) |
-| `nluq.test.js` | 16 | Qwen assist: the server list and the page list match, every command it may name has a real handler, and the risky ones are not offered |
-| `a11y.test.js` | 12 | Every switch, input and dropdown can be named by a screen reader; the chat is a log; finished replies go to a live region once; images have alt text |
-| `skills.test.js` | 52 | Page generation safety (including the Content-Security-Policy every generated page gets), coach, viva grading that never turns an unreadable reply into a silent 0, code fixer |
-| `hello.test.js` | 31 | Windows Hello verification and guarded routes |
-| `applock.test.js` | 54 | The app lock on a real server with a software-signed Windows Hello key: every way round the gate (path spellings, forged / replayed / wrong-purpose signatures, other ports' cookies), unlock, lock now, turning it off, idle expiry on a fake clock, the no-lock-out guarantee |
-| `thresholds` · `facegreet` · `gesture` · `learn` · `ocr` · `portwatch` · `transitions` · `dashboard` | 56 · 33 · 22 · 26 · 15 · 18 · 18 · — | The optional extras: alert thresholds, face-greeting routes (enroll, validation, server-side match) and module, gesture recognition logic, pattern learning, OCR routes, the port watcher, transition effects, the dashboard endpoint (the dashboard suite needs the optional `systeminformation` package — `npm install` — and fails without it) |
-| `triggers.test.js` | 35 | Trigger parsing, edges, cooldowns, charger announcements |
-| `rag.test.js` | 28 | File search with page numbers, hybrid + semantic fusion, .docx/.pptx/.xlsx |
-| `doctext.test.js` | 26 | Office file text extraction (zero dependencies) |
-| `plan.test.js` | 53 | Goal sentences → merged, ordered, permission-previewed, verified plans; state-aware steps (a running server is kept); dev-project dependencies; failure recovery (missing dependencies → ask → install → restart → verify, declined, second failure diagnosed); RETRY / CONTINUE / ROLLBACK; teaching phrases |
-| `paraphrase.test.js` | 259 + 7 | The same requests said many ways (casual, Indian-English, no verb): correct / handed to the AI / **confidently wrong** (must stay 0); statements and questions must not trigger commands |
-| `study.test.js` | 46 | Study planner and progress maths |
-| `scheduler.test.js` | 21 | Server reminders, monthly/yearly repeats, panic gating |
-| `palette.test.js` | 24 | Command palette fuzzy search, skill-pack and tool entries |
-| `apps.test.js` | 17 | Installed-app matching |
-| `phoneauth.test.js` | 15 | Authenticator codes (RFC 6238 vectors) |
-| `undo.test.js` | 24 | Undo stack, including reversing a whole plan run newest-first |
-| `update.test.js` | 14 | Update-check version comparison |
-| `hotkey.test.js` | 12 | Hotkey helper protocol |
-| `instance.test.js` | 16 | One JARVIS per user (second start reuses it, stale locks), chat sync between tabs, ntfy rate-limit safety |
-| `voice.test.js` | 28 | Waiting for the end of a sentence and for the recogniser's final words, tap-to-send, Telugu/Kannada collection |
-| `wakeword.test.js` | 19 | Background wake-word listener protocol |
-| `llmqueue.test.js` | 17 | The local-model queue: one at a time, chat before background, nothing cut off, slots given back after a finished / failed / abandoned / cancelled call, extra lanes on request |
-| `toolregistry.test.js` · `routines.test.js` | 29 · 22 | Every intent in exactly one tool area, the page loads and caches them in order, the real dispatcher (first area wins, a crash names its area), `ok`/`errorCode` on every result · finding routines by what you say, splitting steps, create/replace/remove with undo, runs that wait in line |
-| `tenderparse.test.js` · `tenders-page.test.js` · `tendercount.test.js` | 75 · 35 · 6 | KPPP tables (column order, tabs or spaces, malformed lines), dates and values, building/place/value filters, deadline edges (closes today vs closed, tomorrow at midnight, this week on a Sunday), 25+ phrasings and sentences that are not about tenders · importing, new-since-last-import, freshness, the 6 PM digest · the public total: offline, cached, a fixed address, safe failure |
-| `statemerge.test.js` | 26 | Saving a stale list: another tab’s additions kept, this tab’s deletions honoured, attendance by subject, older pages without a base still replace, through the real route |
-| `statesync.test.js` | 13 | Two tabs against a real server: a saved list is pushed to the other tab (only when it changed), settings are not, the chat still is, an import tells every tab to reload |
-| `tts.test.js` · `lockclient.test.js` | 21 · 21 | The online-voice route against a fake socket (input checks, rate limits, escaping, cache, clean failures) · the page half of the app lock (reload when locked, throttled keep-alive pings, nothing reloads twice) |
-| `netsafe.test.js` | 68 | Private, mapped and odd addresses are refused; names that resolve privately; redirects to this laptop are refused hop by hop; loops stop; a page download stops at 1 MB and PDFs/images are refused |
-| `websearch.test.js` | 11 | "Open X website" picks the right result (not a look-alike) |
-| `autostart.test.js` | 15 | Start with Windows |
+Windows CI runs `npm ci` and `npm test` on Node 22 and 24 with `JARVIS_REQUIRE_ALL` unset. To require every suite locally, use the shell-appropriate form below.
+
+```powershell
+$env:JARVIS_REQUIRE_ALL = '1'
+npm test
+Remove-Item Env:JARVIS_REQUIRE_ALL
+```
+
+The recorded clean-checkout audit covers an earlier 123-suite revision. Its route and assertion counts are historical evidence for that revision. [QA Round 2 report](docs/QA-ROUND2.md)
+
+For focused checks of the recent features, run `node tests/daily-features.test.js`, `node tests/fm-radio.test.js`, `node tests/desktop-automation.test.js`, `node tests/scan.test.js` or `node tests/browser-scenarios.test.js`. Native accessibility and OCR fixtures require Windows; browser fixtures require Edge or Chrome. Marks preview setup and its optional stress fixture are documented in [docs/MARKS.md](docs/MARKS.md).
+
+| Suite | What it covers |
+|---|---|
+| `daily-features.test.js` | Notes and capture search, workspace checkpoints and handoffs, focus sound, quiet-hour exceptions, voice corrections, availability/recurrences, podcast parsing and provider links. |
+| `fm-radio.test.js` | City/frequency resolution, station choice and saved favourites. |
+| `desktop-automation.test.js` | Exact-target approval, altered-text and replay rejection, expiration, password omission, native WPF field/button actions and an isolated private-browser website fixture. |
+| `coverage.test.js` | Phrase checks for all 186 rule intents, plus special handling such as negation; fails if a new rule intent has no phrase |
+| `api.test.js` | Uses a real isolated server and a coverage gate for every mounted API route (350 in the latest snapshot). The route inventory distinguishes requested endpoints and documented exclusions. Checks include success and refusal paths. |
+| `nlu-phase1.test.js`, `task-control.test.js` | Command semantics, corrections, emergency cancellation, stale approvals, and opt-in shortcut helper lifecycle |
+| `agent-runtime.test.js` | Failure matching, context bounds, accessibility fallback, durable jobs, cancellation, restart recovery and permission exclusions |
+| `job-budgets.test.js` | Future starts, runtime deadlines, hung-tool cancellation and model-call limits |
+| `understanding.test.js` | Typed entities, exclusion preservation, constrained Hindi/Hinglish, ambiguity and expiring safe dialogue slots; generated examples are smoke coverage, not a held-out benchmark |
+| `managed-browser.test.js` | Real isolated browser controls, exact approvals, password handoff, fill/click verification, dropdown selection, directional scrolling and cancellation during launch |
+| `vault-accounts.test.js` | Encrypted storage, disposable native DPAPI checks, fake Google/Microsoft PKCE flows, reviewed reads and stale/replayed state rejection |
+| `owner-actions.test.js` | Signed WebAuthn-shaped proofs bound to exact request bodies; changed targets, endpoints and replay are rejected |
+| `office-exports.test.js` | Real editable Office files, workbook formulas, grouped aggregates, embedded charts and stop-before-write behavior |
+| `content-media.test.js` | Page-backed quoted facts, classification suggestions, real raster conversion and source preservation/cancellation |
+| `reviewed-execution.test.js` | Disabled defaults, exact code approvals, real harmless Node arguments/timeouts and temporary-source cleanup; no claim of OS isolation |
+| `marks.test.js` | Preview gate, profile routing, local-only requests, reviewed desktop/batch/library/account flows, separate jobs, recovery and permission boundaries with isolated fixtures. `JARVIS_MARKS_STRESS=1` adds the opt-in 10,000-file rename/restore fixture. |
+| `mcp-client.test.js` | MCP handshake/session headers, JSON/SSE results, exact approvals, expiry, changed definitions, no replay and disconnected restart state |
+| `e2e.test.js` | Runs browser flows, then samples the command catalogue in chat. It fakes laptop actions. Without Edge/Chrome or on Node < 22 it is shown as **NOT RUN**. |
+| `browser-scenarios.test.js` | Two browser tabs, state sync, immersive panels, calendar states, playback continuity, inbox conversion, voice corrections, desktop approvals, returned multi-step answers, checkpoint interruption and actual rollback. |
+| `connected-services.test.js` | Fake Home Assistant status, outages, recovery, approval and readback, plus ICS parsing and URL guards |
+| `positive-routes.test.js` | Success paths for the 14 previously unexplained routes, using fake calling, shopping, image and phone fixtures |
+| `live.test.js` | Opt-in (`npm run test:live`) reversible checks on the real laptop |
+| `nlu.test.js` | Understanding commands (intents, typos, dates, languages), including six checks of the dispatched app or URL |
+| `agent.test.js` | Multi-step routing and safety (validator, refusals), the execution inspector card, undo tagging of plan runs |
+| `llm.test.js` | AI providers, streaming, retries, key handling (with a fake server) |
+| `student.test.js` | Attendance & bunk maths, marks → SGPA/CGPA, monthly/yearly repeats |
+| `codeask.test.js` | Coding-AI phrases, safe command building |
+| `skills-page.test.js` | Website / coach / viva conversations, and skill packs on the page (`/name`, "use the X skill", trigger phrases not hijacking commands, research / files / plan skills, list / reload) |
+| `skillpack.test.js` | `SKILL.md` parsing and loading, symlink rejection, bundled vs personal skills, enable/disable persistence, disabled-run rejection, and routes exercised with a fake model |
+| `skillrouter.test.js` | Context-aware skill ranking, exact triggers, ambiguous requests, cooldowns, and ordinary conversation that must not trigger a skill |
+| `skill-hub-quality.test.js` | All newly bundled skills are discoverable, metadata is valid, intended requests select the right skill, and ordinary messages are not routed |
+| `skill-hub-ui.test.js` | Main-page and PWA wiring, management endpoints, safe manual browser restore, and workflow prompts not auto-submitted |
+| `workflow-memory.test.js` | Explicit local workflow save/update/reload/delete, validation, and bounded prompt size |
+| `browser-recovery.test.js` | URL validation, sensitive query redaction, persistent history, explicit reopen, and clearing |
+| `diagnostics.test.js` | Read-only checks, missing-provider reporting, recommendations, and no repair execution |
+| `extras-page.test.js` | The eight tools in chat: every phrase that is taken, and a long list of ordinary sentences that must not be ("watch youtube", "open marks.csv", "draw a graph", "split the bill"…) |
+| `aihealth.test.js` | Error classes from the real `llm.js` messages, the history (ring buffer, saving, hand-edited files), the report and its fixes, the hook with a faked network (nothing secret recorded, cancelled calls not counted) |
+| `watchdog.test.js` | What may be watched (no `file:`, no passwords), when an alert is worth sending, the probes against real local servers, saving and loading, laptop-only changes |
+| `nearby.test.js` | Words → kinds of place (and that everything in `places.js` is covered), the Overpass query (nothing but table text and numbers), reading answers, mirrors, caching |
+| `csvtools.test.js` | Parsing edge cases, statistics, relationships, the filter language including hostile input that must never run, charts with escaped text, the digest that must contain no row |
+| `projectwiki.test.js` | Reading JS / Python / Java / C, the import graph, the pages; **everything the wiki names exists in the project**; Mermaid safety; limits, symlinks, git |
+| `imagegen.test.js` | What counts as a picture (by its bytes), each service's request, failures in plain words, saving with a note, the key never shown back |
+| `pdftools.test.js` | Page selections, merging, taking pages, rotation, text-to-PDF layout, the watermark, password-protected and damaged files, the original untouched |
+| `scanmath.test.js` | Page corners and flattened size, the cleaner (shadows go, ink stays, marker colours kept), picture fingerprints, motion detector (warm-up, exposure compensation, subtle movement, cooldown), presence tracker (“could not tell” never locks), QR contents (Wi-Fi escapes, link warnings) |
+| `scan.test.js` | Drawn-image Windows OCR, searchable scan PDFs, image-only PDF indexing with original-page citations, limits, cancellation-related routes, snapshots, vision refusals and phone alerts. |
+| `camera-page.test.js` | Camera / QR / photo wording (and sentences that must not match), phone refusals, QR maker and descriptions, presence lock and room watch driven by a fake camera, detector and clock |
+| `photocare.test.js` | Similar photos (cache, project protection, plan → apply → undo) and JPEG shrink (original always kept, refusals, undo) with fakes, then **real Windows image tools** on drawn pictures including EXIF rotation |
+| `skillrouter.test.js` · `speechstream.test.js` | Which messages suggest which skill (and 22 that must not) · sentence splitting however the text arrives, the 320-character rule, code blocks, the queue and Stop, the stop words |
+| `chatarchive.test.js` | ~35 date phrases, search, monthly files and the size cap, forgetting, laptop-only routes |
+| `ttparse.test.js` · `studyserver.test.js` · `student-page.test.js` | Timetable text / `.ics` / OCR grids · lecture notes in pieces and exam questions with a fake AI · import, bunking, lecture and exam flows with a fake recogniser and clock |
+| `lifeparse.test.js` · `life-page.test.js` | Expense, habit, streak and capture sentences (and ordinary sentences that must not be taken) · keep-alive, drive backup, expenses, habits, capture and screenshot-search flows with fake servers: confirmations, undo, phone refusal |
+| `keepalive.test.js` · `mirror.test.js` · `regen.test.js` | The scheduled-task checker and its states · the drive backup on temp folders (changed files, kept versions, never deleting, markers, full drive) · regenerable-folder cleanup |
+| `shotindex.test.js` | Screenshot text index on temp folders with a fake reader: depth, changes, deletions, budgets, forgetting, `open` only for indexed files |
+| `commerce.test.js` | WhatsApp draft links, phone validation, movie/bus ticket hand-offs, shopping searches and manual-purchase safeguards |
+| `services-page.test.js` | Explicit command parsing for WhatsApp, movies, buses and shopping; ordinary conversation must not match |
+| `saved-vision.test.js` | Saved-image analysis refuses cross-site requests and paths outside approved screenshot folders before calling the model |
+| `assigntrace.test.js` · `studyplus.test.js` | Assignment sheets (day-first dates, times, questions) and stack traces (Node, Python, Java, gcc, TypeScript) · classes that just ended, free gaps, plan fitting, end-sem marks |
+| `devtools.test.js` · `dev-page.test.js` | Real temp git repositories: summary windows, my commits only, secret files kept out of the diff, error frames read only inside project folders · the chat side with a fake AI |
+| `whisper.test.js` · `stt-page.test.js` | WAV conversion and checks, finding the program and model, silence skipping, one-at-a-time, with a fake program · the page recorder with a fake microphone: cuts at pauses, ordered pieces, error reporting, release |
+| `diskcare.test.js` | Real folder trees in a temp folder: classifying and tidying (name clashes, in-progress downloads, links), large files, duplicates (identical edges but different middle is *not* a duplicate), the temp cleaner and its escape attempts, JARVIS's trash, journals and undo, plans that expire, the routes |
+| `reliability.test.js` | The presentation review: many wordings → one intent (create/count/list folders, frontends, saving code), misheard speech repaired (and ordinary sentences left alone), "did you mean" ranking, the frontend-for-a-project flow |
+| `decider.test.js` | The decision engine: ~45 requests → each route, ~30 **conflicts** (action + place, local + fresh, this-laptop + version, show vs explain, statements), place reading (category / location / sort), Online-tools-off offers, payloads, confidence, a reason for every decision |
+| `jarviscode.test.js` | JARVIS Code: the AI's answer → files, the plain-code-block fallback, paths that must never leave the project |
+| `backup.test.js` | Export/import, encryption, hostile files, snapshots |
+| `gitsafe.test.js` · `nodecheck.test.js` · `sw.test.js` · `chatprompt.test.js` | What “commit all changes” would stage and what looks like a secret (real temp repository) · the Node version check and that package.json, the README and the check agree · the service worker lists only real files and never caches /api/ · what the AI is really sent, against a fake Ollama (the tools section is left out when the page will not run a tool) |
+| `phonecmd.test.js` | Commands from the phone against a fake ntfy server that streams messages to the real server: locked / unlock / 10-minute window / replay refused, **strict mode** (a code with every command, bare code or wrong code runs nothing), the access-token header |
+| `csp.test.js` · `trashkeep.test.js` · `undolog.test.js` | The page policy (no inline scripts, connections only back here) and that every CDN script has a fingerprint · the trash on the item's own drive, finding items again, the 30-day clean-up · the undo log that survives a reload (30 minutes, 40 records, laptop page only) |
+| `nluq.test.js` | Qwen assist: the server list and the page list match, every command it may name has a real handler, and the risky ones are not offered |
+| `a11y.test.js` | Every switch, input and dropdown can be named by a screen reader; the chat is a log; finished replies go to a live region once; images have alt text |
+| `skills.test.js` | Page generation safety (including the Content-Security-Policy every generated page gets), coach, viva grading that never turns an unreadable reply into a silent 0, code fixer |
+| `hello.test.js` | Windows Hello verification and guarded routes |
+| `applock.test.js` | The app lock on a real server with a software-signed Windows Hello key: every way round the gate (path spellings, forged / replayed / wrong-purpose signatures, other ports' cookies), unlock, lock now, turning it off, idle expiry on a fake clock, the no-lock-out guarantee |
+| `thresholds` · `facegreet` · `gesture` · `learn` · `ocr` · `portwatch` · `transitions` · `dashboard` | The optional extras: alert thresholds, face-greeting routes (enroll, validation, server-side match) and module, gesture recognition logic, pattern learning, OCR routes, the port watcher, transition effects, the dashboard endpoint (the dashboard suite needs the optional `systeminformation` package — `npm install` — and fails without it) |
+| `triggers.test.js` | Trigger parsing, edges, cooldowns, charger announcements |
+| `rag.test.js` | File search with page numbers, hybrid + semantic fusion, .docx/.pptx/.xlsx |
+| `doctext.test.js` | Office file text extraction (zero dependencies) |
+| `plan.test.js` | Goal sentences → merged, ordered, permission-previewed, verified plans; state-aware steps (a running server is kept); dev-project dependencies; failure recovery (missing dependencies → ask → install → restart → verify, declined, second failure diagnosed); RETRY / CONTINUE / ROLLBACK; teaching phrases |
+| `paraphrase.test.js` | The same requests said many ways (casual, Indian-English, no verb): correct / handed to the AI / **confidently wrong** (must stay 0); statements and questions must not trigger commands |
+| `study.test.js` | Study planner and progress maths |
+| `scheduler.test.js` | Server reminders, monthly/yearly repeats, panic gating |
+| `palette.test.js` | Command palette fuzzy search, skill-pack and tool entries |
+| `apps.test.js` | Installed-app matching |
+| `phoneauth.test.js` | Authenticator codes (RFC 6238 vectors) |
+| `undo.test.js` | Undo stack, including reversing a whole plan run newest-first |
+| `update.test.js` | Update-check version comparison |
+| `hotkey.test.js` | Hotkey helper protocol |
+| `instance.test.js` | One JARVIS per user (second start reuses it, stale locks), chat sync between tabs, ntfy rate-limit safety |
+| `voice.test.js` | Waiting for the end of a sentence and for the recogniser's final words, tap-to-send, Telugu/Kannada collection |
+| `wakeword.test.js` | Background wake-word listener protocol |
+| `llmqueue.test.js` | The local-model queue: one at a time, chat before background, nothing cut off, slots given back after a finished / failed / abandoned / cancelled call, extra lanes on request |
+| `toolregistry.test.js` · `routines.test.js` | Every intent in exactly one tool area, the page loads and caches them in order, the real dispatcher (first area wins, a crash names its area), `ok`/`errorCode` on every result · finding routines by what you say, splitting steps, create/replace/remove with undo, runs that wait in line |
+| `tenderparse.test.js` · `tenders-page.test.js` · `tendercount.test.js` | KPPP tables (column order, tabs or spaces, malformed lines), dates and values, building/place/value filters, deadline edges (closes today vs closed, tomorrow at midnight, this week on a Sunday), 25+ phrasings and sentences that are not about tenders · importing, new-since-last-import, freshness, the 6 PM digest · the public total: offline, cached, a fixed address, safe failure |
+| `statemerge.test.js` | Saving a stale list: another tab’s additions kept, this tab’s deletions honoured, attendance by subject, older pages without a base still replace, through the real route |
+| `statesync.test.js` | Two tabs against a real server: a saved list is pushed to the other tab (only when it changed), settings are not, the chat still is, an import tells every tab to reload |
+| `tts.test.js` · `lockclient.test.js` | The online-voice route against a fake socket (input checks, rate limits, escaping, cache, clean failures) · the page half of the app lock (reload when locked, throttled keep-alive pings, nothing reloads twice) |
+| `netsafe.test.js` | Private, mapped and odd addresses are refused; names that resolve privately; redirects to this laptop are refused hop by hop; loops stop; a page download stops at 1 MB and PDFs/images are refused |
+| `websearch.test.js` | "Open X website" picks the right result (not a look-alike) |
+| `autostart.test.js` | Start with Windows |
 
 `node tests/agent-eval.js` additionally measures the AI planner live against Ollama.
 
@@ -1256,13 +1777,41 @@ node -e "const D=require('./decider.js'); console.log(D.decide(D.signals('neares
 
 ### Common problems
 
-**The page says "Backend offline".** Start JARVIS (`Start JARVIS.bat` or `npm start`) and open `http://localhost:PORT` — not the `index.html` file.
+**The page says "Backend offline".** Start JARVIS (`Start JARVIS.bat` or `npm start`) and open `http://localhost:3002` — not the `index.html` file.
 
 **JARVIS does not open at localhost:3002.** Start it with the desktop **JARVIS** icon or `Start JARVIS.bat`. JARVIS always uses port 3002; if another program is using that port, close that program and start JARVIS again. Enable **Settings → Data → Start with Windows** to have JARVIS ready after you sign in.
 
 **Different chats on different ports, or the phone (ntfy) app stops responding.** That means more than one JARVIS was running. Since the single-instance lock this can no longer happen from a normal start: starting JARVIS again (desktop icon, `npm start`, an AI tool, VS Code) just reuses the running one. If you ever see two, use **Stop JARVIS** (it stops the copy recorded in `~/jarvis/.jarvis.lock`) and start once. `JARVIS_ALLOW_MULTI=1` turns the guard off; only tests use it.
 
-**"AI brain offline" / no answers to questions.** Start the Ollama app (or add an API key via Settings → Guided setup → AI). The first local reply takes about a minute while the model loads.
+**"AI brain offline" / no answers to questions.** Start Ollama or configure a provider
+via **Settings → Guided setup → AI**. Check that the selected model is installed;
+a cold model can take time to load. `check my AI` distinguishes installed models
+from loaded models and reports unavailable probes rather than inventing a list.
+`check my AI properly` also sends a small inference request to the selected model.
+
+**The new Apps tools appear but do not run.** Expand **Background tasks and MCP
+tools**. Native extensions, the separate browser, reviewed scripts and account
+connections each need their own setup/approval. Seeing their form is not proof
+that the corresponding permission is enabled.
+
+**Audio conversion says FFmpeg is missing.** Whisper handles transcription, not
+container/audio extraction. Install FFmpeg yourself and put it on PATH or set
+`JARVIS_FFMPEG_PATH` before restarting JARVIS. Image workflows do not need FFmpeg.
+
+**Google/Microsoft says connect first after I already signed in.** Check whether
+you connected the main Apps panel or the separate Marks preview. They do not share
+tokens or redirects. Main connections require this Windows user's vault; Marks
+connections clear when the server restarts. Reconnect through the correct panel.
+
+**Marks is missing or disabled.** Normal startup hides it. All profiles remain
+preview, so `JARVIS_MARKS=enabled` does not promote them. Use the explicit developer
+preview procedure in [docs/MARKS.md](docs/MARKS.md); selecting a Mark in chat cannot
+bypass that gate.
+
+**Credential migration or vault access fails.** Main encrypted credentials belong
+to the Windows user who created them. Review the vault status and configuration
+write access; do not replace an unreadable vault with plaintext secrets. Earlier
+backups and unrelated service credentials have separate storage and recovery rules.
 
 **Answers are slow or weak.** Small local models are limited on laptop GPUs. Add a cloud key (Gemini and Groq have free tiers) and pick it under **Model**.
 
@@ -1274,13 +1823,27 @@ node -e "const D=require('./decider.js'); console.log(D.decide(D.signals('neares
 
 **Phone commands say "JARVIS isn't open".** Commands run in the page — keep a JARVIS tab open on the laptop. (Questions work without it.)
 
-**JARVIS opens a lock page and Windows Hello won't verify (or I turned the lock on and lost access).** The lock needs the Windows Hello key JARVIS enrolled. Stop JARVIS (`Stop JARVIS.bat`), open `~/jarvis/.config.json`, delete the `"appLock"` entry (and the `"hello"` entry too if Windows Hello itself is the problem — the lock then stands down on its own), and start JARVIS again. Unlocking works at the laptop only: open `http://localhost:PORT` (not `127.0.0.1`, not the phone/Tailscale address) in Chrome or Edge.
+**JARVIS opens a lock page and Windows Hello won't verify (or I turned the lock on and lost access).** The lock needs the Windows Hello key JARVIS enrolled. Stop JARVIS (`Stop JARVIS.bat`), open `~/jarvis/.config.json`, delete the `"appLock"` entry (and the `"hello"` entry too if Windows Hello itself is the problem — the lock then stands down on its own), and start JARVIS again. Unlocking works at the laptop only: open `http://localhost:3002` (not `127.0.0.1`, not the phone/Tailscale address) in Chrome or Edge.
 
 **Windows Hello stopped working after I changed my PIN/fingerprint.** Stop JARVIS, delete the `"hello"` entry from `~/jarvis/.config.json`, start again.
 
 **"I can't find the folder".** JARVIS searches Desktop, Documents, Downloads, your home folder and other drives by name, so check the spelling first. If a coding AI must work in that folder, add it in **Settings → Project folders** or answer **ALLOW & CONTINUE**.
 
-**A PDF "is a scan".** It contains pictures of pages, not text. Open it and use "read my screen" instead.
+**A PDF "is a scan".** Open **Notes**, select the PDF by name or full path, choose **Index with local OCR**, then search it there. Wait for indexing to finish and review the unreadable-page count. This uses local Windows OCR.
+
+**An app control is missing or unavailable.** Refresh the window list in **Apps**, select the intended window and inspect it. A control must be visible, enabled and expose a supported Windows accessibility pattern. A changed window or a completed action needs a new inspection.
+
+**An app approval expired.** Inspect the window again and request the action again. Inspections expire after two minutes, and each inspection is used for one action.
+
+**FM or podcasts will not play.** Check connectivity and browser audio permissions. Use **Open player** for FM when its stream is unavailable. Podcasts need Online tools and a public feed; refresh the feed before resuming an episode. The browser may require a direct **Play** click.
+
+**Spotify or YouTube opens another page.** The provider link and title commands open their official player/search pages. Use the compact JARVIS player for local audio, supported FM and podcasts.
+
+**A workspace item moved.** Edit its saved path in Workspaces and save a new checkpoint. Resume reports missing items so you can correct them.
+
+**No free study slot appears.** Check study-hour settings, the requested cutoff, timetable durations and calendar coverage. A day-only cutoff ends at the start of that day.
+
+**Routine laptop alerts have gone quiet.** Check Daily quiet hours and any “until my break” interval. “What did I miss?” shows held alerts.
 
 **Answers miss my new file.** JARVIS picks up new and changed files automatically (a 30-second scan plus a live file watcher). For a wholesale rename or move, say "reindex my files".
 
@@ -1300,27 +1863,18 @@ node -e "const D=require('./decider.js'); console.log(D.decide(D.signals('neares
 
 ---
 
-### Context-aware intent and public price comparison
-
-JARVIS resolves short follow-ups such as “open it” and “do that again” against a recent successful navigation command when context is available. Replays are deliberately restricted to low-risk navigation/read-only requests; destructive, messaging, booking, payment and purchase actions are never replayed from a vague reference. Conversation context is temporary and time-limited rather than a permanent mood or intent profile.
-
-The Skill Hub comparison endpoint fans out searches for Amazon India, Flipkart and Google Shopping discovery, or AbhiBus, redBus and government transport services. It extracts **observed price candidates** from public search snippets/readable pages and reports the lowest observed candidate when one exists. This is not a checkout-verified price feed: search engines can be stale, sites can block page reads, product variants may differ, and delivery/booking charges, coupons, bank offers and seat availability can change. The UI must label such amounts unverified and must not claim a verified cheapest option without comparable final prices.
-
-### Product and bus comparison (current scope)
-
-The Skill Hub opens parallel searches for Amazon India, Flipkart and Google Shopping, and searches AbhiBus, redBus and government bus-booking portals for a route/date. These are comparison-discovery links, **not a verified live-price aggregator**: JARVIS must not name a cheapest option until it can compare the exact product/variant or route/date and confirm final price, delivery/booking fees, offers, and availability. Government portals vary by state; verify the official domain before entering personal or payment details.
-
-Natural-language command repair includes common speech/transcription errors such as “ogoen YouTube” → “open YouTube”. For new installs, local Qwen NLU assistance is enabled by default when the configured local AI is ready; it only selects whitelisted intents and falls back to rules if unavailable. This is deterministic correction, not unrestricted guesswork; uncertain commands should be clarified rather than launching an unrelated app.
-
 ## 15. Known limitations
 
+- Task coverage depends on registered tools, configured services and application accessibility. Open-ended requests can require clarification, an available tool or a handoff to another application.
 - Windows-first: many laptop controls, notifications and the hotkey are Windows-only.
-- Browser speech recognition needs the internet; everything else can run offline with a local model. Offline lecture transcription needs you to run `install-whisper.ps1` once, is CPU-only (it can lag), and is best in English.
+- Browser speech recognition needs internet access. Local AI, notes, stored workspaces and local audio can work offline. Web research, live FM, podcast retrieval, regional news and connected services require their respective connections. Offline transcription requires a configured Whisper installation.
 - Keep-alive, the attendance prompt, the weekly backup and screenshot indexing work only while the laptop is on (JARVIS itself must be open for the attendance prompt and the backup).
 - Screenshot search uses Windows OCR (English); the standup, git summary and commit message read only the project folders you gave JARVIS.
 - Routines, scheduled routines and phone *commands* need a JARVIS tab open (reminders don't).
+- The background queue runs only its documented read-only tools. Native window actions, file changes, routines and external MCP calls stay interactive. The JARVIS server must keep running; laptop sleep pauses work.
+- MCP currently connects only to explicit loopback HTTP servers using the documented protocol family. Remote HTTPS/OAuth, stdio and automatic model selection of external tools remain unsupported.
 - Small local models occasionally misread instructions or answer briefly; cloud models are stronger.
-- Scanned PDFs, password-protected PDFs and images aren't text-searchable. (.docx/.pptx/.xlsx are read directly.)
+- Scanned PDFs can be indexed from Notes using Windows OCR. Recognition quality affects search results, and indexes need rebuilding after a server restart or file change. Password-protected PDFs need an accessible copy. Office files use their existing text extraction.
 - Semantic search needs an Ollama embedding model pulled once (default `nomic-embed-text`); without it the keyword index alone still works.
 - The update check compares release tags and points you at the release page — it doesn't update JARVIS itself.
 - The PWA install (own window, offline shell) needs Chrome or Edge; everything that acts on your PC still runs through the local server.
@@ -1328,34 +1882,18 @@ Natural-language command repair includes common speech/transcription errors such
 - Coding-AI hand-off depends on each tool's own command line; desktop apps without one (OpenCode) need a manual paste.
 - The app lock unlocks at the laptop only (Windows Hello is localhost-only), so the phone/Tailscale page can't be unlocked while it is on; and JARVIS can't check your Windows account *password* — Windows Hello (your fingerprint, face or Windows Hello PIN) is the lock's key.
 - Screen OCR is English only.
+- App and website actions depend on accessible control patterns exposed by each application. Each click or fill needs approval and a recent inspection. Click acceptance is followed by inspection to check its effect.
+- Extended UIA actions require their explicit switch. The managed browser supports reviewed click, fill, select, focus and scrolling; general keyboard shortcuts, drag/drop, upload dialogs and cross-frame task execution remain incomplete.
+- Hindi/Hinglish support is a constrained command layer, not feature parity with English or a new fully supported microphone language. Generated language smoke tests are not a held-out voice/accent benchmark.
+- Main account connections are read-only and bounded; provider writes, sending and exhaustive mailbox/drive search are not implemented. Marks uses its separate preview connection and session tokens.
+- Reviewed Node/Python execution runs as the Windows user. Approved working folders, a timeout and separate browser profiles do not provide VM isolation or guarantee containment of arbitrary script side effects.
+- Marks is developer preview, with live acceptance still required. Its worker lanes perform supported read-and-draft tasks, not unrestricted parallel desktop agents. Sentry watches stop with the server session.
+- The 115-capability checklist remains partly implemented. General demonstration learning, speaker identity, broad automatic replanning, monetary budgets and complete data-forgetting coverage are not established by the existing tests. See [implementation progress](docs/IMPLEMENTATION-PROGRESS.md).
+- The media player uses browser-supported codecs. Spotify and YouTube use official provider pages, and local file selections must be made again after reloading the page.
+- Availability suggestions depend on the accuracy of your timetable, deadlines and calendar coverage. Regional news covers the city/language feeds listed above.
 
 ---
 
 ## 16. License
 
-MIT — see `package.json`. Third-party: Express, unpdf (Mozilla pdf.js), qrcode-generator (MIT), Google Fonts via Fontsource.
-
-
-## Calling & Android voice
-
-JARVIS now includes an **opt-in outbound phone announcement** flow and an initial Android in-app voice flow:
-
-- **Outbound phone call:** configure Twilio credentials on the JARVIS server, then open `/calling.html` or issue the explicit desktop command “JARVIS, call me.” The call speaks a short message to your configured number; it is **not yet a two-way conversational cellular call**.
-- **Android voice:** the companion app captures one utterance, sends it through the capability-protected Phone Hub gateway, then speaks JARVIS's text reply. This is turn-based speech, not continuous full-duplex audio.
-- **Reminder calls:** off by default. Enable only if wanted with `JARVIS_CALL_ON_REMINDERS=true`; reminder calls also respect the JARVIS Alerts and panic switches and the configured quiet hours.
-- **Security:** calling credentials stay server-side. The Phone Hub gateway is separately configured, HTTPS-only, disabled unless explicitly enabled, and grants `voice` and `calls` capabilities separately. For away-from-home in-app voice, connect both devices to Tailscale and bind the gateway to the laptop's Tailscale IP; do not expose the general JARVIS server or forward gateway ports publicly.
-
-Start with [Calling setup](docs/CALLING.md), [Phone Hub setup and security](docs/PHONE-HUB.md), and the [Android companion guide](android/phonehub/README.md). This is an initial implementation: Twilio credentials, provider account restrictions, Android certificate trust, physical-device pairing, and real call delivery must be configured and verified by the operator. CI/build checks do not prove a real call or phone-network setup works.
-
-
-## Agent Platform: research notebook and workflow planner
-
-Open **AGENT PLATFORM** from the JARVIS interface to save local research questions, findings and sanitized source links; validate a workflow's dependencies and permission tiers; and review the metadata-only audit trail. Workflow validation never executes commands. Research sessions and audit metadata are stored locally under `~/jarvis`.
-
-The corresponding APIs are documented in [the Phase 3–8 implementation status](docs/PHASES-3-8-IMPLEMENTATION.md). Existing skill packs, reminders, browser recovery and Phone Hub remain the source of truth for those capabilities.
-
-## Context-aware intent and live commerce comparison
-
-JARVIS routes explicit product and bus fare comparison requests through `/api/commerce/compare`. It searches provider-specific public results, fetches readable public listing pages when available, extracts price candidates, and shows source links. A candidate price is not a checkout-verified total; JARVIS must not claim a guaranteed cheapest purchase until exact variant, route/date, availability, delivery/booking fees and offers are confirmed. Search failures or inaccessible pages are reported as missing data, not fabricated prices.
-
-Natural-language intent rules handle clear buying/comparison requests and preserve the active commerce task for short provider follow-ups. For unclear or ambiguous requests, JARVIS should ask a focused clarification rather than guessing an external action. The local rule engine remains the fast first pass; the optional local Qwen NLU assist can interpret low-confidence commands when enabled.
+MIT — see `package.json`. Dependencies and their license files include Express, unpdf (Mozilla pdf.js), pdf-lib, hls.js, ical.js, systeminformation, docx, ExcelJS, PptxGenJS and sharp. The bundled QR code library and font assets retain their own licenses.

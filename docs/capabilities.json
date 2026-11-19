@@ -1,0 +1,1040 @@
+{
+  "version": 1,
+  "updated": "2026-11-19",
+  "meaning": "Evidence-backed capability checklist; partial implementations and live prerequisites are recorded explicitly.",
+  "capabilities": [
+    {
+      "id": 1,
+      "name": "Entity extraction (slot filling)",
+      "status": "partial",
+      "phase": 2,
+      "evidence": [
+        "tests/understanding.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Typed entity results exist; generalized slot schemas and ranked ambiguity remain incomplete."
+    },
+    {
+      "id": 2,
+      "name": "Date and time understanding",
+      "status": "partial",
+      "phase": 1,
+      "evidence": [
+        "tests/nlu-phase1.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Confirmed examples repaired. Broader checklist acceptance is still pending."
+    },
+    {
+      "id": 3,
+      "name": "Number and unit understanding",
+      "status": "partial",
+      "phase": 1,
+      "evidence": [
+        "tests/nlu-phase1.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Confirmed examples repaired. Broader checklist acceptance is still pending."
+    },
+    {
+      "id": 4,
+      "name": "Multi-intent commands",
+      "status": "in_progress",
+      "phase": 1,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 5,
+      "name": "Negation",
+      "status": "partial",
+      "phase": 1,
+      "evidence": [
+        "tests/nlu-phase1.test.js",
+        "tests/agent.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Negated commands and desktop-action negation have regression checks; broader checklist acceptance remains partial."
+    },
+    {
+      "id": 6,
+      "name": "Correction handling",
+      "status": "partial",
+      "phase": 1,
+      "evidence": [
+        "tests/nlu-phase1.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Confirmed examples repaired. Broader checklist acceptance is still pending."
+    },
+    {
+      "id": 7,
+      "name": "Coreference",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 8,
+      "name": "Screen references",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 9,
+      "name": "Personal references",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 10,
+      "name": "Ellipsis",
+      "status": "partial",
+      "phase": 1,
+      "evidence": [
+        "tests/nlu-phase1.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Confirmed examples repaired. Broader checklist acceptance is still pending."
+    },
+    {
+      "id": 11,
+      "name": "Language detection and code-mixing",
+      "status": "partial",
+      "phase": 2,
+      "evidence": [
+        "tests/understanding.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Language detection and constrained Hindi/Hinglish commands; broad code-mixed language coverage remains incomplete."
+    },
+    {
+      "id": 12,
+      "name": "Transliteration",
+      "status": "partial",
+      "phase": 2,
+      "evidence": [
+        "tests/understanding.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Constrained Romanized Hindi commands are mapped without model calls; generalized transliteration remains incomplete."
+    },
+    {
+      "id": 13,
+      "name": "Sentiment and emotion",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 14,
+      "name": "Politeness and tone style",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 15,
+      "name": "Speaker identification",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 16,
+      "name": "Preference learning",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 17,
+      "name": "Habit and routine understanding",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 18,
+      "name": "Context awareness",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 19,
+      "name": "Proactive intent prediction",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 20,
+      "name": "Implicit intent",
+      "status": "partial",
+      "phase": 2,
+      "evidence": [
+        "tests/understanding.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Ambiguous implicit device requests ask what action to take; no speculative device actions."
+    },
+    {
+      "id": 21,
+      "name": "Task planning from vague goals",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 22,
+      "name": "Ambiguity ranking",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 23,
+      "name": "Summarization",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 24,
+      "name": "Question answering over your own files",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 25,
+      "name": "Semantic search",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 26,
+      "name": "Information extraction",
+      "status": "partial",
+      "phase": 5,
+      "evidence": [
+        "tests/content-media.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Exact quoted amounts, due dates and sender labels with page/offset evidence; generalized extraction remains incomplete."
+    },
+    {
+      "id": 27,
+      "name": "Text classification",
+      "status": "partial",
+      "phase": 5,
+      "evidence": [
+        "tests/content-media.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Evidence-backed heuristic category suggestions only; no automatic filing."
+    },
+    {
+      "id": 28,
+      "name": "Translation",
+      "status": "partial",
+      "phase": 2,
+      "evidence": [
+        "tests/understanding.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Known Hindi commands use constrained mappings; other translations still depend on configured models/providers."
+    },
+    {
+      "id": 29,
+      "name": "Named topic and keyword detection",
+      "status": "partial",
+      "phase": 5,
+      "evidence": [
+        "tests/content-media.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Local keyword frequency counts and page references; semantic topic modeling remains incomplete."
+    },
+    {
+      "id": 30,
+      "name": "Command vs chat detection",
+      "status": "in_progress",
+      "phase": 1,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 31,
+      "name": "Wake word detection",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 32,
+      "name": "Voice activity detection",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 33,
+      "name": "Barge-in handling",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 34,
+      "name": "Speech error correction",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 35,
+      "name": "Custom vocabulary",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 36,
+      "name": "Noise and accent robustness",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 37,
+      "name": "Prosody and pauses",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 38,
+      "name": "Multi-turn dialogue state tracking",
+      "status": "partial",
+      "phase": 2,
+      "evidence": [
+        "tests/understanding.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Safe timer/reminder slots expire and restore; approval-bearing actions never restore."
+    },
+    {
+      "id": 39,
+      "name": "Slot-by-slot questioning",
+      "status": "partial",
+      "phase": 2,
+      "evidence": [
+        "tests/understanding.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Bounded missing-slot dialogue helper; integration is limited to existing pending workflows."
+    },
+    {
+      "id": 40,
+      "name": "Topic switching and returning",
+      "status": "partial",
+      "phase": 2,
+      "evidence": [
+        "tests/understanding.test.js",
+        "tests/browser-scenarios.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Safe pending questions can be interrupted and resumed; general dialogue policies remain incomplete."
+    },
+    {
+      "id": 41,
+      "name": "Small talk and personality",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 42,
+      "name": "Explaining itself",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 43,
+      "name": "Feedback learning",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 44,
+      "name": "Confidence scores",
+      "status": "in_progress",
+      "phase": 1,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 45,
+      "name": "Out-of-scope detection",
+      "status": "in_progress",
+      "phase": 1,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 46,
+      "name": "Hallucination control",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 47,
+      "name": "Prompt injection defense",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 48,
+      "name": "Privacy filtering",
+      "status": "partial",
+      "phase": 7,
+      "evidence": [
+        "tests/understanding.test.js",
+        "tests/llm.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Recognizable secrets blocked before cloud chat and embeddings; not comprehensive PII classification."
+    },
+    {
+      "id": 49,
+      "name": "Evaluation set",
+      "status": "partial",
+      "phase": 8,
+      "evidence": [
+        "tests/understanding.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "500 generated smoke examples plus targeted checks; not a held-out real-world benchmark."
+    },
+    {
+      "id": 50,
+      "name": "Mouse and keyboard control",
+      "status": "partial",
+      "phase": 3,
+      "evidence": [
+        "tests/desktop-automation.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Click/fill and opt-in native patterns; general keyboard and drag/drop remain incomplete."
+    },
+    {
+      "id": 51,
+      "name": "Window management",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 52,
+      "name": "Screen change detection",
+      "status": "partial",
+      "phase": 3,
+      "evidence": [
+        "tests/managed-browser.test.js",
+        "tests/desktop-automation.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Exact targets and browser observations rechecked; arbitrary visual-only controls remain incomplete."
+    },
+    {
+      "id": 53,
+      "name": "Pop-up and interruption handling",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 54,
+      "name": "Browser automation",
+      "status": "partial",
+      "phase": 3,
+      "evidence": [
+        "tests/managed-browser.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Opt-in separate profile and DOM adapter; cross-frame/file dialogs and general web task automation incomplete."
+    },
+    {
+      "id": 55,
+      "name": "File system skills",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 56,
+      "name": "Terminal and command-line use",
+      "status": "partial",
+      "phase": 7,
+      "evidence": [
+        "tests/reviewed-execution.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Reviewed native Node/Python scripts, off by default; no VM or general terminal shell."
+    },
+    {
+      "id": 57,
+      "name": "Clipboard use",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 58,
+      "name": "Drag-and-drop and file dialogs",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 59,
+      "name": "CAPTCHA and login handling",
+      "status": "partial",
+      "phase": 3,
+      "evidence": [
+        "tests/managed-browser.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Manual handoff for credentials/CAPTCHA; no bypass or unattended sign-in."
+    },
+    {
+      "id": 60,
+      "name": "Screen-to-text for everything",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 61,
+      "name": "Chart and graph reading",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 62,
+      "name": "UI element recognition",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 63,
+      "name": "Layout understanding",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 64,
+      "name": "Video and audio understanding",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 65,
+      "name": "Document understanding",
+      "status": "partial",
+      "phase": 5,
+      "evidence": [
+        "tests/content-media.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Quoted facts and page evidence; complex chart/layout interpretation and scanned PDF handling remain separate."
+    },
+    {
+      "id": 66,
+      "name": "Step-by-step reasoning",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 67,
+      "name": "Planning and re-planning",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 68,
+      "name": "Self-checking",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 69,
+      "name": "Trying alternatives",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 70,
+      "name": "Knowing when stuck",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 71,
+      "name": "Math and logic solving",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 72,
+      "name": "Using code as a tool",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 73,
+      "name": "Breaking big goals into sub-tasks and sub-agents",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 74,
+      "name": "Time and effort budgeting",
+      "status": "partial",
+      "phase": 4,
+      "evidence": [
+        "tests/job-budgets.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Runtime and model-call limits enforced; monetary/token budgeting remains incomplete."
+    },
+    {
+      "id": 75,
+      "name": "Assignments and homework",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 76,
+      "name": "Research",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 77,
+      "name": "Writing",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 78,
+      "name": "Coding help",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 79,
+      "name": "Spreadsheets and data analysis",
+      "status": "partial",
+      "phase": 5,
+      "evidence": [
+        "tests/office-exports.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Editable workbooks, formulas, grouped summaries and chart images; native pivot objects incomplete."
+    },
+    {
+      "id": 80,
+      "name": "Presentations and documents",
+      "status": "partial",
+      "phase": 5,
+      "evidence": [
+        "tests/office-exports.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Editable DOCX/PPTX/XLSX creation; advanced layout and synthesis incomplete."
+    },
+    {
+      "id": 81,
+      "name": "Email and calendar management",
+      "status": "partial",
+      "phase": 6,
+      "evidence": [
+        "tests/vault-accounts.test.js"
+      ],
+      "blockedBy": [
+        "User OAuth application registration and live sign-in"
+      ],
+      "notes": "Read-only defaults and reviewed reads; provider writes/sending not implemented. Live user sign-in required."
+    },
+    {
+      "id": 82,
+      "name": "Online forms and applications",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 83,
+      "name": "Shopping and booking",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 84,
+      "name": "Learning and tutoring",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 85,
+      "name": "Image, audio, and video tasks",
+      "status": "partial",
+      "phase": 5,
+      "evidence": [
+        "tests/content-media.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Local raster workflows; optional FFmpeg/Whisper extraction requires installed dependencies; advanced video work incomplete."
+    },
+    {
+      "id": 86,
+      "name": "Cloud and online accounts",
+      "status": "partial",
+      "phase": 6,
+      "evidence": [
+        "tests/vault-accounts.test.js"
+      ],
+      "blockedBy": [
+        "User OAuth application registration and live sign-in"
+      ],
+      "notes": "Google/Microsoft read-only PKCE adapters with encrypted tokens; live accounts unverified."
+    },
+    {
+      "id": 87,
+      "name": "System maintenance",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 88,
+      "name": "Learning new apps on the fly",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 89,
+      "name": "Long-term memory",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 90,
+      "name": "Learn by watching you",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 91,
+      "name": "Reusable skills library",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 92,
+      "name": "Knowledge base of your own data",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 93,
+      "name": "Forgetting and updating",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 94,
+      "name": "Learning from mistakes across sessions",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 95,
+      "name": "Verification after every important step",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 96,
+      "name": "Undo and rollback",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 97,
+      "name": "Error recovery",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 98,
+      "name": "Idempotent actions",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 99,
+      "name": "Checkpoints for long tasks",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 100,
+      "name": "Testing with benchmarks",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 101,
+      "name": "Permission levels",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 102,
+      "name": "Sandbox mode",
+      "status": "partial",
+      "phase": 7,
+      "evidence": [
+        "tests/reviewed-execution.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Approved folders and separate browser profile exist; native script execution is not OS-isolated."
+    },
+    {
+      "id": 103,
+      "name": "Spending and sending limits",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 104,
+      "name": "Kill switch",
+      "status": "partial",
+      "phase": 1,
+      "evidence": [
+        "tests/task-control.test.js",
+        "tests/api.test.js",
+        "tests/browser-scenarios.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Server stop latch, cancellation, approval invalidation and optional hotkey implemented. Physical shortcut and remaining OS/provider cancellation coverage need live evidence."
+    },
+    {
+      "id": 105,
+      "name": "Activity log and transparency",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 106,
+      "name": "Secrets management",
+      "status": "partial",
+      "phase": 7,
+      "evidence": [
+        "tests/vault-accounts.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "DPAPI account tokens and reviewed provider-key migration; older backups and other legacy secrets require separate review."
+    },
+    {
+      "id": 107,
+      "name": "Local-first privacy",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 108,
+      "name": "Bot-detection awareness",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 109,
+      "name": "Always-on overlay or sidebar",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 110,
+      "name": "Voice and text together",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 111,
+      "name": "Proactive suggestions",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 112,
+      "name": "Task queue and scheduling",
+      "status": "partial",
+      "phase": 4,
+      "evidence": [
+        "tests/job-budgets.test.js",
+        "tests/agent-runtime.test.js"
+      ],
+      "blockedBy": [],
+      "notes": "Durable read-only jobs with delayed start and budgets; general recurring background desktop tasks incomplete."
+    },
+    {
+      "id": 113,
+      "name": "Multi-device sync",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 114,
+      "name": "Plug-in system",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    },
+    {
+      "id": 115,
+      "name": "Cost and speed tracking",
+      "status": "pending_verification",
+      "phase": null,
+      "evidence": [],
+      "blockedBy": []
+    }
+  ]
+}
