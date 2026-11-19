@@ -138,6 +138,17 @@ public static class JarvisDesktopWindow {
       @{verified=($match.scroll.Current.HorizontalScrollPercent -ne $oldH -or $match.scroll.Current.VerticalScrollPercent -ne $oldV)} | ConvertTo-Json -Compress
     } elseif ($request.action -eq 'click') {
       if (!$match.invoke) { throw 'This control does not support clicking.' }
+      # Some accessibility providers accept Invoke without dispatching the action
+      # when the target has lost keyboard focus. Focus only the approved element,
+      # then recheck its identity and the owning window before invoking it once.
+      if ($match.element.Current.IsKeyboardFocusable) { $match.element.SetFocus() }
+      $clickInfo = $match.element.Current
+      if ($root.Current.ProcessId -ne $request.window.pid -or $root.Current.Name -cne $request.window.title -or
+          $clickInfo.Name -cne $request.target.name -or $clickInfo.AutomationId -cne $request.target.automationId -or
+          $clickInfo.ControlType.ProgrammaticName -cne $request.target.type -or !$clickInfo.IsEnabled -or
+          $clickInfo.IsOffscreen -or $clickInfo.IsPassword) {
+        throw 'The approved click target changed while focusing. Inspect it again.'
+      }
       $match.invoke.Invoke()
       $verified = $false
       if ($request.strictTarget) {
